@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "io.github.simuciokas.hidemodels.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "EntityRenderDispatcherMixin",
+    "ItemDisplayAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
