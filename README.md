@@ -13,7 +13,7 @@ server's view of the world are all untouched.
 ## Install
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer for Minecraft 26.2.
-2. Drop `hidemodels-1.2.0.jar` into your `mods/` folder.
+2. Drop `hidemodels-1.3.0.jar` into your `mods/` folder.
 
 Requirements, all declared in `fabric.mod.json`:
 
@@ -46,6 +46,7 @@ preset would be wrong everywhere but one server.
 |---|---|
 | `off` | disable without emptying the list |
 | `first-person-only` | hide only while the camera is in first person, so the model reappears in third person (F5) |
+| `list-radius 32` | default radius for `/hidemodels list` |
 
 `first-person-only` is the one to use for a mount whose head fills your screen: hidden while you're
 riding and looking ahead, visible again the moment you pull the camera out to look at it. The
@@ -58,7 +59,33 @@ timestamp poll throttled to once a second, so a saved edit takes effect within a
 restart, no command, no keybind. An unreadable file keeps the previous list rather than taking the
 renderer down with it.
 
-## Finding ids to put in it
+## The `/hidemodels` command
+
+| command | what it does |
+|---|---|
+| `/hidemodels` | status: pattern count, on/off, first-person and server-opt-out state |
+| `/hidemodels list [radius]` | every model within the radius, grouped by model, nearest first |
+| `/hidemodels list bones [radius]` | the same, but individual bone ids |
+
+Each row shows the piece count, the id, and the distance to the nearest piece; ids your config
+already hides are green and marked `hidden`. Radius defaults to `list-radius` in the config (32)
+and is clamped to 256. Output is capped at 40 rows.
+
+```
+hidemodels: 3 models within 32 blocks (12 pieces)
+  x8  modelengine:some_mount/     0.9m  hidden
+  x2  modelengine:internal_fire/  0.9m
+  x2  modelengine:warp_core/      14.3m
+```
+
+This is the fast way to fill in the config: stand next to the thing, run the command, copy the id.
+
+The command is handled entirely on the client and is **not** forwarded to the server. It also isn't
+registered in the command tree, so it won't tab-complete — vanilla builds that tree from what the
+server advertises, and adding a local command properly would mean depending on Fabric API, which
+this mod deliberately avoids.
+
+## Finding ids without the command
 
 Every piece of a ModelEngine model is an `item_display` whose item carries an `item_model`
 component. Since 1.21.4 those ids resolve to item definition files inside the server's resource
@@ -97,7 +124,7 @@ permanently altered, and the player's own config applies again next time they co
 
 ```sh
 export JAVA_HOME=/path/to/jdk-25
-./gradlew build          # -> build/libs/hidemodels-1.2.0.jar
+./gradlew build          # -> build/libs/hidemodels-1.3.0.jar
 ```
 
 No local Minecraft install is needed: the compile classpath — client jar plus MC's own libraries —
