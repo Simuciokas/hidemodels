@@ -50,7 +50,7 @@ public signatures leak types this mod never references — every omission costs 
 
 ```sh
 export JAVA_HOME=/path/to/jdk-25
-./gradlew build       # -> build/libs/hidemodels-1.2.0.jar
+./gradlew build       # -> build/libs/hidemodels-1.3.0.jar
 ```
 
 Then copy the jar into your `mods/` folder. CI does the same thing on `ubuntu-latest` with

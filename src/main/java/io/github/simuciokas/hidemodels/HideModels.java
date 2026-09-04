@@ -6,8 +6,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 
 /**
  * Hides chosen ModelEngine model pieces client-side, by their {@code item_model} id.
@@ -22,9 +25,12 @@ import net.minecraft.client.Minecraft;
  * the server's view of the world are untouched.
  *
  * <p>Config: {@code config/hidemodels.txt}, one id fragment per line, {@code #} for comments,
- * plus the directives {@code off} and {@code first-person-only}. Re-read automatically at most
- * once a second when the file's timestamp changes, so edits apply without a restart and without a
- * command or keybind.
+ * plus the directives {@code off}, {@code first-person-only} and {@code list-radius}. Re-read
+ * automatically at most once a second when the file's timestamp changes, so edits apply without a
+ * restart and without a keybind.
+ *
+ * <p>{@code /hidemodels list [radius]} reports the ids around you, which is how the config gets
+ * filled in without unzipping a resource pack.
  */
 public final class HideModels {
 
@@ -32,6 +38,9 @@ public final class HideModels {
 
     private static final Path CONFIG = Path.of("config", MOD_ID + ".txt");
     private static final long RELOAD_INTERVAL_MS = 1000L;
+
+    private static final double DEFAULT_LIST_RADIUS = 32.0;
+    private static final double MAX_LIST_RADIUS = 256.0;
 
     /** Plugin channels a server uses to turn this mod off, or back on, for its own players. */
     public static final String CHANNEL_DISABLE = MOD_ID + ":disable";
@@ -43,6 +52,9 @@ public final class HideModels {
 
     /** When set, hiding applies only while the camera is in first person. */
     private static volatile boolean firstPersonOnly;
+
+    /** Default radius for /hidemodels list, in blocks. */
+    private static volatile double listRadius = DEFAULT_LIST_RADIUS;
 
     /** Set while the current server has opted out. Cleared on disconnect, never persisted. */
     private static volatile boolean serverDisabled;
@@ -76,6 +88,102 @@ public final class HideModels {
             }
         }
         return false;
+    }
+
+    /**
+     * Does the hide list cover this id? Unlike {@link #hidden(String)} this ignores the camera, the
+     * server opt-out and the off switch - it answers "is this in my list", which is what the
+     * command's report needs in order to mark entries.
+     */
+    public static boolean listed(String itemModelId) {
+        if (itemModelId == null) {
+            return false;
+        }
+        final String id = itemModelId.toLowerCase(Locale.ROOT);
+        final String[] pats = patterns;
+        for (int i = 0; i < pats.length; i++) {
+            if (id.contains(pats[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Handles {@code /hidemodels ...}, returning true when the command was ours and so must not be
+     * sent on to the server. Called from the client's command-send path.
+     */
+    public static boolean handleCommand(String command) {
+        if (command == null) {
+            return false;
+        }
+        final String line = command.trim();
+        final String lower = line.toLowerCase(Locale.ROOT);
+        if (!lower.equals(MOD_ID) && !lower.startsWith(MOD_ID + " ")) {
+            return false;
+        }
+        maybeReload();                       // so the report reflects a config saved a moment ago
+        final String rest = line.length() > MOD_ID.length()
+                ? line.substring(MOD_ID.length()).trim() : "";
+        final String[] arg = rest.isEmpty() ? new String[0] : rest.split("\\s+");
+
+        if (arg.length == 0 || arg[0].equalsIgnoreCase("help")) {
+            NearbyModels.say(Component.literal("hidemodels " + version() + "- " + patterns.length
+                    + " pattern(s), " + (enabled ? "on" : "off")
+                    + (firstPersonOnly ? ", first person only" : "")
+                    + (serverDisabled ? ", DISABLED BY SERVER" : "")).withStyle(ChatFormatting.AQUA));
+            NearbyModels.say(Component.literal("  /hidemodels list [radius]  - models nearby, grouped by model")
+                    .withStyle(ChatFormatting.GRAY));
+            NearbyModels.say(Component.literal("  /hidemodels list bones [radius]  - individual bone ids")
+                    .withStyle(ChatFormatting.GRAY));
+            NearbyModels.say(Component.literal("  edit config/" + MOD_ID
+                    + ".txt to change what is hidden (default radius " + listRadius + ")")
+                    .withStyle(ChatFormatting.DARK_GRAY));
+            return true;
+        }
+        if (arg[0].equalsIgnoreCase("list")) {
+            boolean bones = false;
+            int at = 1;
+            if (arg.length > at && arg[at].equalsIgnoreCase("bones")) {
+                bones = true;
+                at++;
+            }
+            double radius = listRadius;
+            if (arg.length > at) {
+                final double parsed = parseRadius(arg[at]);
+                if (parsed <= 0) {
+                    NearbyModels.say(Component.literal("hidemodels: '" + arg[at]
+                            + "' is not a radius in blocks").withStyle(ChatFormatting.RED));
+                    return true;
+                }
+                radius = parsed;
+            }
+            NearbyModels.report(radius, bones);
+            return true;
+        }
+        NearbyModels.say(Component.literal("hidemodels: unknown subcommand '" + arg[0]
+                + "' - try /hidemodels help").withStyle(ChatFormatting.RED));
+        return true;
+    }
+
+    /** Parses a radius in blocks, clamped to what one scan can sensibly cover. 0 means invalid. */
+    private static double parseRadius(String raw) {
+        try {
+            final double v = Double.parseDouble(raw.trim());
+            if (!(v > 0)) {
+                return 0;
+            }
+            return Math.min(v, MAX_LIST_RADIUS);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /** Version straight from the jar metadata, so the help line cannot drift from the build. */
+    private static String version() {
+        return FabricLoader.getInstance().getModContainer(MOD_ID)
+                .map(c -> c.getMetadata().getVersion().getFriendlyString() + " ")
+                .orElse("");
     }
 
     /**
@@ -153,6 +261,7 @@ public final class HideModels {
         final List<String> pats = new ArrayList<>();
         boolean on = true;
         boolean fp = false;
+        double radius = DEFAULT_LIST_RADIUS;
         for (String raw : Files.readAllLines(CONFIG)) {
             String line = raw.trim();
             if (line.isEmpty() || line.startsWith("#")) {
@@ -168,13 +277,21 @@ public final class HideModels {
                 fp = true;
                 continue;
             }
+            if (line.toLowerCase(Locale.ROOT).startsWith("list-radius")) {
+                final double parsed = parseRadius(line.substring("list-radius".length()));
+                if (parsed > 0) {
+                    radius = parsed;
+                }
+                continue;                   // a malformed value keeps the default, never a pattern
+            }
             pats.add(line.toLowerCase(Locale.ROOT));
         }
         patterns = pats.toArray(new String[0]);
         enabled = on;
         firstPersonOnly = fp;
+        listRadius = radius;
         System.out.println("[" + MOD_ID + "] loaded " + patterns.length + " pattern(s), enabled=" + enabled
-                + ", firstPersonOnly=" + firstPersonOnly);
+                + ", firstPersonOnly=" + firstPersonOnly + ", listRadius=" + listRadius);
     }
 
     /**
@@ -210,6 +327,12 @@ public final class HideModels {
                 #     first-person-only   hide only while the camera is in first person, so the
                 #                         model reappears in third person (F5) - useful when you
                 #                         want a mount out of your view but still want to see it
+                #     list-radius 32      default radius for /hidemodels list
+                #
+                # IN GAME: /hidemodels list [radius] prints every model around you with its piece
+                # count and distance, marking the ones this file already hides - so the ids can be
+                # read off the screen instead of unzipping a resource pack. "list bones" prints
+                # individual bone ids, for hiding one piece of a model.
                 #
                 # Saved changes apply within a second; no restart needed.
                 """;
