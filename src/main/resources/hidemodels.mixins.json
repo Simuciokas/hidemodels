@@ -3,6 +3,7 @@
   "package": "io.github.simuciokas.hidemodels.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "ClientCommonPacketListenerMixin",
     "EntityRenderDispatcherMixin",
     "ItemDisplayAccessor"
   ],

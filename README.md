@@ -66,6 +66,24 @@ name back to its original URL). Unzip it and list `assets/*/items/**`.
 Be specific with fragments: scenery, props and interactive models are `item_display`s too, so a
 too-broad pattern will hide things you still want to see, such as teleporters or signposts.
 
+## For server operators: turning it off
+
+A server can switch this mod off for its own players. Send an **empty custom payload** on:
+
+| channel | effect |
+|---|---|
+| `hidemodels:disable` | hiding is off for the rest of the session |
+| `hidemodels:enable` | hiding is allowed again |
+
+The channel *is* the message — there's no body to parse, because an unknown plugin channel reaches
+the client as a `DiscardedPayload`, which in 26.2 keeps only the channel id and throws the bytes
+away before any mod can read them.
+
+Sending it is safe unconditionally: clients without this mod discard unknown channels silently, so
+you can fire it at every player on join without checking who has what installed. The override
+lasts for one connection — it's cleared on disconnect, so a server can't leave a client
+permanently altered, and the player's own config applies again next time they connect elsewhere.
+
 ## Building
 
 ```sh
