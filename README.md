@@ -13,7 +13,7 @@ server's view of the world are all untouched.
 ## Install
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer for Minecraft 26.2.
-2. Drop `hidemodels-1.1.0.jar` into your `mods/` folder.
+2. Drop `hidemodels-1.2.0.jar` into your `mods/` folder.
 
 Requirements, all declared in `fabric.mod.json`:
 
@@ -40,7 +40,16 @@ some_mount/head     # just the head, so you can see past it while riding
 The shipped list is **empty**: which ids exist is entirely up to the server's resource pack, so any
 preset would be wrong everywhere but one server.
 
-Put `off` on a line by itself to disable without emptying the list.
+**Directives**, each on a line of its own:
+
+| line | effect |
+|---|---|
+| `off` | disable without emptying the list |
+| `first-person-only` | hide only while the camera is in first person, so the model reappears in third person (F5) |
+
+`first-person-only` is the one to use for a mount whose head fills your screen: hidden while you're
+riding and looking ahead, visible again the moment you pull the camera out to look at it. The
+camera is read live on each render check, so pressing F5 takes effect on the next frame.
 
 **When the config loads.** There is no entrypoint, so nothing happens at startup. The file is read
 lazily from the render hook — the first time any `item_display` comes up for a render check. If it
@@ -88,7 +97,7 @@ permanently altered, and the player's own config applies again next time they co
 
 ```sh
 export JAVA_HOME=/path/to/jdk-25
-./gradlew build          # -> build/libs/hidemodels-1.1.0.jar
+./gradlew build          # -> build/libs/hidemodels-1.2.0.jar
 ```
 
 No local Minecraft install is needed: the compile classpath — client jar plus MC's own libraries —

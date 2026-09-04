@@ -6,6 +6,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import net.minecraft.client.CameraType;
+import net.minecraft.client.Minecraft;
 
 /**
  * Hides chosen ModelEngine model pieces client-side, by their {@code item_model} id.
@@ -19,9 +21,10 @@ import java.util.Locale;
  * <p>This mod does NOT remove entities. It cancels their rendering, so hitboxes, interactions and
  * the server's view of the world are untouched.
  *
- * <p>Config: {@code config/hidemodels.txt}, one id fragment per line, {@code #} for comments.
- * Re-read automatically at most once a second when the file's timestamp changes, so edits apply
- * without a restart and without a command or keybind.
+ * <p>Config: {@code config/hidemodels.txt}, one id fragment per line, {@code #} for comments,
+ * plus the directives {@code off} and {@code first-person-only}. Re-read automatically at most
+ * once a second when the file's timestamp changes, so edits apply without a restart and without a
+ * command or keybind.
  */
 public final class HideModels {
 
@@ -37,6 +40,9 @@ public final class HideModels {
     /** Lower-cased id fragments; an entity is hidden when its item_model contains any of them. */
     private static volatile String[] patterns = new String[0];
     private static volatile boolean enabled = true;
+
+    /** When set, hiding applies only while the camera is in first person. */
+    private static volatile boolean firstPersonOnly;
 
     /** Set while the current server has opted out. Cleared on disconnect, never persisted. */
     private static volatile boolean serverDisabled;
@@ -59,6 +65,9 @@ public final class HideModels {
         if (!enabled || itemModelId == null) {
             return false;
         }
+        if (firstPersonOnly && !inFirstPerson()) {
+            return false;
+        }
         final String id = itemModelId.toLowerCase(Locale.ROOT);
         final String[] pats = patterns;
         for (int i = 0; i < pats.length; i++) {
@@ -67,6 +76,23 @@ public final class HideModels {
             }
         }
         return false;
+    }
+
+    /**
+     * Whether the camera is in first person right now.
+     *
+     * <p>Read live rather than cached: the perspective key changes it between frames, and this is
+     * already being called from the render thread, so there is nothing to synchronise against.
+     * Defaults to true if the client is not far enough along to have options, so a model listed
+     * for hiding never flashes into view during startup.
+     */
+    private static boolean inFirstPerson() {
+        final Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.options == null) {
+            return true;
+        }
+        final CameraType view = mc.options.getCameraType();
+        return view == null || view.isFirstPerson();
     }
 
     /**
@@ -126,6 +152,7 @@ public final class HideModels {
     private static void load() throws IOException {
         final List<String> pats = new ArrayList<>();
         boolean on = true;
+        boolean fp = false;
         for (String raw : Files.readAllLines(CONFIG)) {
             String line = raw.trim();
             if (line.isEmpty() || line.startsWith("#")) {
@@ -135,11 +162,19 @@ public final class HideModels {
                 on = false;
                 continue;
             }
+            // Directives are matched before patterns so they can never be read as an id fragment.
+            if (line.equalsIgnoreCase("first-person-only") || line.equalsIgnoreCase("firstperson")
+                    || line.equalsIgnoreCase("first-person")) {
+                fp = true;
+                continue;
+            }
             pats.add(line.toLowerCase(Locale.ROOT));
         }
         patterns = pats.toArray(new String[0]);
         enabled = on;
-        System.out.println("[" + MOD_ID + "] loaded " + patterns.length + " pattern(s), enabled=" + enabled);
+        firstPersonOnly = fp;
+        System.out.println("[" + MOD_ID + "] loaded " + patterns.length + " pattern(s), enabled=" + enabled
+                + ", firstPersonOnly=" + firstPersonOnly);
     }
 
     /**
@@ -170,7 +205,12 @@ public final class HideModels {
                 # too-broad fragment will hide things you still want to see, such as teleporters
                 # or signposts.
                 #
-                # Put "off" on a line by itself to disable without emptying the list.
+                # DIRECTIVES, each on a line of its own:
+                #     off                 disable without emptying the list
+                #     first-person-only   hide only while the camera is in first person, so the
+                #                         model reappears in third person (F5) - useful when you
+                #                         want a mount out of your view but still want to see it
+                #
                 # Saved changes apply within a second; no restart needed.
                 """;
         try {
