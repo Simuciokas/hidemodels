@@ -8,12 +8,12 @@ It **cancels rendering only**. Entities are never removed, so hitboxes, interact
 server's view of the world are all untouched.
 
 > Status: builds cleanly and the hooks are correct, but it has not yet been runtime-tested in a
-> live session. Treat 1.0.0 as unproven.
+> live session. Treat it as unproven.
 
 ## Install
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer for Minecraft 26.2.
-2. Drop `hidemodels-1.0.0.jar` into your `mods/` folder.
+2. Drop `hidemodels-1.1.0.jar` into your `mods/` folder.
 
 Requirements, all declared in `fabric.mod.json`:
 
@@ -88,7 +88,7 @@ permanently altered, and the player's own config applies again next time they co
 
 ```sh
 export JAVA_HOME=/path/to/jdk-25
-./gradlew build          # -> build/libs/hidemodels-1.0.0.jar
+./gradlew build          # -> build/libs/hidemodels-1.1.0.jar
 ```
 
 No local Minecraft install is needed: the compile classpath — client jar plus MC's own libraries —
