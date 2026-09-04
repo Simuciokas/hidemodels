@@ -42,8 +42,18 @@ jobs:
 
       # A v* tag additionally publishes a Release with the jar attached, so there is a stable
       # download link that does not expire the way build artifacts do.
+      #
+      # Idempotent on purpose: a tag can be pushed again (a force-update after a history rewrite,
+      # say), and a bare `gh release create` fails outright when the release already exists, which
+      # turned a re-push into a red build for no reason. Re-uploading the jar keeps the release's
+      # notes and creation date while refreshing what people download.
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" build/libs/*.jar --generate-notes --title "$GITHUB_REF_NAME"
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" build/libs/*.jar --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" build/libs/*.jar --generate-notes --title "$GITHUB_REF_NAME"
+          fi
