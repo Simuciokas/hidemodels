@@ -30,9 +30,16 @@ public final class HideModels {
     private static final Path CONFIG = Path.of("config", MOD_ID + ".txt");
     private static final long RELOAD_INTERVAL_MS = 1000L;
 
+    /** Plugin channels a server uses to turn this mod off, or back on, for its own players. */
+    public static final String CHANNEL_DISABLE = MOD_ID + ":disable";
+    public static final String CHANNEL_ENABLE = MOD_ID + ":enable";
+
     /** Lower-cased id fragments; an entity is hidden when its item_model contains any of them. */
     private static volatile String[] patterns = new String[0];
     private static volatile boolean enabled = true;
+
+    /** Set while the current server has opted out. Cleared on disconnect, never persisted. */
+    private static volatile boolean serverDisabled;
 
     private static long lastCheck;
     private static long lastModified = -1;
@@ -45,6 +52,9 @@ public final class HideModels {
      * item_display in view, so it stays allocation-free on the hot path.
      */
     public static boolean hidden(String itemModelId) {
+        if (serverDisabled) {
+            return false;                 // checked first: the server's word beats the config
+        }
         maybeReload();
         if (!enabled || itemModelId == null) {
             return false;
@@ -57,6 +67,34 @@ public final class HideModels {
             }
         }
         return false;
+    }
+
+    /**
+     * A custom payload arrived. Only our two control channels mean anything; everything else the
+     * server sends is ignored here and handled as usual.
+     */
+    public static void onServerChannel(String channel) {
+        if (CHANNEL_DISABLE.equals(channel)) {
+            if (!serverDisabled) {
+                serverDisabled = true;
+                System.out.println("[" + MOD_ID + "] this server has opted out - hiding is off for this session");
+            }
+        } else if (CHANNEL_ENABLE.equals(channel)) {
+            if (serverDisabled) {
+                serverDisabled = false;
+                System.out.println("[" + MOD_ID + "] this server has re-enabled hiding");
+            }
+        }
+    }
+
+    /** Called on disconnect: an opt-out lasts for one connection only. */
+    public static void clearServerOverride() {
+        serverDisabled = false;
+    }
+
+    /** Whether the current server has opted out. */
+    public static boolean isServerDisabled() {
+        return serverDisabled;
     }
 
     /** Cheap timestamp poll rather than a watch service - this runs from the render thread. */
