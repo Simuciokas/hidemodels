@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.x'
       # Client jars are pinned by version and sha1-verified, so caching them is safe.
@@ -67,7 +67,7 @@ jobs:
             25
             21
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       # The client needs a GL context even to reach the title screen; xvfb provides one headlessly.
       - name: Install xvfb
@@ -83,17 +83,18 @@ jobs:
 
       - name: Upload the run log on failure
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: gametest-log-${{ matrix.mc }}
           path: run/logs/
           if-no-files-found: ignore
 
   # EVERY SUPPORTED VERSION, ACTUALLY LAUNCHED. The gametest above covers more per version but runs
-  # on only three of twelve: Fabric's client gametest API did not exist before 1.21.4 and 26.x has
-  # no gametest module at all. This job starts a real client on all twelve instead, and checks the
-  # two things most likely to break when a version moves underneath the mod - that the item_model
-  # component still resolves out of the registry, and that the config still drives the matcher.
+  # on only two of twelve: Fabric's client gametest API did not exist before 1.21.4, 26.x has no
+  # gametest module at all, and 1.21.9+ cannot load a world on a hosted runner. This job starts a
+  # real client on all twelve instead, and checks the two things most likely to break when a version
+  # moves underneath the mod - that the item_model component still resolves out of the registry, and
+  # that the config still drives the matcher.
   #
   # 26.x has no Loom and therefore no run task; gradle/run26.gradle assembles the launch by hand, so
   # the task name is the same on both paths and the matrix needs no special case.
@@ -114,7 +115,7 @@ jobs:
             25
             21
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       # The client needs a GL context even to reach the title screen; xvfb provides one headlessly.
       - name: Install xvfb
@@ -134,7 +135,7 @@ jobs:
 
       - name: Upload the run log on failure
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-log-${{ matrix.mc }}
           # Loom runs in run/, the hand-rolled 26.x launcher in build/run<version>/.
@@ -171,7 +172,7 @@ jobs:
             25
             ${{ matrix.java }}
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       # The client jar and MC's libraries are ~112 MB fetched from Mojang. They are pinned by
       # version and sha1-verified, so caching them is safe and turns a cold minute into seconds.
@@ -183,7 +184,7 @@ jobs:
 
       - run: ./gradlew build -Pminecraft_version=${{ matrix.mc }}
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: hidemodels-${{ matrix.mc }}
           path: build/libs/*.jar
