@@ -78,6 +78,62 @@ jobs:
           path: run/logs/
           if-no-files-found: ignore
 
+  # EVERY SUPPORTED VERSION, ACTUALLY LAUNCHED. The gametest above covers more per version but runs
+  # on only three of twelve: Fabric's client gametest API did not exist before 1.21.4 and 26.x has
+  # no gametest module at all. This job starts a real client on all twelve instead, and checks the
+  # two things most likely to break when a version moves underneath the mod - that the item_model
+  # component still resolves out of the registry, and that the config still drives the matcher.
+  #
+  # 26.x has no Loom and therefore no run task; gradle/run26.gradle assembles the launch by hand, so
+  # the task name is the same on both paths and the matrix needs no special case.
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mc: ['26.2', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
+             '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: |
+            25
+            21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The client needs a GL context even to reach the title screen; xvfb provides one headlessly.
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Cache Minecraft client jars
+        uses: actions/cache@v5
+        with:
+          path: build/minecraft
+          key: mc-${{ matrix.mc }}-${{ hashFiles('gradle.properties') }}
+
+      # The verdict comes from a file the test writes, not from the exit code - no exit from a
+      # client thread survives contact with GLFW - so the smokeTest task is what fails the job.
+      - name: Smoke test
+        timeout-minutes: 20
+        run: xvfb-run -a ./gradlew smokeTest -Pminecraft_version=${{ matrix.mc }}
+
+      - name: Upload the run log on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: smoke-log-${{ matrix.mc }}
+          # Loom runs in run/, the hand-rolled 26.x launcher in build/run<version>/.
+          path: |
+            run/logs/
+            run/crash-reports/
+            build/run*/logs/
+            build/run*/crash-reports/
+          if-no-files-found: ignore
+
   # One source tree, two build paths: 26.x compiles against Mojang's already-readable client jar
   # with no mappings at all, 1.21.x goes through Loom and is remapped to intermediary. Both are
   # built on every push, because the only thing that reliably catches a version-specific break is

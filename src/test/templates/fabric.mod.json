@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "hidemodels-test",
+  "version": "1.0.0",
+  "name": "Hide Models tests",
+  "description": "Startup self-check only. Used on versions where Fabric ships no client gametest harness - before 1.21.4, and all of 26.x.",
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "io.github.simuciokas.hidemodels.test.HideModelsSmokeTest"
+    ]
+  },
+  "depends": {
+    "hidemodels": "*"
+  }
+}

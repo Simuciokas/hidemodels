@@ -70,23 +70,32 @@ Building for a version is `./gradlew build -Pminecraft_version=1.21.8`; the defa
 
 ### How much is actually verified, per version
 
-Three tiers, and they do not line up — the supported range is wider than the testable one:
+Every supported version is launched and exercised automatically; the deeper gametest reaches only
+part of the range:
 
-| Minecraft | targets check | builds a jar | runs the client gametest |
-|---|---|---|---|
-| 26.2, 26.1 | yes | yes | **no** — no Loom there, so no run task exists |
-| 1.21.11 … 1.21.4 | yes | yes | **yes** |
-| 1.21.3, 1.21.2 | yes | yes | **no** — Fabric's client gametest API does not exist yet |
+| Minecraft | targets check | builds a jar | smoke test (real client) | client gametest |
+|---|---|---|---|---|
+| 26.2, 26.1 | yes | yes | **yes** | **no** — Fabric ships no gametest module for 26.x |
+| 1.21.11 … 1.21.4 | yes | yes | **yes** | **yes** |
+| 1.21.3, 1.21.2 | yes | yes | **yes** | **no** — the gametest API does not exist yet |
 
-`./gradlew runClientGameTest -Pminecraft_version=1.21.8` drives a real client: it builds a world,
-summons an `item_display` carrying `minecraft:item_model`, and asserts the mod reads the component,
-intercepts its own command, and honours its config. No ModelEngine and no server are needed,
-because the mod keys on a vanilla component on a vanilla entity — which is what makes it runnable
-anywhere. CI runs it on 1.21.4, 1.21.8 and 1.21.11 under xvfb.
+`./gradlew smokeTest -Pminecraft_version=1.21.2` starts a real client with the mod, waits for it to
+render, and asserts the two things most likely to break when a version moves underneath the mod:
+that the `item_model` component still resolves out of the registry, and that editing
+`config/hidemodels.txt` still drives the matcher. It needs nothing but Fabric Loader, which is what
+lets it run everywhere — including 26.x, where there is no Loom and `gradle/run26.gradle` assembles
+the launch by hand (client jar, loader's own libraries from `fabric-installer.json`, natives, and a
+stub asset index so no gigabyte is downloaded to reach a title screen).
 
-The versions that cannot run it keep the static check and a compiling, remapped jar. That proves
-the mod **loads**; it does not prove it **works**. The 26.x gap is closable only by writing a
-launcher by hand; the 1.21.2–1.21.3 gap is not closable at all.
+`./gradlew runClientGameTest -Pminecraft_version=1.21.8` goes further where Fabric's harness exists:
+it builds a world, summons an `item_display` carrying `minecraft:item_model`, and asserts the mod
+reads the component, intercepts its own command, and honours its config. No ModelEngine and no
+server are needed, because the mod keys on a vanilla component on a vanilla entity — which is what
+makes it runnable anywhere.
+
+CI runs the smoke test on all twelve versions and the gametest on 1.21.4, 1.21.8 and 1.21.11, all
+under xvfb. What the smoke test cannot cover is anything needing a world: the render hook, the
+command mixin and `ChatOut` are only exercised where the gametest runs.
 
 Compiling is still what catches most version breaks — the checker is static and cannot see member
 access, which is exactly how the one real source difference below was found.

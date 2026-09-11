@@ -11,4 +11,14 @@ pluginManagement {
     }
 }
 
+// FETCH THE JDK IF THE MACHINE HAS NOT GOT IT. 26.x needs a Java 25 toolchain and 1.21.x needs 21;
+// without a resolver Gradle can only fail with "cannot find a Java installation matching", which
+// turns an automated multi-version build into a manual install on every machine and CI image. With
+// this, Gradle downloads and caches whichever of the two is missing.
+plugins {
+    // 1.x, not 0.9.x: the older resolver reads JvmVendorSpec.IBM_SEMERU, which Gradle 9 removed,
+    // and fails at settings evaluation before any task exists.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
 rootProject.name = 'hidemodels'
