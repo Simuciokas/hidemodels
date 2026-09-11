@@ -172,13 +172,8 @@ tasks.register('runSmokeTest26', JavaExec) {
         }
         // A stale verdict would be indistinguishable from a fresh one.
         delete new File(runDir, 'smoketest-result.txt')
-        // Same reason the Loom runs are muted: a test has no business making noise.
-        def options = new File(runDir, 'options.txt')
-        options.parentFile.mkdirs()
-        def kept = options.exists()
-                ? options.readLines().findAll { !it.startsWith('soundCategory_') } : []
-        kept << 'soundCategory_master:0.0'
-        options.text = kept.join(System.lineSeparator()) + System.lineSeparator()
+        // The same options the Loom runs get - muted, and cheap to render on a machine with no GPU.
+        writeTestClientOptions(new File(runDir, 'options.txt'))
     }
 
     classpath = files(clientJar) + fileTree(dir: mcLibs, include: '**/*.jar') +
