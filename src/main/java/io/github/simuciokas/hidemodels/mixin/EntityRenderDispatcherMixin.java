@@ -3,7 +3,6 @@ package io.github.simuciokas.hidemodels.mixin;
 import io.github.simuciokas.hidemodels.HideModels;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
@@ -32,18 +31,11 @@ public abstract class EntityRenderDispatcherMixin {
             return;
         }
         final ItemStack stack = ((ItemDisplayAccessor) display).hidemodels$getItemStack();
-        if (stack == null || stack.isEmpty()) {
-            return;
-        }
-        // DELIBERATELY NOT THE CONCRETE TYPE. This is the item_model component's value, whose class
-        // is Identifier on 1.21.11+ and ResourceLocation before it - naming either one pins the
-        // source to half the supported range for no benefit, because the only thing wanted from it
-        // is toString(). Leave it as Object.
-        final Object model = stack.get(DataComponents.ITEM_MODEL);
+        final String model = HideModels.modelIdOf(stack);
         if (model == null) {
             return;
         }
-        if (HideModels.hidden(model.toString())) {
+        if (HideModels.hidden(model)) {
             cir.setReturnValue(false);
         }
     }
