@@ -78,22 +78,52 @@ if (legacy) {
     sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
 }
 
-// MUTE THE DEV CLIENT. runClient starts at full volume on whatever machine ran the build, which
-// is someone's actual speakers - and a test launch has no business making noise. options.txt is
-// read at startup, so writing it beforehand is enough; the master category covers every other one.
+// NOTHING IN src/test IS A JUnit TEST, so the `test` task has nothing to run - both things in
+// there are Fabric mods driven by a launched client (smokeTest and runClientGameTest), which is the
+// only way to test a mod whose logic only exists inside a running game. Gradle 9 fails a build when
+// a test task finds sources but discovers no tests, so `./gradlew build` broke on both paths until
+// this said out loud that there is nothing to discover.
+tasks.named('test') { enabled = false }
+
+// SETTINGS EVERY TEST LAUNCH WANTS, written before the client reads options.txt at startup. Shared
+// with gradle/run26.gradle, which launches the versions Loom cannot.
+//
+//   * MUTED, because a test launch has no business playing sound through whatever speakers the
+//     build happened to run on. The master category covers every other one.
+//   * TWO CHUNKS OF RENDER DISTANCE, because CI has no GPU. The gametest waits for the world to
+//     finish loading, and the client only leaves LevelLoadingScreen once the chunks around the
+//     player have been built - which on llvmpipe took longer than the harness's one-minute budget
+//     on 1.21.11 and failed the job with "Timeout loading world" while the log showed it still
+//     sitting on that screen. Nothing here inspects terrain, so two chunks is plenty.
+ext.testClientOptions = [
+        'soundCategory_master' : '0.0',
+        'renderDistance'       : '2',
+        'simulationDistance'   : '5',
+        'graphicsMode'         : '0',        // fast
+        'enableVsync'          : 'false',
+        'gamma'                : '1.0',      // screenshots on failure stay readable
+]
+
+// Rewrites only the keys above and leaves anything else in the file alone, so a developer's own
+// run/options.txt survives.
+ext.writeTestClientOptions = { File f ->
+    f.parentFile.mkdirs()
+    def kept = f.exists()
+            ? f.readLines().findAll { line -> !testClientOptions.keySet().any { line.startsWith(it + ':') } }
+            : []
+    testClientOptions.each { k, v -> kept << "${k}:${v}" }
+    f.text = kept.join(System.lineSeparator()) + System.lineSeparator()
+}
+
 if (legacy) {
-    def muteClient = tasks.register('muteClient') {
-        description = 'Silences the development client before it launches.'
+    def prepareClientOptions = tasks.register('prepareClientOptions') {
+        description = 'Mutes the client and trims its render distance before it launches.'
         doLast {
-            def f = file('run/options.txt')
-            f.parentFile.mkdirs()
-            def kept = f.exists() ? f.readLines().findAll { !it.startsWith('soundCategory_') } : []
-            kept << 'soundCategory_master:0.0'
-            f.text = kept.join(System.lineSeparator()) + System.lineSeparator()
-            logger.lifecycle('dev client muted (run/options.txt)')
+            writeTestClientOptions(file('run/options.txt'))
+            logger.lifecycle('client options written (run/options.txt): muted, render distance 2')
         }
     }
-    tasks.matching { it.name.startsWith('runClient') }.configureEach { dependsOn muteClient }
+    tasks.matching { it.name.startsWith('runClient') }.configureEach { dependsOn prepareClientOptions }
 }
 
 version = project.mod_version
