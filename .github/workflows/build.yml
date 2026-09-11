@@ -155,22 +155,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - mc: '26.2'
-            java: '25'
-          - mc: '1.21.8'
-            java: '21'
+        mc: ['26.2', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
+             '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2']
     steps:
       - uses: actions/checkout@v5
 
-      # The toolchain has to match the client jar it compiles against: 26.x is class-file 69, and
-      # 1.21.x is 65. Gradle itself runs on the newest of them.
+      # BOTH TOOLCHAINS, EVERY JOB. The build picks the one matching the client jar it compiles
+      # against - 26.x is class-file 69 (Java 25), 1.21.x is 65 (Java 21) - so the matrix does not
+      # have to carry a java column that only ever repeats the version prefix.
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: |
             25
-            ${{ matrix.java }}
+            21
 
       - uses: gradle/actions/setup-gradle@v5
 
@@ -190,15 +188,43 @@ jobs:
           path: build/libs/*.jar
           if-no-files-found: error
 
-      # A v* tag publishes a Release with every version's jar attached, so one tag ships the whole
-      # supported range. Idempotent: each matrix job uploads its own jar to the same release.
+  # ONE TAG SHIPS THE WHOLE RANGE. A v* tag publishes a single Release carrying a jar per supported
+  # Minecraft version, built by the matrix above.
+  #
+  # A JOB OF ITS OWN, not a step inside the matrix, for two reasons. The release is created exactly
+  # once here, where twelve parallel jobs each doing "create it if it does not exist" would race and
+  # two of them would lose. And `needs` makes publishing conditional on the tests: a tag whose smoke
+  # run fails on some version produces no release at all, rather than a half-published one.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [targets, smoke, gametest, build]
+    runs-on: ubuntu-latest
+    steps:
+      # Only for docs/releases/<tag>.md, below.
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: hidemodels-*
+          path: dist
+          merge-multiple: true      # every jar in one directory, not one directory per version
+
+      # NOTES COME FROM THE REPO WHEN THERE ARE ANY. --generate-notes alone lists commit subjects,
+      # which describe the work rather than the release - useful to us, meaningless to someone
+      # deciding whether to download a jar. Written notes go in docs/releases/<tag>.md and the
+      # generated list is appended below them by the API. A tag without that file still releases,
+      # with the generated list alone.
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" build/libs/*.jar --clobber
+          ls -l dist
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then
+            gh release create "$GITHUB_REF_NAME" dist/*.jar \
+              --title "$GITHUB_REF_NAME" --notes-file "$notes" --generate-notes
           else
-            gh release create "$GITHUB_REF_NAME" build/libs/*.jar --generate-notes --title "$GITHUB_REF_NAME"
+            echo "no $notes - falling back to generated notes"
+            gh release create "$GITHUB_REF_NAME" dist/*.jar \
+              --title "$GITHUB_REF_NAME" --generate-notes
           fi

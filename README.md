@@ -11,7 +11,7 @@ server's view of the world are all untouched.
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer.
 2. Drop the jar **for your Minecraft version** into `mods/` — they are named
-   `hidemodels-1.3.0+mc26.2.jar`, `hidemodels-1.3.0+mc1.21.8.jar` and so on. Loader refuses to load
+   `hidemodels-1.4.0+mc26.2.jar`, `hidemodels-1.4.0+mc1.21.8.jar` and so on. Loader refuses to load
    the wrong one rather than failing later.
 
 Requirements, all declared in `fabric.mod.json`:
@@ -222,7 +222,7 @@ permanently altered, and the player's own config applies again next time they co
 
 ```sh
 export JAVA_HOME=/path/to/jdk-25
-./gradlew build          # -> build/libs/hidemodels-1.3.0.jar
+./gradlew build          # -> build/libs/hidemodels-1.4.0+mc26.2.jar
 ```
 
 No local Minecraft install is needed: the compile classpath — client jar plus MC's own libraries —
