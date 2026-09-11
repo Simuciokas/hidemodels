@@ -51,7 +51,12 @@ public final class HideModelsClientTest implements FabricClientGameTest {
         writeConfig("# cleared by the client gametest");
 
         try (TestSingleplayerContext singleplayer = context.worldBuilder().create()) {
-            singleplayer.getClientWorld().waitForChunksRender();
+            // NO waitForChunksRender() HERE, deliberately. Nothing below looks at terrain - the
+            // entity is read out of the client level and the rest is the mod's own state - and that
+            // call is the only step in this test that needs FRAMES rather than ticks. On a machine
+            // with no GPU the frame rate is capped precisely so the render thread stops starving
+            // the integrated server, which makes waiting on chunk rebuilds both unnecessary and the
+            // first thing to time out.
 
             // The id must start out NOT hidden, or nothing below proves the write mattered.
             context.waitFor(client -> !HideModels.hidden(TEST_MODEL));

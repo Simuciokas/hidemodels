@@ -90,17 +90,27 @@ tasks.named('test') { enabled = false }
 //
 //   * MUTED, because a test launch has no business playing sound through whatever speakers the
 //     build happened to run on. The master category covers every other one.
-//   * TWO CHUNKS OF RENDER DISTANCE, because CI has no GPU. The gametest waits for the world to
-//     finish loading, and the client only leaves LevelLoadingScreen once the chunks around the
-//     player have been built - which on llvmpipe took longer than the harness's one-minute budget
-//     on 1.21.11 and failed the job with "Timeout loading world" while the log showed it still
-//     sitting on that screen. Nothing here inspects terrain, so two chunks is plenty.
+//   * AS LITTLE RENDERING AS THE GAME WILL ACCEPT, because CI has no GPU and software GL competes
+//     for the very cores the integrated server needs. On 1.21.11 that starved it outright: the
+//     server logged "Can't keep up! Running 2004ms or 40 ticks behind", stopped at "Preparing
+//     spawn area: 16%", and the gametest failed with "Timeout loading world" while the client sat
+//     on LevelLoadingScreen. Capping the frame rate is the lever that matters - ticks still run at
+//     20/s, the render thread simply stops hogging the machine between them - and the rest trims
+//     what each frame costs. Nothing here inspects terrain or lighting.
 ext.testClientOptions = [
         'soundCategory_master' : '0.0',
+        'maxFps'               : '10',
         'renderDistance'       : '2',
         'simulationDistance'   : '5',
-        'graphicsMode'         : '0',        // fast
         'enableVsync'          : 'false',
+        'graphicsPreset'       : '"fast"',
+        'ao'                   : 'false',
+        'biomeBlendRadius'     : '0',
+        'entityShadows'        : 'false',
+        'entityDistanceScaling': '0.5',
+        'mipmapLevels'         : '0',
+        'particles'            : '2',        // minimal
+        'renderClouds'         : '"false"',
         'gamma'                : '1.0',      // screenshots on failure stay readable
 ]
 
