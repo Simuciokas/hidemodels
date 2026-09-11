@@ -316,6 +316,14 @@ if (legacy) {
                     // The harness exits the game itself when the test finishes, pass or fail, and
                     // reports through the exit code - which is what makes this usable from CI.
                     vmArg '-Dfabric.client.gametest'
+                    // MORE BACKGROUND WORKERS THAN THE RUNNER HAS CORES. Minecraft sizes its
+                    // background pool at availableProcessors - 1, which is ONE thread on a two-core
+                    // CI runner, and 1.21.9's reworked chunk pipeline then cannot make progress:
+                    // the job froze at "Preparing spawn area: 16%" and stayed there, the same
+                    // percentage minute after minute, while 1.21.4 and 1.21.8 loaded fine on the
+                    // same machine and 1.21.11 loaded fine on a developer one. Oversubscribing
+                    // threads is cheap; a pool that cannot drain is not.
+                    vmArg '-XX:ActiveProcessorCount=4'
                     // HEADLESS, OR A FAILURE HANGS FOREVER. Fabric Loader reports a bad mod set in
                     // a modal AWT dialog and waits for someone to click it: the run stops dead,
                     // with no output and no exit code, looking exactly like a test still working.
