@@ -1,1 +1,14 @@
+// Loom lives on Fabric's maven, not the plugin portal. Declared here because pluginManagement is
+// the only place a plugin repository can be added.
+pluginManagement {
+    repositories {
+        maven {
+            name = 'Fabric'
+            url = 'https://maven.fabricmc.net/'
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
 rootProject.name = 'hidemodels'
