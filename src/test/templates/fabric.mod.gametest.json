@@ -2,11 +2,14 @@
   "schemaVersion": 1,
   "id": "hidemodels-test",
   "version": "1.0.0",
-  "name": "Hide Models client test",
-  "description": "Drives a real client to check the mod works. Never shipped - this metadata lives in the test source set, so the released jar has no gametest entrypoint and no Fabric API dependency.",
+  "name": "Hide Models tests",
+  "description": "Startup self-check plus the full client gametest. Used on versions where Fabric ships the harness, 1.21.4 and up.",
   "license": "MIT",
   "environment": "client",
   "entrypoints": {
+    "client": [
+      "io.github.simuciokas.hidemodels.test.HideModelsSmokeTest"
+    ],
     "fabric-client-gametest": [
       "io.github.simuciokas.hidemodels.test.HideModelsClientTest"
     ]

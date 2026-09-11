@@ -14,6 +14,7 @@ plugins {
 }
 
 def legacy = !project.minecraft_version.startsWith('26')
+ext.isLegacy = legacy   // read by gradle/run26.gradle, which cannot see a local def
 
 // Fabric API is TEST-ONLY here - the harness needs it, the mod does not - but it is published per
 // Minecraft version, so one pinned value would only ever let one version run its tests. Listed
@@ -29,6 +30,10 @@ def FABRIC_API = [
         '1.21.11': '0.141.6+1.21.11',
 ]
 def fabricApiVersion = FABRIC_API[project.minecraft_version]
+// Fabric's client gametest API arrived in 1.21.4; before that the module does not exist, and 26.x
+// does not ship it either. Checked by version rather than by probing the jar, so configuration
+// stays offline.
+def hasGametest = fabricApiVersion != null && !(project.minecraft_version in ['1.21.2', '1.21.3'])
 if (legacy && fabricApiVersion == null) {
     // Only the gametest needs it, so this must not stop an ordinary build.
     logger.lifecycle("no Fabric API pinned for ${project.minecraft_version} - runClientGameTest "
@@ -45,8 +50,29 @@ if (legacy) {
 // method_NNNN. Everything else in src/main compiles unchanged across the whole range.
 sourceSets.main.java.srcDir(legacy ? 'src/mc121/java' : 'src/mc26/java')
 
-// The client gametest calls into the mod it is testing, so it needs main's classes AND main's
-// dependencies - Gradle gives a test source set neither of the latter by default.
+// The gametest class implements an interface that does not exist on every version, so it is
+// compiled - and declared as an entrypoint - only where it can be.
+if (!hasGametest) {
+    sourceSets.test.java.exclude('**/HideModelsClientTest.java')
+}
+// The test mod's metadata comes in two flavours and one is COPIED rather than generated: a
+// gametest entrypoint naming a class that does not exist on this version makes Loader fail at
+// startup, so the file has to differ, and picking between two readable files beats assembling JSON
+// out of string fragments in a build script.
+sourceSets.test.resources.srcDir 'src/test/templates'
+processTestResources {
+    if (hasGametest) {
+        exclude 'fabric.mod.json'
+        rename 'fabric.mod.gametest.json', 'fabric.mod.json'
+    } else {
+        exclude 'fabric.mod.gametest.json'
+    }
+}
+
+// The tests call into the mod they are testing, so they need main's classes AND main's
+// dependencies - Gradle gives a test source set neither of the latter by default. True on both
+// paths; on 26.x main's classpath is assembled by hand below rather than by Loom, so this has to
+// wait until those file collections exist.
 if (legacy) {
     sourceSets.test.compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
     sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
@@ -177,7 +203,10 @@ dependencies {
         // without its dependencies, and the harness needs fabric-resource-loader-v0 - Loader
         // refuses to start without it. Chasing the transitive list by hand is a losing game; this
         // is a dev-time dependency either way and costs the released jar nothing.
-        if (fabricApiVersion != null) {
+        // Only where Fabric actually ships the client gametest harness. It was added in 1.21.4,
+        // and 26.x has no gametest module at all - on those versions the smoke test is the whole
+        // of the automated coverage, and it deliberately needs no Fabric API.
+        if (hasGametest) {
             modImplementation "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
         }
 
@@ -193,15 +222,28 @@ dependencies {
         compileOnly files(clientJar)
         compileOnly fileTree(dir: mcLibs, include: '**/*.jar')
 
-        // Loader gives us the mod entry contract; sponge-mixin gives us @Mixin/@Inject/@Invoker.
+        // Loader gives us the mod entry contract; sponge-mixin gives us @Mixin/@Invoker.
         // Both are provided at runtime by the Fabric installation.
         compileOnly "net.fabricmc:fabric-loader:${project.loader_version}"
         compileOnly "net.fabricmc:sponge-mixin:${project.mixin_version}"
+
+        // The smoke test is a client mod like any other, so it needs the same three things the mod
+        // does. compileOnly on the test side for the same reason: Loader supplies them at runtime,
+        // and anything on the runtime classpath twice is a class-loading problem waiting to happen.
+        testCompileOnly "net.fabricmc:fabric-loader:${project.loader_version}"
     }
+}
+
+// The hand-rolled path has no Loom to attach Minecraft to the test source set, so wire it up the
+// same way main is: the downloaded client jar, its libraries, and main's own classes.
+if (!legacy) {
+    sourceSets.test.compileClasspath += files(clientJar) +
+            fileTree(dir: mcLibs, include: '**/*.jar') + sourceSets.main.output
 }
 
 if (!legacy) {
     tasks.named('compileJava') { dependsOn 'downloadMinecraft' }
+    tasks.named('compileTestJava') { dependsOn 'downloadMinecraft' }
 }
 
 // The target has to match the client jar it will run beside: 26.x is class-file major 69 = Java
@@ -210,20 +252,64 @@ if (!legacy) {
 if (legacy) {
     loom {
         runs {
-            clientGameTest {
+            // Runs EVERYWHERE Loom can launch, unlike the gametest below - which is the point of
+            // it. Halts the JVM with a status code of its own accord, so CI reads pass or fail
+            // from the exit code.
+            smokeTest {
                 client()
-                name = 'Client Game Test'
+                name = 'Smoke Test'
                 source 'test'
-                // The harness exits the game itself when the test finishes, pass or fail, and
-                // reports through the exit code - which is what makes this usable from CI.
-                vmArg '-Dfabric.client.gametest'
-                // HEADLESS, OR A FAILURE HANGS FOREVER. Fabric Loader reports a bad mod set in a
-                // modal AWT dialog and waits for someone to click it: the run stops dead, with no
-                // output and no exit code, looking exactly like a test that is still working. In
-                // CI nothing would ever click it. Headless forces the same report to the console
-                // and lets the process die.
+                vmArg '-Dhidemodels.smoketest=true'
                 vmArg '-Djava.awt.headless=true'
             }
+        }
+    }
+    if (hasGametest) {
+        loom {
+            runs {
+                clientGameTest {
+                    client()
+                    name = 'Client Game Test'
+                    source 'test'
+                    // The harness exits the game itself when the test finishes, pass or fail, and
+                    // reports through the exit code - which is what makes this usable from CI.
+                    vmArg '-Dfabric.client.gametest'
+                    // HEADLESS, OR A FAILURE HANGS FOREVER. Fabric Loader reports a bad mod set in
+                    // a modal AWT dialog and waits for someone to click it: the run stops dead,
+                    // with no output and no exit code, looking exactly like a test still working.
+                    // In CI nothing would ever click it. Headless forces the report to the console
+                    // and lets the process die.
+                    vmArg '-Djava.awt.headless=true'
+                }
+            }
+        }
+    }
+}
+
+// THE SMOKE TEST'S VERDICT COMES FROM A FILE, not the exit code - see the test class for why no
+// exit from a client thread survives contact with GLFW on Windows. The run task is therefore
+// allowed to "fail", and this is the task to actually invoke.
+if (legacy) {
+    tasks.matching { it.name == 'runSmokeTest' }.configureEach {
+        ignoreExitValue = true
+        // A stale PASS from a previous run would be indistinguishable from a real one.
+        doFirst { delete file('run/smoketest-result.txt') }
+    }
+    tasks.register('smokeTest') {
+        group = 'verification'
+        description = 'Launches the client and checks the mod runs on this Minecraft version.'
+        dependsOn 'runSmokeTest'
+        doLast {
+            def f = file('run/smoketest-result.txt')
+            if (!f.isFile()) {
+                throw new GradleException('the smoke test produced no verdict - the client probably '
+                        + 'died before reaching it; see the output above')
+            }
+            def verdict = f.text.trim()
+            if (!verdict.startsWith('PASS')) {
+                throw new GradleException(verdict)
+            }
+            logger.lifecycle("smoke test: ${verdict}")
         }
     }
 }
@@ -264,3 +350,7 @@ jar {
 tasks.withType(AbstractArchiveTask).configureEach {
     archiveVersion = "${project.mod_version}+mc${project.minecraft_version}"
 }
+
+// 26.x has no Loom and therefore no run task of its own; this supplies one, and is inert on any
+// version Loom handles.
+apply from: 'gradle/run26.gradle'
