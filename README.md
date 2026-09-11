@@ -66,9 +66,30 @@ anything before 26.1 — maps names through that version's `client_mappings`, be
 obfuscated.
 
 Building for a version is `./gradlew build -Pminecraft_version=1.21.8`; the default is the one in
-`gradle.properties`. CI builds 26.2 and 1.21.8 on every push, which is what actually catches a
-version-specific break — the checker is static and cannot see member access, and that is exactly
-how the one real difference below was found.
+`gradle.properties`.
+
+### How much is actually verified, per version
+
+Three tiers, and they do not line up — the supported range is wider than the testable one:
+
+| Minecraft | targets check | builds a jar | runs the client gametest |
+|---|---|---|---|
+| 26.2, 26.1 | yes | yes | **no** — no Loom there, so no run task exists |
+| 1.21.11 … 1.21.4 | yes | yes | **yes** |
+| 1.21.3, 1.21.2 | yes | yes | **no** — Fabric's client gametest API does not exist yet |
+
+`./gradlew runClientGameTest -Pminecraft_version=1.21.8` drives a real client: it builds a world,
+summons an `item_display` carrying `minecraft:item_model`, and asserts the mod reads the component,
+intercepts its own command, and honours its config. No ModelEngine and no server are needed,
+because the mod keys on a vanilla component on a vanilla entity — which is what makes it runnable
+anywhere. CI runs it on 1.21.4, 1.21.8 and 1.21.11 under xvfb.
+
+The versions that cannot run it keep the static check and a compiling, remapped jar. That proves
+the mod **loads**; it does not prove it **works**. The 26.x gap is closable only by writing a
+launcher by hand; the 1.21.2–1.21.3 gap is not closable at all.
+
+Compiling is still what catches most version breaks — the checker is static and cannot see member
+access, which is exactly how the one real source difference below was found.
 
 **One file differs across the range**, `ChatOut`, kept as two small copies under `src/mc26` and
 `src/mc121` rather than behind a preprocessor. The client-facing chat call was renamed —
