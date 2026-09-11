@@ -7,9 +7,6 @@ a visual effect you'd rather not see — chosen by their `item_model` id.
 It **cancels rendering only**. Entities are never removed, so hitboxes, interactions and the
 server's view of the world are all untouched.
 
-> Status: builds cleanly and the hooks are correct, but it has not yet been runtime-tested in a
-> live session. Treat it as unproven.
-
 ## Install
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer for Minecraft 26.2.
@@ -26,6 +23,30 @@ Requirements, all declared in `fabric.mod.json`:
 | Other mods | none |
 
 Client-only (`"environment": "client"`), so there is nothing to install server-side.
+
+## Which versions it can target
+
+Every mixin target this mod uses resolves unchanged from **1.21.2 through 26.2** — checked against
+each version's own client jar, not from memory:
+
+| Minecraft | mixin targets | `item_model` component |
+|---|---|---|
+| 26.2, 26.1 | resolve | present |
+| 1.21.11, 1.21.8, 1.21.5, 1.21.4, 1.21.3, 1.21.2 | resolve | present |
+| 1.21.1 and earlier | resolve | **absent** |
+
+`minecraft:item_model` is the floor, and it is a hard one: the mod identifies models by that
+component, so a version without it cannot support the feature as designed — that would need a
+different key (CustomModelData), which is a different feature rather than a port.
+
+Reproduce it with `python tools/verify_targets.py 26.2 1.21.8 1.21.1`. The tool reads the targets
+out of the mixin sources, fetches each client jar from Mojang, and — for anything before 26.1 —
+maps the names through that version's `client_mappings`, because those jars are obfuscated.
+
+Two things it deliberately does not tell you. It checks the mixin TARGETS, not the mod's own type
+references: `Identifier` was `ResourceLocation` before 26.2, so the source still needs adjusting to
+compile against an older jar even where every target resolves. And it is a static check — that a
+hook exists is not that it fires.
 
 ## Configuring it
 
