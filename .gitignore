@@ -9,3 +9,4 @@ run/
 *.iml
 .vscode/
 build.gradle.bak26
+__pycache__/
