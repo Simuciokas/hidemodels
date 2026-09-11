@@ -11,7 +11,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
@@ -65,7 +64,11 @@ public final class NearbyModels {
             if (stack == null || stack.isEmpty()) {
                 continue;
             }
-            final Identifier model = stack.get(DataComponents.ITEM_MODEL);
+            // DELIBERATELY NOT THE CONCRETE TYPE. This is the item_model component's value, whose class
+            // is Identifier on 1.21.11+ and ResourceLocation before it - naming either one pins the
+            // source to half the supported range for no benefit, because the only thing wanted from it
+            // is toString(). Leave it as Object.
+            final Object model = stack.get(DataComponents.ITEM_MODEL);
             if (model == null) {
                 continue;
             }

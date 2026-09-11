@@ -29,8 +29,8 @@ import sys
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MIXIN_DIR = os.path.join(ROOT, "src", "main", "java", "io", "github", "simuciokas",
-                         "hidemodels", "mixin")
+SRC_DIR = os.path.join(ROOT, "src", "main", "java")
+MIXIN_DIR = os.path.join(SRC_DIR, "io", "github", "simuciokas", "hidemodels", "mixin")
 MANIFEST = "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json"
 
 # Things the mod needs that are not mixin targets: the component it identifies models by, and the
@@ -39,6 +39,7 @@ MANIFEST = "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json"
 EXTRA_CLASSES = [
     ("net.minecraft.world.entity.Display$ItemDisplay", "the entity the models ride on"),
 ]
+IMPORTS = {}
 EXTRA_FIELDS = [
     ("net.minecraft.core.component.DataComponents", "ITEM_MODEL",
      "the component the whole feature keys on"),
@@ -81,6 +82,27 @@ def parse_mixins():
         for acc in re.findall(r'@Accessor\("([^"]+)"\)', src):
             members.append(("accessor", acc))
         out.append({"file": name, "class": full, "members": members})
+    return out
+
+
+def imported_classes():
+    """
+    Every net.minecraft type the mod names, from every source file.
+
+    The mixin targets are only half of what a version must provide: the mod also REFERENCES vanilla
+    types directly, and those are checked by the compiler against the one jar it is built with.
+    Identifier was ResourceLocation before 26.x, so a source tree whose every mixin target resolves
+    can still fail to compile a version back. Listing them turns "will this port" into a list of
+    specific renames rather than a compile-and-see.
+    """
+    out = {}
+    for base, _dirs, files in os.walk(SRC_DIR):
+        for name in files:
+            if not name.endswith(".java"):
+                continue
+            text = open(os.path.join(base, name), encoding="utf-8").read()
+            for imp in re.findall(r"^import\s+(net\.minecraft\.[\w.]+);", text, re.M):
+                out.setdefault(imp, set()).add(name)
     return out
 
 
@@ -282,6 +304,15 @@ def check_version(version, mixins):
                     problems.append("%s: %s %s.%s is absent"
                                     % (mx["file"], kind, mx["class"], member))
 
+    for imp, users in sorted(IMPORTS.items()):
+        # An inner class is imported with a dot but lives under a dollar; accept either spelling.
+        cand = [imp]
+        head, last = imp.rsplit(".", 1)
+        if last[:1].isupper() and head.rsplit(".", 1)[-1][:1].isupper():
+            cand.append(head + "$" + last)
+        if not any(members_of(jar, obf_class(c)) is not None for c in cand):
+            problems.append("import %s is absent (used by %s)" % (imp, ", ".join(sorted(users))))
+
     for cls, why in EXTRA_CLASSES:
         if members_of(jar, obf_class(cls)) is None:
             problems.append("%s is absent (%s)" % (cls, why))
@@ -304,8 +335,10 @@ def main(argv):
         versions = [re.search(r"^minecraft_version=(.+)$", props, re.M).group(1).strip()]
 
     mixins = parse_mixins()
-    print("checking %d mixin targets from %d files\n"
-          % (sum(len(m["members"]) for m in mixins), len(mixins)))
+    global IMPORTS
+    IMPORTS = imported_classes()
+    print("checking %d mixin targets and %d imported vanilla types\n"
+          % (sum(len(m["members"]) for m in mixins), len(IMPORTS)))
 
     worst = 0
     for v in versions:
