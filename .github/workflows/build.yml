@@ -68,13 +68,6 @@ jobs:
       # while looking exactly like a test still running.
       - name: Client game test
         timeout-minutes: 20
-        env:
-          # ONE THREAD FOR SOFTWARE GL. llvmpipe sizes its worker pool by core count, so on a
-          # two-core runner it takes both and leaves the integrated server nothing - which is
-          # exactly how 1.21.11 stalled at "Preparing spawn area: 16%" until the harness gave up.
-          # The client only has to draw a loading screen and a few frames; the server has a world
-          # to load.
-          LP_NUM_THREADS: '1'
         run: xvfb-run -a ./gradlew runClientGameTest -Pminecraft_version=${{ matrix.mc }}
 
       - name: Upload the run log on failure
