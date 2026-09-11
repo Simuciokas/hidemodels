@@ -11,6 +11,27 @@ permissions:
   contents: write        # needed only by the release step below
 
 jobs:
+  # WHAT THE COMPILER CANNOT CHECK. Mixin targets are strings resolved at launch, so a method
+  # Mojang renamed compiles perfectly and fails at startup - and the mod claims a range of
+  # versions it is only ever compiled against one of. This job checks every target and every
+  # imported vanilla type against each supported version's own client jar.
+  targets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      # Client jars are pinned by version and sha1-verified, so caching them is safe.
+      - name: Cache Minecraft client jars
+        uses: actions/cache@v5
+        with:
+          path: build/minecraft
+          key: mcjars-${{ hashFiles('tools/verify_targets.py') }}
+      - name: Verify mixin targets across the supported range
+        run: |
+          python tools/verify_targets.py             26.2 26.1 1.21.11 1.21.10 1.21.9 1.21.8 1.21.7 1.21.6 1.21.5 1.21.4 1.21.3 1.21.2
+
   build:
     runs-on: ubuntu-latest
     steps:

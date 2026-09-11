@@ -26,27 +26,41 @@ Client-only (`"environment": "client"`), so there is nothing to install server-s
 
 ## Which versions it can target
 
-Every mixin target this mod uses resolves unchanged from **1.21.2 through 26.2** — checked against
-each version's own client jar, not from memory:
+**1.21.2 through 26.2**, from one source tree — every mixin target and every vanilla type the mod
+names resolves on all of them, checked against each version's own client jar rather than assumed:
 
-| Minecraft | mixin targets | `item_model` component |
-|---|---|---|
-| 26.2, 26.1 | resolve | present |
-| 1.21.11, 1.21.8, 1.21.5, 1.21.4, 1.21.3, 1.21.2 | resolve | present |
-| 1.21.1 and earlier | resolve | **absent** |
+| Minecraft | verdict |
+|---|---|
+| 26.2, 26.1 | every target resolves |
+| 1.21.11 … 1.21.2 | every target resolves |
+| 1.21.1 and earlier | **`minecraft:item_model` is absent** |
 
-`minecraft:item_model` is the floor, and it is a hard one: the mod identifies models by that
-component, so a version without it cannot support the feature as designed — that would need a
-different key (CustomModelData), which is a different feature rather than a port.
+That component is the floor and it is a hard one: the mod identifies models by it, so an earlier
+version would need a different key (CustomModelData), which is a different feature rather than a
+port. The render hook itself goes back much further — `EntityRenderDispatcher.shouldRender` and
+`Display.ItemDisplay` exist unbroken to 1.19.4 — so it is only the identification that stops.
 
-Reproduce it with `python tools/verify_targets.py 26.2 1.21.8 1.21.1`. The tool reads the targets
-out of the mixin sources, fetches each client jar from Mojang, and — for anything before 26.1 —
-maps the names through that version's `client_mappings`, because those jars are obfuscated.
+Keeping one source tree across that range costs exactly one deliberate choice, in
+`EntityRenderDispatcherMixin` and `NearbyModels`: the value of the `item_model` component is held
+as `Object`, never as its concrete type. That type is `Identifier` from 1.21.11 and
+`ResourceLocation` before it, and the only thing the mod wants from it is `toString()`. Naming
+either would pin the source to half the range for no benefit — so please do not "tidy" it back to
+the concrete type.
 
-Two things it deliberately does not tell you. It checks the mixin TARGETS, not the mod's own type
-references: `Identifier` was `ResourceLocation` before 26.2, so the source still needs adjusting to
-compile against an older jar even where every target resolves. And it is a static check — that a
-hook exists is not that it fires.
+Reproduce the table with:
+
+```sh
+python tools/verify_targets.py 26.2 1.21.8 1.21.1
+```
+
+The tool reads the targets out of the mixin sources, fetches each client jar from Mojang, and — for
+anything before 26.1 — maps names through that version's `client_mappings`, because those jars are
+obfuscated. CI runs it over the whole supported range on every push.
+
+Two things it deliberately does not tell you. It is a static check: that a hook exists is not that
+it fires. And it says nothing about the BUILD — 26.x ships readable jars and needs no mappings,
+while 1.21.x ships obfuscated ones, so producing a jar for those versions needs a remapping build
+even though the source is identical.
 
 ## Configuring it
 
