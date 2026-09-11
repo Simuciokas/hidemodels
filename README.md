@@ -11,7 +11,7 @@ server's view of the world are all untouched.
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer.
 2. Drop the jar **for your Minecraft version** into `mods/` — they are named
-   `hidemodels-1.4.0+mc26.2.jar`, `hidemodels-1.4.0+mc1.21.8.jar` and so on. Loader refuses to load
+   `hidemodels-1.4.1+mc26.2.jar`, `hidemodels-1.4.1+mc1.21.8.jar` and so on. Loader refuses to load
    the wrong one rather than failing later.
 
 Requirements, all declared in `fabric.mod.json`:
@@ -34,7 +34,7 @@ each version's own client jar rather than assumed. CI runs that matrix on every 
 
 | Minecraft | source | notes |
 |---|---|---|
-| 26.2, 26.1 | resolves | the advertised range |
+| 26.2, 26.1.2, 26.1.1, 26.1 | resolves | the advertised range |
 | 1.21.11 … 1.21.2 | resolves | the advertised range |
 | 1.21.1 | resolves | but `item_model` does not exist, so it falls back to `custom_model_data` — the mod runs, and the ids you would write are different |
 | 1.20.6 | **one break** | `onDisconnect` takes `Component` there, `DisconnectionDetails` after — a Mixin handler must mirror its target's parameters, so this one needs a real branch |
@@ -75,7 +75,7 @@ part of the range:
 
 | Minecraft | targets check | builds a jar | smoke test (real client) | client gametest |
 |---|---|---|---|---|
-| 26.2, 26.1 | yes | yes | **yes** | **no** — Fabric ships no gametest module for 26.x |
+| 26.2, 26.1.2, 26.1.1, 26.1 | yes | yes | **yes** | **no** — Fabric ships no gametest module for 26.x |
 | 1.21.11 … 1.21.9 | yes | yes | **yes** | locally only — see below |
 | 1.21.8 … 1.21.4 | yes | yes | **yes** | **yes** |
 | 1.21.3, 1.21.2 | yes | yes | **yes** | **no** — the gametest API does not exist yet |
@@ -94,7 +94,7 @@ reads the component, intercepts its own command, and honours its config. No Mode
 server are needed, because the mod keys on a vanilla component on a vanilla entity — which is what
 makes it runnable anywhere.
 
-CI runs the smoke test on all twelve versions and the gametest on 1.21.4 and 1.21.8, under xvfb.
+CI runs the smoke test on all fourteen versions and the gametest on 1.21.4 and 1.21.8, under xvfb.
 What the smoke test cannot cover is anything needing a world: the render hook, the command mixin
 and `ChatOut` are only exercised where the gametest runs.
 
@@ -222,7 +222,7 @@ permanently altered, and the player's own config applies again next time they co
 
 ```sh
 export JAVA_HOME=/path/to/jdk-25
-./gradlew build          # -> build/libs/hidemodels-1.4.0+mc26.2.jar
+./gradlew build          # -> build/libs/hidemodels-1.4.1+mc26.2.jar
 ```
 
 No local Minecraft install is needed: the compile classpath — client jar plus MC's own libraries —

@@ -30,7 +30,7 @@ jobs:
           key: mcjars-${{ hashFiles('tools/verify_targets.py') }}
       - name: Verify mixin targets across the supported range
         run: |
-          python tools/verify_targets.py             26.2 26.1 1.21.11 1.21.10 1.21.9 1.21.8 1.21.7 1.21.6 1.21.5 1.21.4 1.21.3 1.21.2
+          python tools/verify_targets.py             26.2 26.1.2 26.1.1 26.1 1.21.11 1.21.10 1.21.9 1.21.8 1.21.7 1.21.6 1.21.5 1.21.4 1.21.3 1.21.2
 
   # Drives a REAL client: builds a world, summons an item_display carrying item_model, and checks
   # the mod reads it, intercepts its command and honours its config. This is the only coverage that
@@ -90,9 +90,9 @@ jobs:
           if-no-files-found: ignore
 
   # EVERY SUPPORTED VERSION, ACTUALLY LAUNCHED. The gametest above covers more per version but runs
-  # on only two of twelve: Fabric's client gametest API did not exist before 1.21.4, 26.x has no
+  # on only two of fourteen: Fabric's client gametest API did not exist before 1.21.4, 26.x has no
   # gametest module at all, and 1.21.9+ cannot load a world on a hosted runner. This job starts a
-  # real client on all twelve instead, and checks the two things most likely to break when a version
+  # real client on all fourteen instead, and checks the two things most likely to break when a version
   # moves underneath the mod - that the item_model component still resolves out of the registry, and
   # that the config still drives the matcher.
   #
@@ -103,7 +103,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ['26.2', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
+        mc: ['26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
              '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2']
     steps:
       - uses: actions/checkout@v5
@@ -155,7 +155,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ['26.2', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
+        mc: ['26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
              '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2']
     steps:
       - uses: actions/checkout@v5
@@ -254,7 +254,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ['26.2', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
+        mc: ['26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
              '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2']
     steps:
       - uses: actions/checkout@v5      # only for the changelog file
