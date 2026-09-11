@@ -76,7 +76,8 @@ part of the range:
 | Minecraft | targets check | builds a jar | smoke test (real client) | client gametest |
 |---|---|---|---|---|
 | 26.2, 26.1 | yes | yes | **yes** | **no** — Fabric ships no gametest module for 26.x |
-| 1.21.11 … 1.21.4 | yes | yes | **yes** | **yes** |
+| 1.21.11 … 1.21.9 | yes | yes | **yes** | locally only — see below |
+| 1.21.8 … 1.21.4 | yes | yes | **yes** | **yes** |
 | 1.21.3, 1.21.2 | yes | yes | **yes** | **no** — the gametest API does not exist yet |
 
 `./gradlew smokeTest -Pminecraft_version=1.21.2` starts a real client with the mod, waits for it to
@@ -93,9 +94,20 @@ reads the component, intercepts its own command, and honours its config. No Mode
 server are needed, because the mod keys on a vanilla component on a vanilla entity — which is what
 makes it runnable anywhere.
 
-CI runs the smoke test on all twelve versions and the gametest on 1.21.4, 1.21.8 and 1.21.11, all
-under xvfb. What the smoke test cannot cover is anything needing a world: the render hook, the
-command mixin and `ChatOut` are only exercised where the gametest runs.
+CI runs the smoke test on all twelve versions and the gametest on 1.21.4 and 1.21.8, under xvfb.
+What the smoke test cannot cover is anything needing a world: the render hook, the command mixin
+and `ChatOut` are only exercised where the gametest runs.
+
+**The gametest does not run in CI on 1.21.9 and later.** On a hosted runner their integrated server
+freezes at `Preparing spawn area: 16%` — the identical percentage, logged minute after minute —
+until the harness gives up with `Timeout loading world`. It is not this mod and it is not mere
+slowness: the same commit passes on 1.21.4 and 1.21.8 on the same runner, and passes on 1.21.11 on
+a developer machine in 21 seconds. Ruled out by experiment: render distance, per-frame cost, a
+frame-rate cap (which made it worse — the harness steps client and server together, so a slower
+client is a slower server), llvmpipe's thread count, the client pausing on lost focus, and
+Minecraft's background worker pool being one thread wide on a two-core runner. Run it yourself on
+those versions with `./gradlew runClientGameTest -Pminecraft_version=1.21.11`; the smoke test keeps
+them covered in CI.
 
 Compiling is still what catches most version breaks — the checker is static and cannot see member
 access, which is exactly how the one real source difference below was found.
