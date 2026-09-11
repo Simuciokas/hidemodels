@@ -116,13 +116,12 @@ public final class NearbyModels {
         return Double.toString(Math.round(v * 10.0) / 10.0);
     }
 
-    /** Client-side chat, so nothing is sent to the server. */
+    /**
+     * Client-side chat, so nothing is sent to the server.
+     *
+     * <p>Delegated to ChatOut, the one class with a per-version copy - see src/mc26 and src/mc121.
+     */
     public static void say(Component text) {
-        final Minecraft mc = Minecraft.getInstance();
-        if (mc == null || mc.gui == null) {
-            return;
-        }
-        // The 1.21.11 split put chat on Hud rather than Gui, reached as gui.hud.getChat().
-        mc.gui.hud.getChat().addClientSystemMessage(text);
+        ChatOut.say(text);
     }
 }

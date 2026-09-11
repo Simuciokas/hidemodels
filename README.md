@@ -1,6 +1,6 @@
 # Hide Models
 
-A client-side Fabric mod for **Minecraft 26.2** that stops chosen [ModelEngine](https://mythiccraft.io/index.php?resources/modelengine.1/)
+A client-side Fabric mod for **Minecraft 1.21.2 – 26.2** that stops chosen [ModelEngine](https://mythiccraft.io/index.php?resources/modelengine.1/)
 model pieces from rendering — a mount's head that blocks your view, a pet that follows you around,
 a visual effect you'd rather not see — chosen by their `item_model` id.
 
@@ -9,16 +9,18 @@ server's view of the world are all untouched.
 
 ## Install
 
-1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer for Minecraft 26.2.
-2. Drop `hidemodels-1.3.0.jar` into your `mods/` folder.
+1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer.
+2. Drop the jar **for your Minecraft version** into `mods/` — they are named
+   `hidemodels-1.3.0+mc26.2.jar`, `hidemodels-1.3.0+mc1.21.8.jar` and so on. Loader refuses to load
+   the wrong one rather than failing later.
 
 Requirements, all declared in `fabric.mod.json`:
 
 | | |
 |---|---|
-| Minecraft | `~26.2` (Loader refuses to load it on anything else) |
+| Minecraft | the version the jar names (Loader refuses to load it on anything else) |
 | Fabric Loader | `>=0.19.0` |
-| Java | `>=25` — 26.2's own requirement, its client jar is class-file major 69 |
+| Java | `>=25` on 26.x, `>=21` on 1.21.x — each version's own requirement |
 | Fabric API | **not needed** |
 | Other mods | none |
 
@@ -63,7 +65,19 @@ The tool reads the targets out of the mixin sources, fetches each client jar fro
 anything before 26.1 — maps names through that version's `client_mappings`, because those jars are
 obfuscated.
 
-Three things it does not tell you. It is a **static** check: that a hook exists is not that it
+Building for a version is `./gradlew build -Pminecraft_version=1.21.8`; the default is the one in
+`gradle.properties`. CI builds 26.2 and 1.21.8 on every push, which is what actually catches a
+version-specific break — the checker is static and cannot see member access, and that is exactly
+how the one real difference below was found.
+
+**One file differs across the range**, `ChatOut`, kept as two small copies under `src/mc26` and
+`src/mc121` rather than behind a preprocessor. The client-facing chat call was renamed —
+`LocalPlayer.displayClientMessage` up to 1.21.x, `sendSystemMessage` from 26.x — and reflection
+cannot bridge it, because a 1.21.x build is remapped to intermediary and the runtime name is
+`method_7353`. `CommandSource.sendSystemMessage` does exist on every version, but on 1.21.x the
+player does not override it, so the inherited server implementation would print nothing at all.
+
+Three things the checker does not tell you. It is a **static** check: that a hook exists is not that it
 fires. It reads only **declared** members, so an inherited one reads as absent. And it says nothing
 about the **build** — 26.x ships readable jars and needs no mappings, which is why this project has
 no Loom, while 1.21.x ships obfuscated ones and needs a remapping build even though the source is

@@ -1,29 +1,7 @@
 import groovy.json.JsonSlurper
 import java.security.MessageDigest
 
-// TWO BUILD PATHS, ONE SOURCE TREE. 26.x ships a client jar already in readable official names and
-// publishes no mapping file at all, so Loom cannot work there (it fails with "Failed to find
-// official mojang mappings") and is not needed - the jar is compiled and shipped as-is. Every
-// earlier version ships an OBFUSCATED jar, so a mod for those MUST be remapped to intermediary
-// before it will load, which is exactly what Loom is for.
-//
-// Select with -Pminecraft_version=1.21.8; the default in gradle.properties is the 26.x path.
-plugins {
-    id 'java'
-    id 'fabric-loom' version '1.17.20' apply false
-}
-
-def legacy = !project.minecraft_version.startsWith('26')
-if (legacy) {
-    apply plugin: 'fabric-loom'
-}
-
-// ONE FILE DIFFERS BETWEEN VERSIONS, and it is a source set rather than a preprocessor because one
-// small class is not worth a build-time source rewriter. The client-facing chat call was renamed -
-// LocalPlayer.displayClientMessage up to 1.21.x, sendSystemMessage from 26.x - and reflection
-// cannot bridge it, since a 1.21.x build is remapped to intermediary and the runtime name is
-// method_NNNN. Everything else in src/main compiles unchanged across the whole range.
-sourceSets.main.java.srcDir(legacy ? 'src/mc121/java' : 'src/mc26/java')
+plugins { id 'java' }
 
 version = project.mod_version
 group = project.maven_group
@@ -116,66 +94,35 @@ tasks.register('downloadMinecraft') {
 }
 
 dependencies {
-    if (legacy) {
-        // Loom's own coordinates. officialMojangMappings() rather than yarn: the source is written
-        // in official names for the 26.x path, and asking Loom for the same names means ONE source
-        // tree compiles on both sides. Loom remaps the output to intermediary on the way out,
-        // which is what an obfuscated-jar version needs in order to load the mod at all.
-        minecraft "com.mojang:minecraft:${project.minecraft_version}"
-        mappings loom.officialMojangMappings()
-        modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    } else {
-        // Compile against the real client jar. Nothing here is bundled into the mod.
-        compileOnly files(clientJar)
-        compileOnly fileTree(dir: mcLibs, include: '**/*.jar')
+    // Compile against the real client jar. Nothing here is bundled into the mod.
+    compileOnly files(clientJar)
+    compileOnly fileTree(dir: mcLibs, include: '**/*.jar')
 
-        // Loader gives us the mod entry contract; sponge-mixin gives us @Mixin/@Inject/@Invoker.
-        // Both are provided at runtime by the Fabric installation.
-        compileOnly "net.fabricmc:fabric-loader:${project.loader_version}"
-        compileOnly "net.fabricmc:sponge-mixin:${project.mixin_version}"
-    }
+    // Loader gives us the mod entry contract; sponge-mixin gives us @Mixin/@Inject/@Invoker.
+    // Both are provided at runtime by the Fabric installation.
+    compileOnly "net.fabricmc:fabric-loader:${project.loader_version}"
+    compileOnly "net.fabricmc:sponge-mixin:${project.mixin_version}"
 }
 
-if (!legacy) {
-    tasks.named('compileJava') { dependsOn 'downloadMinecraft' }
-}
+tasks.named('compileJava') { dependsOn 'downloadMinecraft' }
 
-// The target has to match the client jar it will run beside: 26.x is class-file major 69 = Java
-// 25, 1.21.x is 65 = Java 21. Mixin refuses to load classes newer than its declared
-// compatibilityLevel, so hidemodels.mixins.json is templated to agree rather than hardcoded.
-def javaVersion = legacy ? 21 : 25
+// 26.2's client jar is class-file major 69 = Java 25, so the mod must target 25 too - and
+// hidemodels.mixins.json declares compatibilityLevel JAVA_25 to match, without which Mixin
+// refuses to load classes this new.
 java {
-    toolchain { languageVersion = JavaLanguageVersion.of(javaVersion) }
+    toolchain { languageVersion = JavaLanguageVersion.of(25) }
 }
 tasks.withType(JavaCompile).configureEach {
-    it.options.release = javaVersion
+    it.options.release = 25
     it.options.encoding = 'UTF-8'
 }
 
-// The metadata has to name the version it was built for, or Loader will happily load a 1.21.8 jar
-// on 26.2 and fail at the first missing method. Templated rather than edited per build.
 processResources {
     inputs.property 'version', project.version
-    inputs.property 'mcDep', "~${project.minecraft_version}"
-    inputs.property 'javaVersion', javaVersion
-    filesMatching(['fabric.mod.json', 'hidemodels.mixins.json']) {
-        expand 'version': project.version,
-               'mcDep': "~${project.minecraft_version}",
-               'javaVersion': javaVersion
-    }
+    filesMatching('fabric.mod.json') { expand 'version': project.version }
 }
 
 jar {
     archiveBaseName = project.archives_base_name
-    // 26.x runs what it compiled - intermediary is an identity mapping there, so remapping is a
-    // no-op that Loom is not present to perform anyway. On 1.21.x the opposite is true and Loom's
-    // remapJar produces the artifact, so the flag must NOT be set.
-    if (!legacy) {
-        manifest { attributes 'Fabric-Loom-Remap': 'false' }
-    }
-}
-
-// The jar says which Minecraft it is for, so two of them can sit in one folder without guessing.
-tasks.withType(AbstractArchiveTask).configureEach {
-    archiveVersion = "${project.mod_version}+mc${project.minecraft_version}"
+    manifest { attributes 'Fabric-Loom-Remap': 'false' }
 }

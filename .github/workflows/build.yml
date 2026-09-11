@@ -32,16 +32,31 @@ jobs:
         run: |
           python tools/verify_targets.py             26.2 26.1 1.21.11 1.21.10 1.21.9 1.21.8 1.21.7 1.21.6 1.21.5 1.21.4 1.21.3 1.21.2
 
+  # One source tree, two build paths: 26.x compiles against Mojang's already-readable client jar
+  # with no mappings at all, 1.21.x goes through Loom and is remapped to intermediary. Both are
+  # built on every push, because the only thing that reliably catches a version-specific break is
+  # compiling it - the target checker above is static and cannot see member access.
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mc: '26.2'
+            java: '25'
+          - mc: '1.21.8'
+            java: '21'
     steps:
       - uses: actions/checkout@v5
 
-      # 26.2's client jar is class-file major 69, so both the toolchain and Gradle itself run on 25.
+      # The toolchain has to match the client jar it compiles against: 26.x is class-file 69, and
+      # 1.21.x is 65. Gradle itself runs on the newest of them.
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: |
+            25
+            ${{ matrix.java }}
 
       - uses: gradle/actions/setup-gradle@v4
 
@@ -51,23 +66,18 @@ jobs:
         uses: actions/cache@v5
         with:
           path: build/minecraft
-          key: mc-${{ hashFiles('gradle.properties') }}
+          key: mc-${{ matrix.mc }}-${{ hashFiles('gradle.properties') }}
 
-      - run: ./gradlew build
+      - run: ./gradlew build -Pminecraft_version=${{ matrix.mc }}
 
       - uses: actions/upload-artifact@v5
         with:
-          name: hidemodels-jar
+          name: hidemodels-${{ matrix.mc }}
           path: build/libs/*.jar
           if-no-files-found: error
 
-      # A v* tag additionally publishes a Release with the jar attached, so there is a stable
-      # download link that does not expire the way build artifacts do.
-      #
-      # Idempotent on purpose: a tag can be pushed again (a force-update after a history rewrite,
-      # say), and a bare `gh release create` fails outright when the release already exists, which
-      # turned a re-push into a red build for no reason. Re-uploading the jar keeps the release's
-      # notes and creation date while refreshing what people download.
+      # A v* tag publishes a Release with every version's jar attached, so one tag ships the whole
+      # supported range. Idempotent: each matrix job uploads its own jar to the same release.
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
