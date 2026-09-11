@@ -26,41 +26,48 @@ Client-only (`"environment": "client"`), so there is nothing to install server-s
 
 ## Which versions it can target
 
-**1.21.2 through 26.2**, from one source tree — every mixin target and every vanilla type the mod
-names resolves on all of them, checked against each version's own client jar rather than assumed:
+**1.21.2 through 26.2**, from one source tree with no preprocessor and no per-version source sets —
+every mixin target and every vanilla type the mod names resolves on all of them, checked against
+each version's own client jar rather than assumed. CI runs that matrix on every push.
 
-| Minecraft | verdict |
-|---|---|
-| 26.2, 26.1 | every target resolves |
-| 1.21.11 … 1.21.2 | every target resolves |
-| 1.21.1 and earlier | **`minecraft:item_model` is absent** |
+| Minecraft | source | notes |
+|---|---|---|
+| 26.2, 26.1 | resolves | the advertised range |
+| 1.21.11 … 1.21.2 | resolves | the advertised range |
+| 1.21.1 | resolves | but `item_model` does not exist, so it falls back to `custom_model_data` — the mod runs, and the ids you would write are different |
+| 1.20.6 | **one break** | `onDisconnect` takes `Component` there, `DisconnectionDetails` after — a Mixin handler must mirror its target's parameters, so this one needs a real branch |
+| 1.20.4 and earlier | **no** | no data components at all |
 
-That component is the floor and it is a hard one: the mod identifies models by it, so an earlier
-version would need a different key (CustomModelData), which is a different feature rather than a
-port. The render hook itself goes back much further — `EntityRenderDispatcher.shouldRender` and
-`Display.ItemDisplay` exist unbroken to 1.19.4 — so it is only the identification that stops.
+Two deliberate choices keep that range on one source path, and both look like something to tidy up:
 
-Keeping one source tree across that range costs exactly one deliberate choice, in
-`EntityRenderDispatcherMixin` and `NearbyModels`: the value of the `item_model` component is held
-as `Object`, never as its concrete type. That type is `Identifier` from 1.21.11 and
-`ResourceLocation` before it, and the only thing the mod wants from it is `toString()`. Naming
-either would pin the source to half the range for no benefit — so please do not "tidy" it back to
-the concrete type.
+* **The component is looked up by id, not named.** `DataComponents.ITEM_MODEL` is a static field
+  that exists only from 1.21.2. The registry has held component types since 1.20.5, so the type is
+  fetched from it by id and a version that lacks it simply yields null. The registry is *iterated*
+  rather than queried by key, because a key is an `Identifier` — see the next point.
+* **The component's value is held as `Object`.** Its class is `Identifier` from 1.21.11 and
+  `ResourceLocation` before it, and all the mod wants is `toString()`.
+
+Naming either concrete type would halve the supported range for no benefit, so please don't.
+
+The lookup is also **lazy**, not a static initialiser: a client mixin can load during bootstrap
+while registries are still filling, and a lookup that ran then would cache a null and leave the mod
+silently inert for the session.
 
 Reproduce the table with:
 
 ```sh
-python tools/verify_targets.py 26.2 1.21.8 1.21.1
+python tools/verify_targets.py 26.2 1.21.8 1.20.6
 ```
 
 The tool reads the targets out of the mixin sources, fetches each client jar from Mojang, and — for
 anything before 26.1 — maps names through that version's `client_mappings`, because those jars are
-obfuscated. CI runs it over the whole supported range on every push.
+obfuscated.
 
-Two things it deliberately does not tell you. It is a static check: that a hook exists is not that
-it fires. And it says nothing about the BUILD — 26.x ships readable jars and needs no mappings,
-while 1.21.x ships obfuscated ones, so producing a jar for those versions needs a remapping build
-even though the source is identical.
+Three things it does not tell you. It is a **static** check: that a hook exists is not that it
+fires. It reads only **declared** members, so an inherited one reads as absent. And it says nothing
+about the **build** — 26.x ships readable jars and needs no mappings, which is why this project has
+no Loom, while 1.21.x ships obfuscated ones and needs a remapping build even though the source is
+identical.
 
 ## Configuring it
 

@@ -9,7 +9,6 @@ import java.util.Map;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
@@ -61,19 +60,11 @@ public final class NearbyModels {
                 continue;
             }
             final ItemStack stack = ((ItemDisplayAccessor) display).hidemodels$getItemStack();
-            if (stack == null || stack.isEmpty()) {
-                continue;
-            }
-            // DELIBERATELY NOT THE CONCRETE TYPE. This is the item_model component's value, whose class
-            // is Identifier on 1.21.11+ and ResourceLocation before it - naming either one pins the
-            // source to half the supported range for no benefit, because the only thing wanted from it
-            // is toString(). Leave it as Object.
-            final Object model = stack.get(DataComponents.ITEM_MODEL);
-            if (model == null) {
+            final String id = HideModels.modelIdOf(stack);
+            if (id == null) {
                 continue;
             }
             scanned++;
-            final String id = model.toString();
             // Group by the model, i.e. everything up to and including the last '/', which is
             // exactly the fragment the config wants. Ids with no slash stand alone.
             final int cut = id.lastIndexOf('/');

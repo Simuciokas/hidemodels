@@ -16,6 +16,10 @@ this be backported" with evidence rather than recollection.
   python tools/verify_targets.py                      # the version in gradle.properties
   python tools/verify_targets.py 26.2 26.1 1.21.8     # a matrix
 
+LIMITS. It reads only DECLARED members, so a method inherited from a supertype or interface reads
+as absent - ItemStack.get comes from DataComponentHolder and would report that way. It is also
+static: that a hook exists is not that it fires.
+
 Needs only Python and network access on first run for each version; client jars are
 cached under build/minecraft/<version>/ exactly where the Gradle build puts them, so a version the
 build has already fetched costs nothing.
@@ -41,8 +45,12 @@ EXTRA_CLASSES = [
 ]
 IMPORTS = {}
 EXTRA_FIELDS = [
-    ("net.minecraft.core.component.DataComponents", "ITEM_MODEL",
-     "the component the whole feature keys on"),
+    # The REGISTRY, not the static field. The mod resolves its component by id at runtime rather
+    # than naming DataComponents.ITEM_MODEL, so a version missing that particular component is no
+    # longer a build-stopper - it falls back to custom_model_data. What it cannot do without is the
+    # registry itself, which is where the real floor now sits.
+    ("net.minecraft.core.registries.BuiltInRegistries", "DATA_COMPONENT_TYPE",
+     "the registry the component is resolved from"),
 ]
 
 
