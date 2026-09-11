@@ -214,13 +214,20 @@ jobs:
       # deciding whether to download a jar. Written notes go in docs/releases/<tag>.md and the
       # generated list is appended below them by the API. A tag without that file still releases,
       # with the generated list alone.
+      # RE-RUNNABLE. A tag gets re-run for reasons that have nothing to do with the jars - a flaky
+      # runner, or a CI change that has to be published from the same code - and `gh release create`
+      # fails outright when the release exists. Uploading over the existing one leaves the notes and
+      # the download count intact.
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -l dist
           notes="docs/releases/${GITHUB_REF_NAME}.md"
-          if [ -f "$notes" ]; then
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME exists - replacing its jars"
+            gh release upload "$GITHUB_REF_NAME" dist/*.jar --clobber
+          elif [ -f "$notes" ]; then
             gh release create "$GITHUB_REF_NAME" dist/*.jar \
               --title "$GITHUB_REF_NAME" --notes-file "$notes" --generate-notes
           else
