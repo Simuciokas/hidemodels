@@ -14,6 +14,26 @@ plugins {
 }
 
 def legacy = !project.minecraft_version.startsWith('26')
+
+// Fabric API is TEST-ONLY here - the harness needs it, the mod does not - but it is published per
+// Minecraft version, so one pinned value would only ever let one version run its tests. Listed
+// rather than resolved from the network so a build stays reproducible and offline-capable; add a
+// row when adding a version to the matrix.
+def FABRIC_API = [
+        '1.21.2' : '0.106.1+1.21.2',
+        '1.21.3' : '0.114.1+1.21.3',
+        '1.21.4' : '0.119.4+1.21.4',
+        '1.21.5' : '0.128.2+1.21.5',
+        '1.21.6' : '0.128.2+1.21.6',
+        '1.21.8' : '0.136.1+1.21.8',
+        '1.21.11': '0.141.6+1.21.11',
+]
+def fabricApiVersion = FABRIC_API[project.minecraft_version]
+if (legacy && fabricApiVersion == null) {
+    // Only the gametest needs it, so this must not stop an ordinary build.
+    logger.lifecycle("no Fabric API pinned for ${project.minecraft_version} - runClientGameTest "
+            + "will not be available; add it to FABRIC_API in build.gradle")
+}
 if (legacy) {
     apply plugin: 'fabric-loom'
 }
@@ -24,6 +44,31 @@ if (legacy) {
 // cannot bridge it, since a 1.21.x build is remapped to intermediary and the runtime name is
 // method_NNNN. Everything else in src/main compiles unchanged across the whole range.
 sourceSets.main.java.srcDir(legacy ? 'src/mc121/java' : 'src/mc26/java')
+
+// The client gametest calls into the mod it is testing, so it needs main's classes AND main's
+// dependencies - Gradle gives a test source set neither of the latter by default.
+if (legacy) {
+    sourceSets.test.compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+    sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+}
+
+// MUTE THE DEV CLIENT. runClient starts at full volume on whatever machine ran the build, which
+// is someone's actual speakers - and a test launch has no business making noise. options.txt is
+// read at startup, so writing it beforehand is enough; the master category covers every other one.
+if (legacy) {
+    def muteClient = tasks.register('muteClient') {
+        description = 'Silences the development client before it launches.'
+        doLast {
+            def f = file('run/options.txt')
+            f.parentFile.mkdirs()
+            def kept = f.exists() ? f.readLines().findAll { !it.startsWith('soundCategory_') } : []
+            kept << 'soundCategory_master:0.0'
+            f.text = kept.join(System.lineSeparator()) + System.lineSeparator()
+            logger.lifecycle('dev client muted (run/options.txt)')
+        }
+    }
+    tasks.matching { it.name.startsWith('runClient') }.configureEach { dependsOn muteClient }
+}
 
 version = project.mod_version
 group = project.maven_group
@@ -117,6 +162,25 @@ tasks.register('downloadMinecraft') {
 
 dependencies {
     if (legacy) {
+        // The client gametest harness, and ONLY for tests: the mod itself has no Fabric API
+        // dependency and the shipped jar declares none. modClientImplementation keeps it off the
+        // production classpath entirely.
+        // The harness that drives a real client. modImplementation, not testImplementation:
+        // only the mod* configurations go through Loom's remapper, and a plain testImplementation
+        // hands over the intermediary-named jar - which fails to compile with "cannot access
+        // class_310" because the source is written in official names.
+        //
+        // It being on the dev classpath does not put it in the released jar: nothing declares a
+        // dependency on it, and the entrypoint that uses it lives in the test source set's own
+        // fabric.mod.json, a separate mod that is never published.
+        // THE WHOLE API, not just the gametest module. fabricApi.module() resolves one module
+        // without its dependencies, and the harness needs fabric-resource-loader-v0 - Loader
+        // refuses to start without it. Chasing the transitive list by hand is a losing game; this
+        // is a dev-time dependency either way and costs the released jar nothing.
+        if (fabricApiVersion != null) {
+            modImplementation "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
+        }
+
         // Loom's own coordinates. officialMojangMappings() rather than yarn: the source is written
         // in official names for the 26.x path, and asking Loom for the same names means ONE source
         // tree compiles on both sides. Loom remaps the output to intermediary on the way out,
@@ -143,6 +207,27 @@ if (!legacy) {
 // The target has to match the client jar it will run beside: 26.x is class-file major 69 = Java
 // 25, 1.21.x is 65 = Java 21. Mixin refuses to load classes newer than its declared
 // compatibilityLevel, so hidemodels.mixins.json is templated to agree rather than hardcoded.
+if (legacy) {
+    loom {
+        runs {
+            clientGameTest {
+                client()
+                name = 'Client Game Test'
+                source 'test'
+                // The harness exits the game itself when the test finishes, pass or fail, and
+                // reports through the exit code - which is what makes this usable from CI.
+                vmArg '-Dfabric.client.gametest'
+                // HEADLESS, OR A FAILURE HANGS FOREVER. Fabric Loader reports a bad mod set in a
+                // modal AWT dialog and waits for someone to click it: the run stops dead, with no
+                // output and no exit code, looking exactly like a test that is still working. In
+                // CI nothing would ever click it. Headless forces the same report to the console
+                // and lets the process die.
+                vmArg '-Djava.awt.headless=true'
+            }
+        }
+    }
+}
+
 def javaVersion = legacy ? 21 : 25
 java {
     toolchain { languageVersion = JavaLanguageVersion.of(javaVersion) }
