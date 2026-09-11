@@ -90,16 +90,18 @@ tasks.named('test') { enabled = false }
 //
 //   * MUTED, because a test launch has no business playing sound through whatever speakers the
 //     build happened to run on. The master category covers every other one.
-//   * AS LITTLE RENDERING AS THE GAME WILL ACCEPT, because CI has no GPU and software GL competes
-//     for the very cores the integrated server needs. On 1.21.11 that starved it outright: the
-//     server logged "Can't keep up! Running 2004ms or 40 ticks behind", stopped at "Preparing
-//     spawn area: 16%", and the gametest failed with "Timeout loading world" while the client sat
-//     on LevelLoadingScreen. Capping the frame rate is the lever that matters - ticks still run at
-//     20/s, the render thread simply stops hogging the machine between them - and the rest trims
-//     what each frame costs. Nothing here inspects terrain or lighting.
+//   * AS LITTLE RENDERING AS THE GAME WILL ACCEPT, because CI has no GPU and every frame is drawn
+//     on the CPU the integrated server also needs. Nothing here inspects terrain or lighting.
+//     Note that CAPPING THE FRAME RATE IS NOT A LEVER HERE, however tempting: the gametest harness
+//     steps the client and the server together, so a slower client is a slower server - a 10 fps
+//     cap took 1.21.11 from 40 ticks behind to 460.
 ext.testClientOptions = [
         'soundCategory_master' : '0.0',
-        'maxFps'               : '10',
+        // NEVER PAUSE. Single-player pauses when the window loses focus, and it pauses the
+        // INTEGRATED SERVER with it - under xvfb there is no window manager to give focus to, so
+        // this is the difference between a world that loads and one that sits at "Preparing spawn
+        // area: 16%" while the server logs that it is 460 ticks behind.
+        'pauseOnLostFocus'     : 'false',
         'renderDistance'       : '2',
         'simulationDistance'   : '5',
         'enableVsync'          : 'false',
