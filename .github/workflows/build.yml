@@ -24,7 +24,7 @@ jobs:
           python-version: '3.x'
       # Client jars are pinned by version and sha1-verified, so caching them is safe.
       - name: Cache Minecraft client jars
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: build/minecraft
           key: mcjars-${{ hashFiles('tools/verify_targets.py') }}
@@ -122,7 +122,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: Cache Minecraft client jars
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: build/minecraft
           key: mc-${{ matrix.mc }}-${{ hashFiles('gradle.properties') }}
@@ -175,7 +175,7 @@ jobs:
       # The client jar and MC's libraries are ~112 MB fetched from Mojang. They are pinned by
       # version and sha1-verified, so caching them is safe and turns a cold minute into seconds.
       - name: Cache Minecraft compile classpath
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: build/minecraft
           key: mc-${{ matrix.mc }}-${{ hashFiles('gradle.properties') }}
