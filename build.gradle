@@ -318,6 +318,12 @@ repositories {
         name = 'FabricMC'
         url = 'https://maven.fabricmc.net/'
     }
+    // Quilt Loader, for the compatibility check in gradle/runclient.gradle. Nothing the mod ships
+    // comes from here - it is a test runtime, the way Fabric Loader is.
+    maven {
+        name = 'QuiltMC'
+        url = 'https://maven.quiltmc.org/repository/release/'
+    }
 }
 
 def mcVersion = project.minecraft_version

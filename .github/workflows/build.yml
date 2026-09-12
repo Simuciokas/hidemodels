@@ -238,6 +238,54 @@ jobs:
             build/run-neoforge-*/crash-reports/
           if-no-files-found: ignore
 
+  # DOES THE FABRIC JAR RUN ON QUILT? Quilt Loader reads fabric.mod.json and runs Fabric
+  # entrypoints, so in principle the Fabric jar is the Quilt jar - but "in principle" is not a
+  # claim worth putting on a project page, and the mod now depends on Fabric API, which Quilt has
+  # its own abandoned fork of. This job launches the actual jar under actual Quilt Loader, with the
+  # REAL Fabric API, and runs the same checks as everywhere else.
+  #
+  # 1.21.x only: Quilt Loader has no game provider for 26.x, so those versions are Fabric and
+  # NeoForge. Four versions spread across the range rather than all twelve - this is a check on the
+  # loader's compatibility layer, which does not vary per Minecraft version the way the mod does.
+  smoke-quilt:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mc: ['1.21.11', '1.21.8', '1.21.1', '1.20.6']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: |
+            25
+            21
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Cache Minecraft client jars
+        uses: actions/cache@v5
+        with:
+          path: build/minecraft
+          key: mc-${{ matrix.mc }}-quilt-${{ hashFiles('gradle.properties') }}
+
+      - name: Smoke test under Quilt Loader
+        timeout-minutes: 20
+        run: xvfb-run -a ./gradlew quiltSmokeTest -Pminecraft_version=${{ matrix.mc }}
+
+      - name: Upload the run log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-quilt-log-${{ matrix.mc }}
+          path: build/run*/logs/
+          if-no-files-found: ignore
+
   # One source tree, two build paths: 26.x compiles against Mojang's already-readable client jar
   # with no mappings at all, 1.21.x goes through Loom and is remapped to intermediary. Both are
   # built on every push, because the only thing that reliably catches a version-specific break is
