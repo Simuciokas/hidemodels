@@ -67,7 +67,7 @@ jobs:
             25
             21
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
 
       # The client needs a GL context even to reach the title screen; xvfb provides one headlessly.
       - name: Install xvfb
@@ -115,7 +115,7 @@ jobs:
             25
             21
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
 
       # The client needs a GL context even to reach the title screen; xvfb provides one headlessly.
       - name: Install xvfb
@@ -170,7 +170,7 @@ jobs:
             25
             21
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@v6
 
       # The client jar and MC's libraries are ~112 MB fetched from Mojang. They are pinned by
       # version and sha1-verified, so caching them is safe and turns a cold minute into seconds.
