@@ -1,6 +1,6 @@
 # Hide Models
 
-A client-side Fabric mod for **Minecraft 1.21.2 – 26.2** that stops chosen [ModelEngine](https://mythiccraft.io/index.php?resources/modelengine.1/)
+A client-side Fabric mod for **Minecraft 1.20.5 – 26.2** that stops chosen [ModelEngine](https://mythiccraft.io/index.php?resources/modelengine.1/)
 model pieces from rendering — a mount's head that blocks your view, a pet that follows you around,
 a visual effect you'd rather not see — chosen by their `item_model` id.
 
@@ -37,7 +37,8 @@ says so.
 
 ## Which versions it can target
 
-**1.21.2 through 26.2**, from one source tree with no preprocessor and no per-version source sets —
+**1.20.5 through 26.2** — eighteen releases — from one source tree with no preprocessor, and with
+exactly three small files that differ per version —
 every mixin target and every vanilla type the mod names resolves on all of them, checked against
 each version's own client jar rather than assumed. CI runs that matrix on every push.
 
@@ -45,9 +46,9 @@ each version's own client jar rather than assumed. CI runs that matrix on every 
 |---|---|---|
 | 26.2, 26.1.2, 26.1.1, 26.1 | resolves | the advertised range |
 | 1.21.11 … 1.21.2 | resolves | the advertised range |
-| 1.21.1 | resolves | but `item_model` does not exist, so it falls back to `custom_model_data` — the mod runs, and the ids you would write are different |
-| 1.20.6 | **one break** | `onDisconnect` takes `Component` there, `DisconnectionDetails` after — a Mixin handler must mirror its target's parameters, so this one needs a real branch |
-| 1.20.4 and earlier | **no** | no data components at all |
+| 1.21.1, 1.21 | resolves | but `item_model` does not exist yet, so the mod falls back to `custom_model_data` — it works, and the ids you write are those values instead |
+| 1.20.6, 1.20.5 | resolves | same `custom_model_data` fallback, plus a second copy of one mixin: `onDisconnect` takes a `Component` here and a `DisconnectionDetails` from 1.21, and a Mixin handler must mirror its target's parameters |
+| 1.20.4 and earlier | **no** | no data components at all — `DataComponentType` and the registry the mod resolves through simply are not there. This is a floor, not a to-do |
 
 Two deliberate choices keep that range on one source path, and both look like something to tidy up:
 
@@ -87,7 +88,7 @@ part of the range:
 | 26.2, 26.1.2, 26.1.1, 26.1 | yes | yes | **yes** | **no** — Fabric ships no gametest module for 26.x |
 | 1.21.11 … 1.21.9 | yes | yes | **yes** | locally only — see below |
 | 1.21.8 … 1.21.4 | yes | yes | **yes** | **yes** — all five |
-| 1.21.3, 1.21.2 | yes | yes | **yes** | **no** — the gametest API does not exist yet |
+| 1.21.3 … 1.20.5 | yes | yes | **yes** | **no** — the gametest API does not exist yet |
 
 `./gradlew smokeTest -Pminecraft_version=1.21.2` starts a real client with the mod, waits for it to
 render, and asserts the two things most likely to break when a version moves underneath the mod:
@@ -103,7 +104,7 @@ reads the component, intercepts its own command, and honours its config. No Mode
 server are needed, because the mod keys on a vanilla component on a vanilla entity — which is what
 makes it runnable anywhere.
 
-CI runs the smoke test on all fourteen versions and the gametest on 1.21.4 through 1.21.8, under xvfb.
+CI runs the smoke test on all eighteen versions and the gametest on 1.21.4 through 1.21.8, under xvfb.
 What the smoke test cannot cover is anything needing a world: the render hook, the command mixin
 and `ChatOut` are only exercised where the gametest runs.
 
@@ -119,14 +120,22 @@ those versions with `./gradlew runClientGameTest -Pminecraft_version=1.21.11`; t
 them covered in CI.
 
 Compiling is still what catches most version breaks — the checker is static and cannot see member
-access, which is exactly how the one real source difference below was found.
+access, which is exactly how the real source differences below were found.
 
-**One file differs across the range**, `ChatOut`, kept as two small copies under `src/mc26` and
-`src/mc121` rather than behind a preprocessor. The client-facing chat call was renamed —
-`LocalPlayer.displayClientMessage` up to 1.21.x, `sendSystemMessage` from 26.x — and reflection
-cannot bridge it, because a 1.21.x build is remapped to intermediary and the runtime name is
-`method_7353`. `CommandSource.sendSystemMessage` does exist on every version, but on 1.21.x the
-player does not override it, so the inherited server implementation would print nothing at all.
+**Three small files differ across the range**, each on its own boundary, kept as pairs of copies
+rather than behind a preprocessor. Notice that no two boundaries are in the same place — which is
+why they are three separate splits rather than one "old versus new" fork:
+
+| file | boundary | why |
+|---|---|---|
+| `ChatOut` (`src/mc121`, `src/mc26`) | 1.21.x ↔ 26.x | the client-facing chat call was renamed: `LocalPlayer.displayClientMessage` before, `sendSystemMessage` after |
+| `ClickRun` (`src/click121`, `src/click1215`) | 1.21.4 ↔ 1.21.5 | `ClickEvent` was a class with a constructor, and became a sealed interface whose cases are records |
+| `ClientDisconnectMixin` (`src/disconnect1206`, `src/disconnect121`) | 1.20.6 ↔ 1.21 | `onDisconnect` takes a `Component` before and a `DisconnectionDetails` after, and a Mixin handler must mirror its target's parameters |
+
+Reflection cannot paper over any of them: a 1.21.x build is remapped to intermediary, so the runtime
+name is something like `method_7353` and no name-based lookup would find it. For the chat call in
+particular, `CommandSource.sendSystemMessage` does exist on every version — but on 1.21.x the player
+does not override it, and the inherited server implementation prints nothing at all.
 
 Three things the checker does not tell you. It is a **static** check: that a hook exists is not that it
 fires. It reads only **declared** members, so an inherited one reads as absent. And it says nothing

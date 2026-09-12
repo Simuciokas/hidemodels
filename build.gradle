@@ -56,11 +56,35 @@ sourceSets.main.java.srcDir(legacy ? 'src/mc121/java' : 'src/mc26/java')
 // A SECOND SPLIT, on a DIFFERENT BOUNDARY, which is why it is not folded into the one above.
 // ClickEvent was a class with a constructor through 1.21.4 and became a sealed interface of records
 // in 1.21.5 - so the divide runs through the middle of the 1.21.x range, while ChatOut's divide is
-// between 1.21.x and 26.x. Listed explicitly rather than compared as versions: the list is short,
-// it is the same shape as hasGametest below, and a new version defaults to the modern form, which
-// is the one that will keep being right.
-def clickEventIsClass = project.minecraft_version in ['1.21.2', '1.21.3', '1.21.4']
-sourceSets.main.java.srcDir(clickEventIsClass ? 'src/click121/java' : 'src/click1215/java')
+// between 1.21.x and 26.x.
+//
+// Compared rather than listed. An explicit list of every version on the old side of a boundary is a
+// list that will be wrong the first time someone adds a version and forgets to update it, and with
+// the range now reaching back to 1.20.5 there are three such boundaries. "Older than 1.21.5" is the
+// actual rule, so that is what is written.
+ext.olderThan = { String bound ->
+    if (!legacy) {
+        return false                      // 26.x is newer than any 1.x bound
+    }
+    def parse = { String v -> v.tokenize('.').collect { it.toInteger() } }
+    def a = parse(project.minecraft_version)
+    def b = parse(bound)
+    for (int i = 0; i < Math.max(a.size(), b.size()); i++) {
+        int x = i < a.size() ? a[i] : 0
+        int y = i < b.size() ? b[i] : 0
+        if (x != y) {
+            return x < y
+        }
+    }
+    return false
+}
+sourceSets.main.java.srcDir(olderThan('1.21.5') ? 'src/click121/java' : 'src/click1215/java')
+
+// A THIRD SPLIT, and the only one that is a mixin. ClientCommonPacketListenerImpl.onDisconnect took
+// a Component up to 1.20.6 and a DisconnectionDetails from 1.21 - a Mixin handler must mirror its
+// target's parameters, so no single class can serve both. Only the disconnect hook is duplicated;
+// the custom-payload hook beside it is identical everywhere and stays in src/main.
+sourceSets.main.java.srcDir(olderThan('1.21') ? 'src/disconnect1206/java' : 'src/disconnect121/java')
 
 // The gametest class implements an interface that does not exist on every version, so it is
 // compiled - and declared as an entrypoint - only where it can be.

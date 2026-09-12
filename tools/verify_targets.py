@@ -34,7 +34,32 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(ROOT, "src", "main", "java")
-MIXIN_DIR = os.path.join(SRC_DIR, "io", "github", "simuciokas", "hidemodels", "mixin")
+PKG = os.path.join("io", "github", "simuciokas", "hidemodels", "mixin")
+MIXIN_DIR = os.path.join(SRC_DIR, PKG)
+
+# PER-VERSION MIXIN SOURCES. One hook could not be written once for the whole range:
+# ClientCommonPacketListenerImpl.onDisconnect takes a Component up to 1.20.6 and a
+# DisconnectionDetails from 1.21, and a Mixin handler must mirror its target. The build picks the
+# directory by version, and so must this - checking the 1.21 copy against 1.20.6 would report a
+# break the build never compiles. Keep in step with build.gradle's srcDir selection.
+VERSIONED_MIXIN_DIRS = [
+    (os.path.join(ROOT, "src", "disconnect1206", "java", PKG), lambda v: older_than(v, "1.21")),
+    (os.path.join(ROOT, "src", "disconnect121", "java", PKG), lambda v: not older_than(v, "1.21")),
+]
+
+
+def older_than(version, bound):
+    """Numeric version compare; a 26.x string is newer than any 1.x bound."""
+    if version.startswith("26"):
+        return False
+    parse = lambda s: [int(x) for x in re.findall(r"\d+", s)]
+    a, b = parse(version), parse(bound)
+    for i in range(max(len(a), len(b))):
+        x = a[i] if i < len(a) else 0
+        y = b[i] if i < len(b) else 0
+        if x != y:
+            return x < y
+    return False
 MANIFEST = "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json"
 
 # Things the mod needs that are not mixin targets: the component it identifies models by, and the
@@ -55,51 +80,57 @@ EXTRA_FIELDS = [
 
 
 # ---------------------------------------------------------------- reading the mod's own sources
-def parse_mixins():
+def parse_mixins(version=None):
     """
     Every (class, member, descriptor) the mod injects into, read from the sources themselves.
 
     Deliberately not a hand-kept list: a list would drift from the code, and a drifted checker is
     worse than none because it reports success about the wrong thing.
     """
+    dirs = [MIXIN_DIR]
+    for path, applies in VERSIONED_MIXIN_DIRS:
+        if os.path.isdir(path) and (version is None or applies(version)):
+            dirs.append(path)
+
     out = []
-    for name in sorted(os.listdir(MIXIN_DIR)):
-        if not name.endswith(".java"):
-            continue
-        src = open(os.path.join(MIXIN_DIR, name), encoding="utf-8").read()
-        imports = dict(re.findall(r"^import\s+([\w.]+\.(\w+));", src, re.M))
-        imports = {short: full for full, short in imports.items()}
-
-        m = re.search(r"@Mixin\(([\w.$]+)\.class\)", src)
-        if not m:
-            continue
-        target = m.group(1)
-        # "Display.ItemDisplay" is a nested class: the outer name is what was imported, and the
-        # jar spells the nesting with a dollar.
-        head = target.split(".")[0]
-        rest = target.split(".")[1:]
-        full = imports.get(head, head)
-        if rest:
-            full = full + "$" + "$".join(rest)
-
-        members = []
-        # An @Inject carrying require = 0 targets a method that DOES NOT EXIST on every supported
-        # version, and says so: Mixin treats zero matches as success there. ClientPacketListener
-        # gained sendUnattendedCommand in 1.21.6, and the mod hooks it where it exists so that a
-        # clicked command is intercepted like a typed one. Reporting that as a missing target on
-        # 1.21.2 would be reporting the design as a fault, so those are collected separately and
-        # only ever noted.
-        for inject in re.findall(r'@Inject\s*\(((?:[^()]|\([^()]*\))*)\)', src, re.S):
-            meth = re.search(r'method\s*=\s*"([^"]+)"', inject)
-            if not meth:
+    for directory in dirs:
+        for name in sorted(os.listdir(directory)):
+            if not name.endswith(".java"):
                 continue
-            optional = re.search(r'require\s*=\s*0\b', inject) is not None
-            members.append(("optional method" if optional else "method", meth.group(1)))
-        for inv in re.findall(r'@Invoker\("([^"]+)"\)', src):
-            members.append(("invoker", inv))
-        for acc in re.findall(r'@Accessor\("([^"]+)"\)', src):
-            members.append(("accessor", acc))
-        out.append({"file": name, "class": full, "members": members})
+            src = open(os.path.join(directory, name), encoding="utf-8").read()
+            imports = dict(re.findall(r"^import\s+([\w.]+\.(\w+));", src, re.M))
+            imports = {short: full for full, short in imports.items()}
+
+            m = re.search(r"@Mixin\(([\w.$]+)\.class\)", src)
+            if not m:
+                continue
+            target = m.group(1)
+            # "Display.ItemDisplay" is a nested class: the outer name is what was imported, and the
+            # jar spells the nesting with a dollar.
+            head = target.split(".")[0]
+            rest = target.split(".")[1:]
+            full = imports.get(head, head)
+            if rest:
+                full = full + "$" + "$".join(rest)
+
+            members = []
+            # An @Inject carrying require = 0 targets a method that DOES NOT EXIST on every supported
+            # version, and says so: Mixin treats zero matches as success there. ClientPacketListener
+            # gained sendUnattendedCommand in 1.21.6, and the mod hooks it where it exists so that a
+            # clicked command is intercepted like a typed one. Reporting that as a missing target on
+            # 1.21.2 would be reporting the design as a fault, so those are collected separately and
+            # only ever noted.
+            for inject in re.findall(r'@Inject\s*\(((?:[^()]|\([^()]*\))*)\)', src, re.S):
+                meth = re.search(r'method\s*=\s*"([^"]+)"', inject)
+                if not meth:
+                    continue
+                optional = re.search(r'require\s*=\s*0\b', inject) is not None
+                members.append(("optional method" if optional else "method", meth.group(1)))
+            for inv in re.findall(r'@Invoker\("([^"]+)"\)', src):
+                members.append(("invoker", inv))
+            for acc in re.findall(r'@Accessor\("([^"]+)"\)', src):
+                members.append(("accessor", acc))
+            out.append({"file": name, "class": full, "members": members})
     return out
 
 
@@ -363,15 +394,16 @@ def main(argv):
         props = open(os.path.join(ROOT, "gradle.properties"), encoding="utf-8").read()
         versions = [re.search(r"^minecraft_version=(.+)$", props, re.M).group(1).strip()]
 
-    mixins = parse_mixins()
     global IMPORTS
     IMPORTS = imported_classes()
+    # Counted from the first version asked for: one hook has a per-version copy, so the number is a
+    # property of the version rather than of the source tree.
     print("checking %d mixin targets and %d imported vanilla types\n"
-          % (sum(len(m["members"]) for m in mixins), len(IMPORTS)))
+          % (sum(len(m["members"]) for m in parse_mixins(versions[0])), len(IMPORTS)))
 
     worst = 0
     for v in versions:
-        ok, problems, notes = check_version(v, mixins)
+        ok, problems, notes = check_version(v, parse_mixins(v))
         print("%-8s %s" % (v, "OK - every target resolves" if ok
                            else "%d problem%s" % (len(problems), "" if len(problems) == 1 else "s")))
         for p in problems:
