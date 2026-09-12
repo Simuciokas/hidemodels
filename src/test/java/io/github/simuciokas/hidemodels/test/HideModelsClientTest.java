@@ -16,8 +16,10 @@
 package io.github.simuciokas.hidemodels.test;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.ParseResults;
 import com.mojang.brigadier.suggestion.Suggestions;
 import io.github.simuciokas.hidemodels.HideModels;
+import io.github.simuciokas.hidemodels.NearbyModels;
 import io.github.simuciokas.hidemodels.fabric.Cmd;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import io.github.simuciokas.hidemodels.mixin.ItemDisplayAccessor;
@@ -135,6 +137,28 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
             });
 
+            // 1b. THE GROUPING THE DRILL-DOWN RESTS ON. A piece count only becomes clickable on
+            //     rows whose key ends in a slash, so if grouping ever stopped trimming at the last
+            //     slash the link would quietly vanish from every row rather than break loudly.
+            //     Summoned as two bones of one model, which is the shape ModelEngine actually
+            //     produces and the shape the filter has to collapse back to one row.
+            singleplayer.getServer().runCommand(
+                    "summon item_display ~ ~1 ~ {item:{id:\"stone\",components:"
+                            + "{\"minecraft:item_model\":\"hidemodels:rig/head\"}}}");
+            singleplayer.getServer().runCommand(
+                    "summon item_display ~ ~1 ~ {item:{id:\"stone\",components:"
+                            + "{\"minecraft:item_model\":\"hidemodels:rig/body\"}}}");
+            context.waitTicks(20);
+
+            context.runOnClient(client -> {
+                final java.util.List<String> ids = NearbyModels.nearbyIds(32.0);
+                if (!ids.contains("hidemodels:rig/")) {
+                    throw new AssertionError("two bones of one model did not group into "
+                            + "'hidemodels:rig/' - the piece count would not be clickable. Got "
+                            + ids);
+                }
+            });
+
             // 2. THE COMMAND HOOK. Sent through the client's own connection on purpose: that is
             //    the path ClientPacketListenerMixin intercepts, and it is one of the two mixins a
             //    launch-to-main-menu smoke test never loads. Running it server-side would bypass
@@ -184,6 +208,23 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
                 System.out.println("[hidemodels-gametest] remove suggested "
                         + suggestions.getList().size() + " id(s)");
+
+                // THE DRILL-DOWN PARSES. A model row's piece count links to this exact shape, and
+                // the click is unattended: if the node arrangement is wrong the user gets a red
+                // parse error in chat with no way to tell it came from a link they clicked rather
+                // than from something they typed. Parsing is the whole assertion - running it needs
+                // a world with models in it, which the earlier checks already cover.
+                final String drill = HideModels.MOD_ID + " list bones 32.0 modelengine:some_mount/";
+                final ParseResults<FabricClientCommandSource> parsed =
+                        dispatcher.parse(drill, (FabricClientCommandSource) null);
+                // Both halves matter: an unknown argument shows up as an exception, but a tree that
+                // simply has nowhere to put the model name parses the prefix happily and leaves the
+                // rest unread - which would run the UNFILTERED list and look like it worked.
+                if (!parsed.getExceptions().isEmpty() || parsed.getReader().canRead()) {
+                    throw new AssertionError("the clickable piece count builds a command the tree "
+                            + "does not fully accept: " + drill + " - unread '"
+                            + parsed.getReader().getRemaining() + "', " + parsed.getExceptions());
+                }
             });
 
             // 5. THE COMMANDS THAT EDIT THE LIST. add/remove write the config themselves and force

@@ -86,7 +86,17 @@ public final class CommandTree {
                         .then(b.literal("bones")
                                 .executes(ctx -> list(HideModels.listRadius(), true))
                                 .then(b.argument("radius", DoubleArgumentType.doubleArg(1.0, 256.0))
-                                        .executes(ctx -> list(DoubleArgumentType.getDouble(ctx, "radius"), true)))))
+                                        .executes(ctx -> list(DoubleArgumentType.getDouble(ctx, "radius"), true))
+                                        // The drill-down, and the reason radius comes first rather
+                                        // than being optional here: brigadier reads arguments in
+                                        // order, so a model name could not sit in front of a
+                                        // number that may or may not follow it. The clickable
+                                        // piece count always sends both.
+                                        .then(b.argument("model", StringArgumentType.greedyString())
+                                                .suggests(nearby)
+                                                .executes(ctx -> list(
+                                                        DoubleArgumentType.getDouble(ctx, "radius"), true,
+                                                        StringArgumentType.getString(ctx, "model")))))))
                 .then(b.literal("add")
                         // greedyString: an id is one token today, but a pattern is a free-form
                         // fragment and nothing stops someone pasting one with a space in it.
@@ -138,7 +148,11 @@ public final class CommandTree {
     }
 
     private static int list(double radius, boolean bones) {
-        NearbyModels.report(radius, bones);
+        return list(radius, bones, null);
+    }
+
+    private static int list(double radius, boolean bones, String model) {
+        NearbyModels.report(radius, bones, model);
         return 1;
     }
 }

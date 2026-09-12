@@ -195,8 +195,8 @@ public final class HideModels {
                 + (serverDisabled ? ", DISABLED BY SERVER" : "")).withStyle(ChatFormatting.AQUA));
         NearbyModels.say(Component.literal("  /hidemodels list [radius]  - models nearby, grouped by model")
                 .withStyle(ChatFormatting.GRAY));
-        NearbyModels.say(Component.literal("  /hidemodels list bones [radius]  - individual bone ids")
-                .withStyle(ChatFormatting.GRAY));
+        NearbyModels.say(Component.literal("  /hidemodels list bones [radius] [model]  - individual "
+                + "bone ids (or click a piece count)").withStyle(ChatFormatting.GRAY));
         NearbyModels.say(Component.literal("  /hidemodels add <id>  - hide it now (or click an id in the list)")
                 .withStyle(ChatFormatting.GRAY));
         NearbyModels.say(Component.literal("  /hidemodels remove <id>  - stop hiding it")
@@ -603,6 +603,9 @@ public final class HideModels {
                 # CLICK AN ID in that list to hide it, or type /hidemodels add <id>. Lines added
                 # that way land at the end of this file, below whatever you have written here.
                 # /hidemodels remove <id> takes one back out.
+                #
+                # CLICK THE PIECE COUNT ("x7") beside a model to list just that model's bones, so
+                # one piece can be picked out without reading past every other model in range.
                 #
                 # Saved changes apply within a second; no restart needed.
                 """;

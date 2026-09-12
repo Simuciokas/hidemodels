@@ -205,7 +205,7 @@ renderer down with it.
 |---|---|
 | `/hidemodels` | status: pattern count, on/off, first-person and server-opt-out state |
 | `/hidemodels list [radius]` | every model within the radius, grouped by model, nearest first |
-| `/hidemodels list bones [radius]` | the same, but individual bone ids |
+| `/hidemodels list bones [radius] [model]` | the same, but individual bone ids — `model` narrows it to one model |
 | `/hidemodels add <id>` | hide it now — writes the line and reloads |
 | `/hidemodels remove <id>` | stop hiding it |
 | `/hidemodels on` / `off` | stop hiding without emptying the list |
@@ -232,16 +232,30 @@ whole loop is: stand next to the thing, run `list`, click it, watch it vanish. I
 hidden are not clickable — a click that did nothing would be worse than none, and removal stays a
 typed command on purpose, so nothing disappears from your config by a stray click in chat.
 
+**The piece counts are clickable too, and they go the other way — inward.** Clicking `x8` beside a
+model lists that model's eight bones and nothing else, each one clickable in turn, so hiding a
+single piece is: `list`, click the count, click the bone. That's the "see past the mount's head but
+keep the mount" case; plain `list bones` prints every bone of every model in range, which near a
+couple of mounts overruns the 40-row cap. Counts only link where there is something underneath —
+bone rows and slashless ids stay plain text.
+
+```
+hidemodels: 8 bones of modelengine:some_mount/ within 32 blocks (8 pieces)
+  x1  modelengine:some_mount/head   0.9m  click to hide
+  x1  modelengine:some_mount/body   1.2m  click to hide
+```
+
 `add` appends to the config rather than rewriting it, leaving your comments and directives where
 you put them, and reloads immediately instead of waiting for the poll. It tells you when an id is
 already covered by a broader line rather than silently adding a redundant one. `remove` deletes a
 line that matches exactly; if the id is only hidden because of a broader pattern, it says which one
 rather than deleting more than you asked.
 
-The command is handled entirely on the client and is **not** forwarded to the server. It also isn't
-registered in the command tree, so it won't tab-complete — vanilla builds that tree from what the
-server advertises, and adding a local command properly would mean depending on Fabric API, which
-this mod deliberately avoids.
+The command is handled entirely on the client and is **not** forwarded to the server. It is a real
+brigadier command in the client's own tree, so it tab-completes: `add` suggests the ids around you,
+`remove` suggests the patterns already in your config, and `list bones <radius>` suggests which
+model to narrow to — the three arguments nobody wants to type, each offered from the mod's own
+state without asking the server anything.
 
 ## Finding ids without the command
 
