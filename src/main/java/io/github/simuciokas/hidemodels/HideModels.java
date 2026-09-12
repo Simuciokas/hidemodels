@@ -21,7 +21,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
@@ -352,11 +351,15 @@ public final class HideModels {
         }
     }
 
-    /** Version straight from the jar metadata, so the help line cannot drift from the build. */
+    /**
+     * Version straight from the jar metadata, so the help line cannot drift from the build.
+     *
+     * <p>Asked of the loader through LoaderInfo, which has a copy per loader: this class knows
+     * about Minecraft and nothing else, which is what lets the same file build for Fabric and for
+     * NeoForge without a single conditional.
+     */
     private static String version() {
-        return FabricLoader.getInstance().getModContainer(MOD_ID)
-                .map(c -> c.getMetadata().getVersion().getFriendlyString() + " ")
-                .orElse("");
+        return LoaderInfo.modVersion();
     }
 
     /**

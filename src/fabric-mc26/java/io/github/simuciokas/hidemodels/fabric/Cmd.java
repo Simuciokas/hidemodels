@@ -16,6 +16,7 @@
 package io.github.simuciokas.hidemodels.fabric;
 
 import com.mojang.brigadier.arguments.ArgumentType;
+import io.github.simuciokas.hidemodels.CommandTree;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
@@ -33,16 +34,20 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
  * <p>It splits on the same boundary as ChatOut, 1.21.x against 26.x, which is why it lives beside
  * it rather than inventing a third set of directories.
  */
-public final class Cmd {
+public final class Cmd implements CommandTree.Builders<FabricClientCommandSource> {
+
+    public static final Cmd INSTANCE = new Cmd();
 
     private Cmd() {
     }
 
-    public static LiteralArgumentBuilder<FabricClientCommandSource> literal(String name) {
+    @Override
+    public LiteralArgumentBuilder<FabricClientCommandSource> literal(String name) {
         return ClientCommands.literal(name);
     }
 
-    public static <T> RequiredArgumentBuilder<FabricClientCommandSource, T> argument(
+    @Override
+    public <T> RequiredArgumentBuilder<FabricClientCommandSource, T> argument(
             String name, ArgumentType<T> type) {
         return ClientCommands.argument(name, type);
     }

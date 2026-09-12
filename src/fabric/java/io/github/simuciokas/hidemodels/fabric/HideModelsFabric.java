@@ -15,6 +15,7 @@
  */
 package io.github.simuciokas.hidemodels.fabric;
 
+import io.github.simuciokas.hidemodels.CommandTree;
 import io.github.simuciokas.hidemodels.HideModels;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -43,7 +44,7 @@ public final class HideModelsFabric implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ClientCommandRegistrationCallback.EVENT.register(
-                (dispatcher, registryAccess) -> dispatcher.register(HideModelsCommand.build()));
+                (dispatcher, registryAccess) -> dispatcher.register(CommandTree.build(Cmd.INSTANCE)));
 
         // A server's opt-out lasts for one connection. This is the whole of what the disconnect
         // mixin did, minus the version split its signature forced.

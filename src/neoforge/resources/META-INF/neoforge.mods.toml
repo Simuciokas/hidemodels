@@ -1,0 +1,39 @@
+# NeoForge's answer to fabric.mod.json. Same facts, different file, different syntax - and the
+# version and Minecraft range are templated by the build exactly as they are on the Fabric side.
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "LGPL-3.0-only"
+issueTrackerURL = "https://github.com/Simuciokas/hidemodels/issues"
+
+[[mods]]
+modId = "hidemodels"
+version = "${version}"
+displayName = "Hide Models"
+displayURL = "https://github.com/Simuciokas/hidemodels"
+logoFile = "assets/hidemodels/icon.png"
+authors = "Simuciokas"
+description = '''
+Hides chosen ModelEngine model pieces client-side by their item_model id - a mount's head that
+blocks your view, a pet that follows you around - by cancelling their rendering rather than
+removing the entities. Hitboxes, interactions and the server's view of the world are untouched.
+'''
+
+# THE SAME MIXIN CONFIG THE FABRIC JAR USES, declared here because NeoForge reads it from this file
+# rather than from mod metadata. The mixins target vanilla classes by their official names, and
+# NeoForge runs with official names, so not a line of them changes between the two jars.
+[[mixins]]
+config = "hidemodels.mixins.json"
+
+[[dependencies.hidemodels]]
+modId = "neoforge"
+type = "required"
+versionRange = "${neoForgeRange}"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.hidemodels]]
+modId = "minecraft"
+type = "required"
+versionRange = "${mcRange}"
+ordering = "NONE"
+side = "CLIENT"

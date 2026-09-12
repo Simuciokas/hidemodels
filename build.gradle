@@ -11,7 +11,40 @@ import java.security.MessageDigest
 plugins {
     id 'java'
     id 'fabric-loom' version '1.17.20' apply false
+    id 'net.neoforged.moddev' version '2.0.147' apply false
 }
+
+// TWO AXES, NOT ONE. The Minecraft version decides which names the game uses and whether the jar
+// needs remapping; the LOADER decides which metadata, which entrypoint, and which toolchain. They
+// are independent - NeoForge on 1.21.8 and Fabric on 1.21.8 differ in the second, not the first -
+// so the build selects source directories for each rather than enumerating the combinations.
+//
+//   ./gradlew build -Pminecraft_version=1.21.8                     # Fabric, the default
+//   ./gradlew build -Pminecraft_version=26.2 -Ploader=neoforge     # NeoForge
+def loader = (project.findProperty('loader') ?: 'fabric').toString()
+if (!(loader in ['fabric', 'neoforge'])) {
+    throw new GradleException("unknown loader '${loader}' - expected fabric or neoforge")
+}
+ext.loader = loader
+
+// NeoForge's own versions, one per Minecraft version. Their numbering follows Minecraft's minor:
+// 21.8.x is for 1.21.8, 26.2.x for 26.2 - which is tidy but not derivable, because the patch
+// number is theirs. From https://maven.neoforged.net/releases/net/neoforged/neoforge
+def NEOFORGE = [
+        '26.2'   : '26.2.0.87',
+        '26.1.2' : '26.1.2.109',
+        '1.21.11': '21.11.45',
+        '1.21.10': '21.10.64',
+        '1.21.8' : '21.8.54',
+        '1.21.7' : '21.7.28',
+        '1.21.6' : '21.6.20',
+        '1.21.5' : '21.5.98',
+        '1.21.4' : '21.4.157',
+        '1.21.3' : '21.3.86',
+        '1.21.1' : '21.1.209',
+        '1.20.6' : '20.6.141',
+]
+ext.neoForgeVersion = NEOFORGE[project.minecraft_version]
 
 def legacy = !project.minecraft_version.startsWith('26')
 ext.isLegacy = legacy   // read by gradle/run26.gradle, which cannot see a local def
@@ -78,8 +111,18 @@ if (legacy && fabricApiVersion == null) {
     logger.lifecycle("no Fabric API pinned for ${project.minecraft_version} - runClientGameTest "
             + "will not be available; add it to FABRIC_API in build.gradle")
 }
-if (legacy) {
+// Loom remaps a Fabric mod to intermediary, which is meaningless on NeoForge: it runs with
+// Mojang's official names, the same names this source is written in, so nothing needs remapping
+// there at all - on ANY Minecraft version. ModDevGradle supplies the game instead.
+if (loader == 'fabric' && legacy) {
     apply plugin: 'fabric-loom'
+}
+if (loader == 'neoforge') {
+    if (neoForgeVersion == null) {
+        throw new GradleException("no NeoForge version known for Minecraft ${project.minecraft_version}"
+                + " - add a row to NEOFORGE in build.gradle")
+    }
+    apply plugin: 'net.neoforged.moddev'
 }
 
 // ONE FILE DIFFERS BETWEEN VERSIONS, and it is a source set rather than a preprocessor because one
@@ -123,13 +166,26 @@ sourceSets.main.java.srcDir(olderThan('1.21.5') ? 'src/click121/java' : 'src/cli
 //
 // (This is where the disconnect mixin used to be selected from a per-version directory. Fabric's
 // disconnect event has no signature to mirror, so that split is simply gone.)
-sourceSets.main.java.srcDir('src/fabric/java')
+sourceSets.main.java.srcDir("src/${loader}/java")
+sourceSets.main.resources.srcDir("src/${loader}/resources")
 
 // Fabric API renamed the class holding the client-command builders - ClientCommandManager through
 // 1.21.11, ClientCommands from 26.1 - so the shim that wraps those two methods splits on the same
 // boundary as ChatOut. A rename in a library, rather than in Minecraft, but the handling is the
 // same shape.
-sourceSets.main.java.srcDir(legacy ? 'src/fabric-mc121/java' : 'src/fabric-mc26/java')
+if (loader == 'fabric') {
+    sourceSets.main.java.srcDir(legacy ? 'src/fabric-mc121/java' : 'src/fabric-mc26/java')
+}
+
+// BOTH TEST HARNESSES ARE FABRIC'S. The smoke test is a ClientModInitializer and the gametest
+// implements a Fabric API interface, so neither compiles on the NeoForge path - and neither should:
+// NeoForge has its own test story, and pretending otherwise would mean a second harness nobody has
+// written yet. What still covers the NeoForge jar is what does not care which loader it is: the
+// targets checker, which reads vanilla mixin targets, and the compile itself.
+if (loader != 'fabric') {
+    sourceSets.test.java.setSrcDirs([])
+    sourceSets.test.resources.setSrcDirs([])
+}
 
 // The gametest class implements an interface that does not exist on every version, so it is
 // compiled - and declared as an entrypoint - only where it can be.
@@ -309,8 +365,23 @@ tasks.register('downloadMinecraft') {
     }
 }
 
+if (loader == 'neoforge') {
+    neoForge {
+        version = neoForgeVersion
+        // No runs declared: the Fabric side's gametest and smoke harnesses are Fabric's, and
+        // NeoForge's own game-test story is a separate piece of work. What this build guarantees
+        // today is that the NeoForge jar compiles against the real NeoForge and carries correct
+        // metadata - the targets checker still proves every mixin resolves, because the mixins are
+        // vanilla and loader-agnostic.
+        validateAccessTransformers = false
+    }
+}
+
 dependencies {
-    if (legacy) {
+    if (loader == 'neoforge') {
+        // ModDevGradle puts Minecraft and NeoForge on the classpath itself. Nothing else is needed:
+        // there is no Fabric API here, and the command registration uses NeoForge's own events.
+    } else if (legacy) {
         // FABRIC API, now a real dependency of the mod rather than a test-only one. It is what
         // registers /hidemodels as an actual client command instead of intercepting the outgoing
         // packet, and what reports a disconnect without a mixin whose signature changes between
@@ -470,10 +541,21 @@ processResources {
     inputs.property 'version', project.version
     inputs.property 'mcDep', mcDep
     inputs.property 'javaVersion', javaVersion
-    filesMatching(['fabric.mod.json', 'hidemodels.mixins.json']) {
+    inputs.property 'loader', loader
+
+    // NeoForge states its ranges in Maven notation rather than Fabric's semver predicates: exactly
+    // this Minecraft version, and this NeoForge build or newer within it.
+    def mcRange = "[${project.minecraft_version}]"
+    def neoForgeRange = neoForgeVersion == null ? "" : "[${neoForgeVersion},)"
+    inputs.property 'mcRange', mcRange
+    inputs.property 'neoForgeRange', neoForgeRange
+
+    filesMatching(['fabric.mod.json', 'hidemodels.mixins.json', 'META-INF/neoforge.mods.toml']) {
         expand 'version': project.version,
                'mcDep': mcDep,
-               'javaVersion': javaVersion
+               'javaVersion': javaVersion,
+               'mcRange': mcRange,
+               'neoForgeRange': neoForgeRange
     }
 }
 
@@ -487,9 +569,10 @@ jar {
     }
 }
 
-// The jar says which Minecraft it is for, so two of them can sit in one folder without guessing.
+// The jar says which Minecraft AND which loader it is for, so a folder full of them is readable at
+// a glance and nothing has to be guessed from a hash.
 tasks.withType(AbstractArchiveTask).configureEach {
-    archiveVersion = "${project.mod_version}+mc${project.minecraft_version}"
+    archiveVersion = "${project.mod_version}+mc${project.minecraft_version}-${loader}"
 }
 
 // The hand-rolled client launcher. It exists because 26.x has no Loom, and it now serves 1.21.x
