@@ -284,4 +284,18 @@ tag.
 
 ## License
 
-MIT.
+**LGPL-3.0-only.** The full text is in [LICENSE](LICENSE); LGPLv3 is written as a set of additional
+permissions on top of GPLv3, so that text is included as [COPYING](COPYING) too, as the licence
+itself requires.
+
+In practice: use it, ship it in a modpack, fork it — but if you distribute a modified version of
+*this* code, those modifications stay open under the same licence. A separate mod that merely
+depends on this one is unaffected, which is the difference between LGPL and GPL and the reason this
+is the common choice for Minecraft mods (Iris, Lithium and Sodium Extra all use it).
+
+Releases up to and including **1.4.2 were published under MIT** and remain so; the change applies
+from 1.5.0 onward.
+
+Two things this licence does not cover, because they are not mine to license: the mod's icon is a
+screenshot of Minecraft containing Mojang's assets and a third-party ModelEngine model, and nothing
+here grants any right to Minecraft itself.

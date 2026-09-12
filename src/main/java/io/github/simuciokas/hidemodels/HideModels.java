@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 Simuciokas
+ *
+ * This file is part of Hide Models.
+ *
+ * Hide Models is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU Lesser General Public License version 3 as published by the Free Software Foundation.
+ *
+ * Hide Models is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+ * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License along with Hide Models.
+ * If not, see <https://www.gnu.org/licenses/>.
+ */
 package io.github.simuciokas.hidemodels;
 
 import java.io.IOException;
@@ -169,89 +184,39 @@ public final class HideModels {
     }
 
     /**
-     * Handles {@code /hidemodels ...}, returning true when the command was ours and so must not be
-     * sent on to the server. Called from the client's command-send path.
+     * The status line and the usage lines, printed by {@code /hidemodels} with no arguments.
+     *
+     * <p>Public because the command tree lives in the loader-specific source set now: Fabric
+     * registers it through Fabric API and NeoForge through its own event, and both call into this.
      */
-    public static boolean handleCommand(String command) {
-        if (command == null) {
-            return false;
-        }
-        // The typed path hands it over without a slash; a CLICKED one is trimmed by the game before
-        // it gets here. Stripping it anyway costs nothing and means the two paths cannot diverge.
-        String line = command.trim();
-        if (line.startsWith("/")) {
-            line = line.substring(1).trim();
-        }
-        final String lower = line.toLowerCase(Locale.ROOT);
-        if (!lower.equals(MOD_ID) && !lower.startsWith(MOD_ID + " ")) {
-            return false;
-        }
-        maybeReload();                       // so the report reflects a config saved a moment ago
-        final String rest = line.length() > MOD_ID.length()
-                ? line.substring(MOD_ID.length()).trim() : "";
-        final String[] arg = rest.isEmpty() ? new String[0] : rest.split("\\s+");
+    public static void status() {
+        NearbyModels.say(Component.literal("hidemodels " + version() + "- " + patterns.length
+                + " pattern(s), " + (enabled ? "on" : "off")
+                + (firstPersonOnly ? ", first person only" : "")
+                + (serverDisabled ? ", DISABLED BY SERVER" : "")).withStyle(ChatFormatting.AQUA));
+        NearbyModels.say(Component.literal("  /hidemodels list [radius]  - models nearby, grouped by model")
+                .withStyle(ChatFormatting.GRAY));
+        NearbyModels.say(Component.literal("  /hidemodels list bones [radius]  - individual bone ids")
+                .withStyle(ChatFormatting.GRAY));
+        NearbyModels.say(Component.literal("  /hidemodels add <id>  - hide it now (or click an id in the list)")
+                .withStyle(ChatFormatting.GRAY));
+        NearbyModels.say(Component.literal("  /hidemodels remove <id>  - stop hiding it")
+                .withStyle(ChatFormatting.GRAY));
+        NearbyModels.say(Component.literal("  config/" + MOD_ID
+                + ".txt holds the list and the directives (default radius " + listRadius + ")")
+                .withStyle(ChatFormatting.DARK_GRAY));
+    }
 
-        if (arg.length == 0 || arg[0].equalsIgnoreCase("help")) {
-            NearbyModels.say(Component.literal("hidemodels " + version() + "- " + patterns.length
-                    + " pattern(s), " + (enabled ? "on" : "off")
-                    + (firstPersonOnly ? ", first person only" : "")
-                    + (serverDisabled ? ", DISABLED BY SERVER" : "")).withStyle(ChatFormatting.AQUA));
-            NearbyModels.say(Component.literal("  /hidemodels list [radius]  - models nearby, grouped by model")
-                    .withStyle(ChatFormatting.GRAY));
-            NearbyModels.say(Component.literal("  /hidemodels list bones [radius]  - individual bone ids")
-                    .withStyle(ChatFormatting.GRAY));
-            NearbyModels.say(Component.literal("  /hidemodels add <id>  - hide it now (or click an id in the list)")
-                    .withStyle(ChatFormatting.GRAY));
-            NearbyModels.say(Component.literal("  /hidemodels remove <id>  - stop hiding it")
-                    .withStyle(ChatFormatting.GRAY));
-            NearbyModels.say(Component.literal("  config/" + MOD_ID
-                    + ".txt holds the list and the directives (default radius " + listRadius + ")")
-                    .withStyle(ChatFormatting.DARK_GRAY));
-            return true;
-        }
-        if (arg[0].equalsIgnoreCase("list")) {
-            boolean bones = false;
-            int at = 1;
-            if (arg.length > at && arg[at].equalsIgnoreCase("bones")) {
-                bones = true;
-                at++;
-            }
-            double radius = listRadius;
-            if (arg.length > at) {
-                final double parsed = parseRadius(arg[at]);
-                if (parsed <= 0) {
-                    NearbyModels.say(Component.literal("hidemodels: '" + arg[at]
-                            + "' is not a radius in blocks").withStyle(ChatFormatting.RED));
-                    return true;
-                }
-                radius = parsed;
-            }
-            NearbyModels.report(radius, bones);
-            return true;
-        }
-        if (arg[0].equalsIgnoreCase("add")) {
-            if (arg.length < 2) {
-                NearbyModels.say(Component.literal(
-                        "hidemodels: add what? try /hidemodels list to see the ids around you")
-                        .withStyle(ChatFormatting.RED));
-                return true;
-            }
-            add(rest.substring(arg[0].length()).trim());
-            return true;
-        }
-        if (arg[0].equalsIgnoreCase("remove") || arg[0].equalsIgnoreCase("rm")) {
-            if (arg.length < 2) {
-                NearbyModels.say(Component.literal(
-                        "hidemodels: remove what? try /hidemodels list to see what is hidden")
-                        .withStyle(ChatFormatting.RED));
-                return true;
-            }
-            remove(rest.substring(arg[0].length()).trim());
-            return true;
-        }
-        NearbyModels.say(Component.literal("hidemodels: unknown subcommand '" + arg[0]
-                + "' - try /hidemodels help").withStyle(ChatFormatting.RED));
-        return true;
+    /** The configured default radius for {@code /hidemodels list}, in blocks. */
+    public static double listRadius() {
+        maybeReload();
+        return listRadius;
+    }
+
+    /** The patterns currently loaded, for the remove command's suggestions. */
+    public static String[] patterns() {
+        maybeReload();
+        return patterns.clone();
     }
 
     /**
@@ -261,7 +226,7 @@ public final class HideModels {
      * comments and directives explaining itself, and a round-trip through this class would flatten
      * all of that. A line is added at the end, where a person would have put it.
      */
-    private static void add(String raw) {
+    public static void add(String raw) {
         final String pattern = raw.trim().toLowerCase(Locale.ROOT);
         if (pattern.isEmpty() || pattern.startsWith("#")) {
             NearbyModels.say(Component.literal("hidemodels: '" + raw + "' is not an id")
@@ -302,7 +267,7 @@ public final class HideModels {
      * nothing while claiming success. So an exact line is removed, and a broader line that still
      * covers the id is reported rather than touched.
      */
-    private static void remove(String raw) {
+    public static void remove(String raw) {
         final String pattern = raw.trim().toLowerCase(Locale.ROOT);
         if (pattern.isEmpty()) {
             NearbyModels.say(Component.literal("hidemodels: remove what?").withStyle(ChatFormatting.RED));

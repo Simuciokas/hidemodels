@@ -25,14 +25,20 @@ def FABRIC_API = [
         '26.1.2' : '0.155.3+26.1.2',
         '26.1.1' : '0.155.3+26.1.2',
         '26.1'   : '0.155.3+26.1.2',
-        '1.21.4' : '0.119.4+1.21.4',
-        '1.21.5' : '0.128.2+1.21.5',
-        '1.21.6' : '0.128.2+1.21.6',
-        '1.21.7' : '0.129.0+1.21.7',
-        '1.21.8' : '0.136.1+1.21.8',
-        '1.21.9' : '0.134.1+1.21.9',
-        '1.21.10': '0.138.4+1.21.10',
         '1.21.11': '0.141.6+1.21.11',
+        '1.21.10': '0.138.4+1.21.10',
+        '1.21.9' : '0.134.1+1.21.9',
+        '1.21.8' : '0.136.1+1.21.8',
+        '1.21.7' : '0.129.0+1.21.7',
+        '1.21.6' : '0.128.2+1.21.6',
+        '1.21.5' : '0.128.2+1.21.5',
+        '1.21.4' : '0.119.4+1.21.4',
+        '1.21.3' : '0.114.1+1.21.3',
+        '1.21.2' : '0.106.1+1.21.2',
+        '1.21.1' : '0.116.17+1.21.1',
+        '1.21'   : '0.102.0+1.21',
+        '1.20.6' : '0.100.8+1.20.6',
+        '1.20.5' : '0.97.8+1.20.5',
 ]
 // The client gametest harness is a SEPARATE artifact, never bundled inside the fabric-api jar -
 // not even on versions where it works. It has to be named, and on the 26.x path it has to be named
@@ -58,10 +64,12 @@ def GAMETEST_MODULE = [
         '26.1'   : '5.1.0+0a5283664c',
 ]
 def fabricApiVersion = FABRIC_API[project.minecraft_version]
-// Fabric's client gametest API arrived in 1.21.4 and is published for every version since,
-// 26.x INCLUDED - the map above is the list of versions it can run on, so being in it is the test.
-// (It is absent below 1.21.4: checked against each version's own fabric-api POM, not assumed.)
-def hasGametest = fabricApiVersion != null
+// Keyed on the GAMETEST MODULE, not on Fabric API. The mod itself now depends on Fabric API, so
+// every supported version has a row above and that map no longer says anything about testing.
+// The harness is the real constraint: it arrived in 1.21.4 and is published for every version
+// since, 26.x included, and does not exist before - checked against each version's own fabric-api
+// POM rather than assumed.
+def hasGametest = GAMETEST_MODULE[project.minecraft_version] != null
 ext.gametestModuleVersion = GAMETEST_MODULE[project.minecraft_version]
 ext.fabricApiVersion = fabricApiVersion
 ext.hasGametest = hasGametest
@@ -108,11 +116,20 @@ ext.olderThan = { String bound ->
 }
 sourceSets.main.java.srcDir(olderThan('1.21.5') ? 'src/click121/java' : 'src/click1215/java')
 
-// A THIRD SPLIT, and the only one that is a mixin. ClientCommonPacketListenerImpl.onDisconnect took
-// a Component up to 1.20.6 and a DisconnectionDetails from 1.21 - a Mixin handler must mirror its
-// target's parameters, so no single class can serve both. Only the disconnect hook is duplicated;
-// the custom-payload hook beside it is identical everywhere and stays in src/main.
-sourceSets.main.java.srcDir(olderThan('1.21') ? 'src/disconnect1206/java' : 'src/disconnect121/java')
+// THE LOADER'S OWN CODE. src/main is loader-agnostic - it knows about Minecraft and nothing else -
+// and everything that talks to Fabric API lives here: the registered command and the disconnect
+// event. When the NeoForge build lands it gets src/neoforge beside this, and src/main does not
+// move an inch.
+//
+// (This is where the disconnect mixin used to be selected from a per-version directory. Fabric's
+// disconnect event has no signature to mirror, so that split is simply gone.)
+sourceSets.main.java.srcDir('src/fabric/java')
+
+// Fabric API renamed the class holding the client-command builders - ClientCommandManager through
+// 1.21.11, ClientCommands from 26.1 - so the shim that wraps those two methods splits on the same
+// boundary as ChatOut. A rename in a library, rather than in Minecraft, but the handling is the
+// same shape.
+sourceSets.main.java.srcDir(legacy ? 'src/fabric-mc121/java' : 'src/fabric-mc26/java')
 
 // The gametest class implements an interface that does not exist on every version, so it is
 // compiled - and declared as an entrypoint - only where it can be.
@@ -294,27 +311,18 @@ tasks.register('downloadMinecraft') {
 
 dependencies {
     if (legacy) {
-        // The client gametest harness, and ONLY for tests: the mod itself has no Fabric API
-        // dependency and the shipped jar declares none. modClientImplementation keeps it off the
-        // production classpath entirely.
-        // The harness that drives a real client. modImplementation, not testImplementation:
-        // only the mod* configurations go through Loom's remapper, and a plain testImplementation
-        // hands over the intermediary-named jar - which fails to compile with "cannot access
-        // class_310" because the source is written in official names.
+        // FABRIC API, now a real dependency of the mod rather than a test-only one. It is what
+        // registers /hidemodels as an actual client command instead of intercepting the outgoing
+        // packet, and what reports a disconnect without a mixin whose signature changes between
+        // versions. The shipped jar declares the dependency, so Loader tells the user to install
+        // it rather than failing obscurely.
         //
-        // It being on the dev classpath does not put it in the released jar: nothing declares a
-        // dependency on it, and the entrypoint that uses it lives in the test source set's own
-        // fabric.mod.json, a separate mod that is never published.
-        // THE WHOLE API, not just the gametest module. fabricApi.module() resolves one module
-        // without its dependencies, and the harness needs fabric-resource-loader-v0 - Loader
-        // refuses to start without it. Chasing the transitive list by hand is a losing game; this
-        // is a dev-time dependency either way and costs the released jar nothing.
-        // Only where Fabric actually ships the client gametest harness. It was added in 1.21.4,
-        // and 26.x has no gametest module at all - on those versions the smoke test is the whole
-        // of the automated coverage, and it deliberately needs no Fabric API.
-        if (hasGametest) {
-            modImplementation "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
-        }
+        // modImplementation, not implementation: only the mod* configurations go through Loom's
+        // remapper, and a plain implementation hands over the intermediary-named jar - which fails
+        // to compile with "cannot access class_310" because this source is written in official
+        // names. THE WHOLE API rather than single modules: fabricApi.module() resolves one module
+        // without its dependencies, and chasing that transitive list by hand is a losing game.
+        modImplementation "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
 
         // Loom's own coordinates. officialMojangMappings() rather than yarn: the source is written
         // in official names for the 26.x path, and asking Loom for the same names means ONE source
@@ -332,6 +340,11 @@ dependencies {
         // Both are provided at runtime by the Fabric installation.
         compileOnly "net.fabricmc:fabric-loader:${project.loader_version}"
         compileOnly "net.fabricmc:sponge-mixin:${project.mixin_version}"
+
+        // Fabric API, compileOnly because the user installs it - the jar declares the dependency
+        // and Loader enforces it. Published jars are remapped to intermediary, which on 26.x is
+        // the identity mapping, so they can be compiled against directly with no Loom involved.
+        compileOnly "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
 
         // The client gametest harness, for the TEST source set only. On the Loom path this arrives
         // through fabric-api's POM; here it has to be named, because there is no Loom to read that

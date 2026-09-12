@@ -42,10 +42,13 @@ configurations {
     // in an installed game. 26.x needs none of it - the jar is already in readable names, which is
     // why intermediary is not even published there.
     intermediaryMappings
-    // The client gametest harness, as MODS rather than classpath entries: Loader discovers them
-    // from mods/ like any other mod, and the harness only starts when its entrypoint is found
-    // there. Resolved without transitives on purpose - fabric-api's POM lists all forty-odd
-    // modules, while the jar itself already bundles the ones needed at runtime.
+    // Fabric API, as a MOD rather than a classpath entry: Loader discovers it from mods/ like any
+    // other mod. The mod under test depends on it now - the command is registered through it - so
+    // every launch here needs it present or Loader refuses to start. Resolved without transitives
+    // on purpose: fabric-api's POM lists all forty-odd modules, while the jar itself bundles the
+    // ones needed at runtime.
+    fabricApiRuntime { transitive = false }
+    // The gametest harness on top, which is a separate artifact and only exists for some versions.
     gametestHarness { transitive = false }
 }
 dependencies {
@@ -53,8 +56,8 @@ dependencies {
     if (legacy) {
         intermediaryMappings "net.fabricmc:intermediary:${mc}:v2"
     }
+    fabricApiRuntime "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
     if (project.hasGametest) {
-        gametestHarness "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
         gametestHarness "net.fabricmc.fabric-api:fabric-client-gametest-api-v1:${project.gametestModuleVersion}"
     }
 }
@@ -206,6 +209,7 @@ if (!legacy) {
             copy {
                 from tasks.jar.archiveFile
                 from tasks.named('testModJar').get().archiveFile
+                from configurations.fabricApiRuntime
                 into mods
             }
             // A stale verdict would be indistinguishable from a fresh one.
@@ -276,9 +280,10 @@ if (!legacy) {
             copy {
                 from tasks.jar.archiveFile
                 from tasks.named('testModJar').get().archiveFile
+                from configurations.fabricApiRuntime
                 into mods
             }
-            // The harness and the API it needs, dropped in as mods. No remapping on 26.x - intermediary
+            // The harness on top of the API. No remapping on 26.x - intermediary
             // is the identity mapping there, which is the same reason the mod's own jar ships with
             // Fabric-Loom-Remap: false.
             copy {
@@ -374,6 +379,7 @@ if (legacy && project.hasGametest && project.gametestModuleVersion != null) {
             copy {
                 from tasks.named('remapJar').get().archiveFile
                 from tasks.named('remapTestModJar').get().archiveFile
+                from configurations.fabricApiRuntime
                 from configurations.gametestHarness
                 into mods
             }

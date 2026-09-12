@@ -37,15 +37,11 @@ SRC_DIR = os.path.join(ROOT, "src", "main", "java")
 PKG = os.path.join("io", "github", "simuciokas", "hidemodels", "mixin")
 MIXIN_DIR = os.path.join(SRC_DIR, PKG)
 
-# PER-VERSION MIXIN SOURCES. One hook could not be written once for the whole range:
-# ClientCommonPacketListenerImpl.onDisconnect takes a Component up to 1.20.6 and a
-# DisconnectionDetails from 1.21, and a Mixin handler must mirror its target. The build picks the
-# directory by version, and so must this - checking the 1.21 copy against 1.20.6 would report a
-# break the build never compiles. Keep in step with build.gradle's srcDir selection.
-VERSIONED_MIXIN_DIRS = [
-    (os.path.join(ROOT, "src", "disconnect1206", "java", PKG), lambda v: older_than(v, "1.21")),
-    (os.path.join(ROOT, "src", "disconnect121", "java", PKG), lambda v: not older_than(v, "1.21")),
-]
+# No per-version mixin sources any more. The one mixin that needed a copy per version - the
+# disconnect hook, whose target's parameter changed in 1.21 - was replaced by a loader event when
+# the mod took a Fabric API dependency. Kept as an empty list because the mechanism is worth having
+# the moment another hook's signature moves.
+VERSIONED_MIXIN_DIRS = []
 
 
 def older_than(version, bound):
@@ -60,6 +56,8 @@ def older_than(version, bound):
         if x != y:
             return x < y
     return False
+
+
 MANIFEST = "https://launchermeta.mojang.com/mc/game/version_manifest_v2.json"
 
 # Things the mod needs that are not mixin targets: the component it identifies models by, and the
@@ -114,12 +112,11 @@ def parse_mixins(version=None):
                 full = full + "$" + "$".join(rest)
 
             members = []
-            # An @Inject carrying require = 0 targets a method that DOES NOT EXIST on every supported
-            # version, and says so: Mixin treats zero matches as success there. ClientPacketListener
-            # gained sendUnattendedCommand in 1.21.6, and the mod hooks it where it exists so that a
-            # clicked command is intercepted like a typed one. Reporting that as a missing target on
-            # 1.21.2 would be reporting the design as a fault, so those are collected separately and
-            # only ever noted.
+            # An @Inject carrying require = 0 targets a method that DOES NOT EXIST on every
+            # supported version, and says so: Mixin treats zero matches as success there, so
+            # reporting it as missing would be reporting the design as a fault. Nothing uses it
+            # today - the hook that did, on ClientPacketListener.sendUnattendedCommand, became a
+            # registered command - but the next hook whose target arrives mid-range will.
             for inject in re.findall(r'@Inject\s*\(((?:[^()]|\([^()]*\))*)\)', src, re.S):
                 meth = re.search(r'method\s*=\s*"([^"]+)"', inject)
                 if not meth:

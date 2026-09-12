@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 Simuciokas
+ *
+ * This file is part of Hide Models.
+ *
+ * Hide Models is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU Lesser General Public License version 3 as published by the Free Software Foundation.
+ *
+ * Hide Models is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+ * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License along with Hide Models.
+ * If not, see <https://www.gnu.org/licenses/>.
+ */
 package io.github.simuciokas.hidemodels.test;
 
 import io.github.simuciokas.hidemodels.HideModels;
@@ -16,15 +31,15 @@ import net.minecraft.client.Minecraft;
  * there is no harness to run and this is the only automated proof that a line of the mod runs.
  * It also carries the three versions that have a harness but cannot load a world on a CI runner,
  * 1.21.9 through 1.21.11.
- * (26.x DOES have one, contrary to an earlier note here: the module is published for it, and
- * gradle/run26.gradle launches it by hand. The thing 26.x lacks is Loom, not the harness.)
+ * (26.x DOES have one: the module is published for it, and gradle/runclient.gradle launches it by
+ * hand. The thing 26.x lacks is Loom, not the harness.)
  *
- * <p>So this deliberately depends on nothing beyond {@code ClientModInitializer}, which every
- * version has, and drives itself from a watcher thread rather than a tick event - a tick event
- * would mean Fabric API or a second mixin, and the whole point is to need neither.
+ * <p>It drives itself from a watcher thread rather than a tick event, so it needs nothing beyond
+ * {@code ClientModInitializer} - which matters because it has to compile and run on every supported
+ * version, including the six with no gametest harness.
  *
- * <p>WHAT IT CANNOT COVER. There is no world and no player, so the render hook, the command mixin
- * and ChatOut are all out of reach; the gametest covers those where it can run. What this does
+ * <p>WHAT IT CANNOT COVER. There is no world and no player, so the render hook, the registered
+ * command and ChatOut are all out of reach; the gametest covers those where it can run. What this does
  * cover is the one thing most likely to break when a version moves underneath the mod: whether the
  * item_model component can still be resolved from the registry at all, and whether the config
  * still drives the matcher.
@@ -122,23 +137,23 @@ public final class HideModelsSmokeTest implements ClientModInitializer {
     /**
      * The add and remove commands, which are the only part of them that works without a world.
      *
-     * <p>Calls the handler directly rather than through the connection, because there is no server
-     * to have a connection to. That skips the mixin - the gametest covers interception where it can
-     * run - but it does cover everything the handler itself does: parsing, writing the config, and
-     * forcing the reload. Below 1.21.4, where no harness exists, this is the only automated proof
-     * that the commands do anything at all, and the file-writing half is the half most likely to
-     * break on a machine or a version nobody tried.
+     * <p>Calls the mod's own add/remove directly rather than through the command, because there is
+     * no server to have a connection to and a client command needs one. That skips the registration
+     * - the gametest covers the command itself where it can run - but it does cover what the
+     * commands actually do: writing the config and forcing the reload. Below 1.21.4, where no
+     * harness exists, this is the only automated proof that they do anything at all, and the
+     * file-writing half is the half most likely to break on a version nobody tried.
      */
     private static void checkCommandsEditTheList() throws IOException, InterruptedException {
         final String id = "hidemodels:smoke_command";
         write("# cleared by the smoke test");
         waitUntil(() -> !HideModels.hidden(id), "the pattern list never started empty");
 
-        HideModels.handleCommand(HideModels.MOD_ID + " add " + id);
+        HideModels.add(id);
         waitUntil(() -> HideModels.hidden(id),
                   "/hidemodels add wrote nothing the matcher picked up");
 
-        HideModels.handleCommand(HideModels.MOD_ID + " remove " + id);
+        HideModels.remove(id);
         waitUntil(() -> !HideModels.hidden(id),
                   "/hidemodels remove left the id hidden");
     }

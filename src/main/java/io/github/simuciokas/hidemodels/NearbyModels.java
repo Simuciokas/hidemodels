@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 Simuciokas
+ *
+ * This file is part of Hide Models.
+ *
+ * Hide Models is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU Lesser General Public License version 3 as published by the Free Software Foundation.
+ *
+ * Hide Models is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+ * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License along with Hide Models.
+ * If not, see <https://www.gnu.org/licenses/>.
+ */
 package io.github.simuciokas.hidemodels;
 
 import io.github.simuciokas.hidemodels.mixin.ItemDisplayAccessor;
@@ -46,34 +61,10 @@ public final class NearbyModels {
             say(Component.literal("hidemodels: not in a world").withStyle(ChatFormatting.RED));
             return;
         }
-        final Vec3 eye = mc.player.position();
-        final double r2 = radius * radius;
-
-        final Map<String, Group> found = new HashMap<>();
+        final Map<String, Group> found = scan(radius, bones);
         int scanned = 0;
-        for (Entity e : level.entitiesForRendering()) {
-            if (!(e instanceof Display.ItemDisplay display)) {
-                continue;
-            }
-            final double dSq = e.distanceToSqr(eye);
-            if (dSq > r2) {
-                continue;
-            }
-            final ItemStack stack = ((ItemDisplayAccessor) display).hidemodels$getItemStack();
-            final String id = HideModels.modelIdOf(stack);
-            if (id == null) {
-                continue;
-            }
-            scanned++;
-            // Group by the model, i.e. everything up to and including the last '/', which is
-            // exactly the fragment the config wants. Ids with no slash stand alone.
-            final int cut = id.lastIndexOf('/');
-            final String key = (bones || cut < 0) ? id : id.substring(0, cut + 1);
-            final Group g = found.computeIfAbsent(key, k -> new Group());
-            g.pieces++;
-            if (dSq < g.nearestSq) {
-                g.nearestSq = dSq;
-            }
+        for (Group g : found.values()) {
+            scanned += g.pieces;
         }
 
         if (found.isEmpty()) {
@@ -123,6 +114,59 @@ public final class NearbyModels {
             say(Component.literal("  ... " + (rows.size() - shown) + " more (narrow the radius)")
                     .withStyle(ChatFormatting.DARK_GRAY));
         }
+    }
+
+    /**
+     * One pass over the render list, grouped the way the config wants it.
+     *
+     * <p>Shared with the command's tab completion, which suggests exactly what this report prints -
+     * the ids around you. Two scans that could disagree about what is nearby would be a small but
+     * infuriating bug: completion offering an id the list does not show, or the reverse.
+     */
+    static Map<String, Group> scan(double radius, boolean bones) {
+        final Map<String, Group> found = new HashMap<>();
+        final Minecraft mc = Minecraft.getInstance();
+        final ClientLevel level = mc.level;
+        if (level == null || mc.player == null) {
+            return found;
+        }
+        final Vec3 eye = mc.player.position();
+        final double r2 = radius * radius;
+        for (Entity e : level.entitiesForRendering()) {
+            if (!(e instanceof Display.ItemDisplay display)) {
+                continue;
+            }
+            final double dSq = e.distanceToSqr(eye);
+            if (dSq > r2) {
+                continue;
+            }
+            final ItemStack stack = ((ItemDisplayAccessor) display).hidemodels$getItemStack();
+            final String id = HideModels.modelIdOf(stack);
+            if (id == null) {
+                continue;
+            }
+            // Group by the model, i.e. everything up to and including the last '/', which is
+            // exactly the fragment the config wants. Ids with no slash stand alone.
+            final int cut = id.lastIndexOf('/');
+            final String key = (bones || cut < 0) ? id : id.substring(0, cut + 1);
+            final Group g = found.computeIfAbsent(key, k -> new Group());
+            g.pieces++;
+            if (dSq < g.nearestSq) {
+                g.nearestSq = dSq;
+            }
+        }
+        return found;
+    }
+
+    /** Model ids within the radius, nearest first - the completion for {@code /hidemodels add}. */
+    public static List<String> nearbyIds(double radius) {
+        final List<Map.Entry<String, Group>> rows = new ArrayList<>(scan(radius, false).entrySet());
+        rows.sort(Comparator.comparingDouble(x -> x.getValue().nearestSq));
+        final List<String> out = new ArrayList<>(rows.size());
+        for (Map.Entry<String, Group> row : rows) {
+            out.add(row.getKey());
+        }
+        return out;
     }
 
     /** One decimal, without dragging in String.format's locale surprises. */

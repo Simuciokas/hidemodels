@@ -332,8 +332,12 @@ jobs:
           modrinth-id: ${{ vars.MODRINTH_PROJECT_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
           files: dist/*.jar
-          name: ${{ steps.version.outputs.number }} for Minecraft ${{ matrix.mc }}
-          version: ${{ steps.version.outputs.number }}+mc${{ matrix.mc }}
+          # Named the way Sodium names its versions: "Hide Models 1.5.0 for Fabric 26.2", with a
+          # version string of mc26.2-1.5.0-fabric. Sorting by Minecraft version is what someone
+          # scanning a long version list actually wants, and putting the loader last leaves room
+          # for the other loaders to sit beside it.
+          name: Hide Models ${{ steps.version.outputs.number }} for Fabric ${{ matrix.mc }}
+          version: mc${{ matrix.mc }}-${{ steps.version.outputs.number }}-fabric
           version-type: release
           game-versions: ${{ matrix.mc }}
           # Stated rather than inferred: the mod declares no Fabric API dependency, and letting the

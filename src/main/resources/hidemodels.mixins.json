@@ -4,8 +4,6 @@
   "compatibilityLevel": "JAVA_${javaVersion}",
   "client": [
     "ClientCommonPacketListenerMixin",
-    "ClientDisconnectMixin",
-    "ClientPacketListenerMixin",
     "EntityRenderDispatcherMixin",
     "ItemDisplayAccessor"
   ],
