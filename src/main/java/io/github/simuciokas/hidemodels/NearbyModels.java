@@ -28,7 +28,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.phys.Vec3;
 
 /**
  * The {@code /hidemodels list} report: every item_model id within a radius, so the ids you need for
@@ -130,13 +129,18 @@ public final class NearbyModels {
         if (level == null || mc.player == null) {
             return found;
         }
-        final Vec3 eye = mc.player.position();
         final double r2 = radius * radius;
         for (Entity e : level.entitiesForRendering()) {
             if (!(e instanceof Display.ItemDisplay display)) {
                 continue;
             }
-            final double dSq = e.distanceToSqr(eye);
+            // MEASURED AGAINST THE PLAYER ENTITY, not against its position vector, and that is
+            // not a style choice: position() is one of the few members this mod touches whose
+            // intermediary name CHANGED mid-range - method_19538 through 1.21.8, method_73189
+            // after - which split an otherwise identical jar in two. Taking the entity overload
+            // means 1.21.5 through 1.21.11 compile to the same bytes, and it is the shorter way to
+            // say the same thing.
+            final double dSq = e.distanceToSqr(mc.player);
             if (dSq > r2) {
                 continue;
             }

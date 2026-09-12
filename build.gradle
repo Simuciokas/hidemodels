@@ -69,22 +69,20 @@ ext.neoForgeVersion = NEOFORGE[project.minecraft_version]
 def GROUPS = [
         fabric  : [
                 ['26.2', '26.1.2', '26.1.1', '26.1'],
-                ['1.21.11', '1.21.10', '1.21.9'],
-                ['1.21.8', '1.21.7', '1.21.6', '1.21.5'],
+                ['1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7', '1.21.6', '1.21.5'],
                 ['1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5'],
         ],
-        // NEOFORGE SPLITS WHERE FABRIC DOES NOT, and the reason is worth keeping: a Fabric jar is
-        // remapped to intermediary, which is stable across a Minecraft rename, while NeoForge runs
-        // on Mojang's official names, where the same rename lands in the bytecode. 1.21.10 and
-        // 1.21.11 produce identical Fabric jars and different NeoForge ones - found by the
-        // group-check job on its first run, before it could ship.
+        // NEOFORGE SPLITS WHERE FABRIC DOES NOT, at 1.21.11, and the reason is unavoidable:
+        // ResourceLocation was renamed to Identifier there, and a class name sits inside the method
+        // descriptors this mod compiles against. Fabric never sees it - a Fabric jar is remapped to
+        // intermediary, where both spellings are the same id - while NeoForge runs on official
+        // names, where they are two different classes.
         //
         // Only versions NeoForge has a stable build for appear here.
         neoforge: [
                 ['26.2', '26.1.2'],
                 ['1.21.11'],
-                ['1.21.10'],
-                ['1.21.8', '1.21.5'],
+                ['1.21.10', '1.21.8', '1.21.5'],
                 ['1.21.4', '1.21.3', '1.21.1', '1.21', '1.20.6'],
         ],
 ]

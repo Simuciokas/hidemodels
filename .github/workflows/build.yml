@@ -490,7 +490,7 @@ jobs:
       # eighteen would be collecting the same four files over and over.
       - uses: actions/download-artifact@v8
         with:
-          pattern: hidemodels-{26.2,1.21.11,1.21.10,1.21.8,1.21.4}-*
+          pattern: hidemodels-{26.2,1.21.11,1.21.10,1.21.4}-*
           path: dist
           merge-multiple: true
 
@@ -566,14 +566,11 @@ jobs:
               26.1.1
               26.1
           - rep: '1.21.11'
-            id: '1.21.9-1.21.11'
+            id: '1.21.5-1.21.11'
             versions: |
               1.21.11
               1.21.10
               1.21.9
-          - rep: '1.21.8'
-            id: '1.21.5-1.21.8'
-            versions: |
               1.21.8
               1.21.7
               1.21.6
@@ -648,12 +645,9 @@ jobs:
             versions: |
               1.21.11
           - rep: '1.21.10'
-            id: '1.21.10'
+            id: '1.21.5-1.21.10'
             versions: |
               1.21.10
-          - rep: '1.21.8'
-            id: '1.21.5-1.21.8'
-            versions: |
               1.21.8
               1.21.5
           - rep: '1.21.4'
