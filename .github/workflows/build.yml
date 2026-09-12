@@ -7,6 +7,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A PUSH SUPERSEDES THE ONE BEFORE IT. This matrix takes a while, and pushing twice in five minutes
+# otherwise runs both to completion for a commit nobody is waiting on. Tags are excluded: a release
+# run must never be cancelled by whatever lands next.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 permissions:
   contents: write        # needed only by the release step below
 
@@ -80,6 +87,8 @@ jobs:
             21
 
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
 
       # The client needs a GL context even to reach the title screen; xvfb provides one headlessly.
       - name: Install xvfb
@@ -125,6 +134,9 @@ jobs:
           java-version: |
             25
             21
+      # THE ONE JOB THAT WRITES THE CACHE. Saving costs about forty seconds, and on the default
+      # branch every job does it by default - eighty near-identical saves per run, racing each
+      # other. One writer keeps it fresh; everyone else restores read-only.
       - uses: gradle/actions/setup-gradle@v5
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
@@ -166,6 +178,8 @@ jobs:
             21
 
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
 
       # The client needs a GL context even to reach the title screen; xvfb provides one headlessly.
       - name: Install xvfb
@@ -179,9 +193,18 @@ jobs:
 
       # The verdict comes from a file the test writes, not from the exit code - no exit from a
       # client thread survives contact with GLFW - so the smokeTest task is what fails the job.
-      - name: Smoke test
+      # BOTH LOADERS IN ONE JOB. Each launch is well under a minute of work wrapped in a minute and
+      # a half of setup - cache restore, client jar - and that setup is identical for both. As
+      # separate jobs it was paid twice per version, for eighteen versions.
+      - name: Smoke test, Fabric
         timeout-minutes: 20
         run: xvfb-run -a ./gradlew smokeTest -Pminecraft_version=${{ matrix.mc }}
+
+      # The SAME jar under Quilt Loader. Quilt needs no jar of its own, and this is the test behind
+      # the Modrinth listing claiming Quilt on the Fabric file.
+      - name: Smoke test, Quilt Loader
+        timeout-minutes: 20
+        run: xvfb-run -a ./gradlew quiltSmokeTest -Pminecraft_version=${{ matrix.mc }}
 
       - name: Upload the run log on failure
         if: failure()
@@ -225,6 +248,8 @@ jobs:
             21
 
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
 
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
@@ -255,56 +280,6 @@ jobs:
             build/run-neoforge-*/crash-reports/
           if-no-files-found: ignore
 
-  # DOES THE FABRIC JAR RUN ON QUILT? Quilt Loader reads fabric.mod.json and runs Fabric
-  # entrypoints, so in principle the Fabric jar is the Quilt jar - but "in principle" is not a
-  # claim worth putting on a project page, and the mod now depends on Fabric API, which Quilt has
-  # its own abandoned fork of. This job launches the actual jar under actual Quilt Loader, with the
-  # REAL Fabric API, and runs the same checks as everywhere else.
-  #
-  # ALL EIGHTEEN, the same as Fabric. An earlier version of this comment said Quilt Loader had no
-  # game provider for 26.x and sampled four versions instead - both halves were wrong, and the
-  # second only looked reasonable because of the first. Quilt runs 26.2 as happily as it runs
-  # 1.20.6, so there is no reason to test it on less than the mod supports.
-  smoke-quilt:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        mc: ['26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
-             '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5']
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: |
-            25
-            21
-
-      - uses: gradle/actions/setup-gradle@v5
-
-      - name: Install xvfb
-        run: sudo apt-get update && sudo apt-get install -y xvfb
-
-      - name: Cache Minecraft client jars
-        uses: actions/cache@v5
-        with:
-          path: build/minecraft
-          key: mc-${{ matrix.mc }}-quilt-${{ hashFiles('gradle.properties') }}
-
-      - name: Smoke test under Quilt Loader
-        timeout-minutes: 20
-        run: xvfb-run -a ./gradlew quiltSmokeTest -Pminecraft_version=${{ matrix.mc }}
-
-      - name: Upload the run log on failure
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: smoke-quilt-log-${{ matrix.mc }}
-          path: build/run*/logs/
-          if-no-files-found: ignore
-
   # One source tree, two build paths: 26.x compiles against Mojang's already-readable client jar
   # with no mappings at all, 1.21.x goes through Loom and is remapped to intermediary. Both are
   # built on every push, because the only thing that reliably catches a version-specific break is
@@ -331,6 +306,8 @@ jobs:
             21
 
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
 
       # The client jar and MC's libraries are ~112 MB fetched from Mojang. They are pinned by
       # version and sha1-verified, so caching them is safe and turns a cold minute into seconds.
@@ -376,6 +353,8 @@ jobs:
             21
 
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
 
       - name: Build
         run: |
@@ -403,7 +382,7 @@ jobs:
   # run fails on some version produces no release at all, rather than a half-published one.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [targets, smoke, smoke-quilt, smoke-neoforge, gametest, gametest-production, build,
+    needs: [targets, smoke, smoke-neoforge, gametest, gametest-production, build,
             build-neoforge]
     runs-on: ubuntu-latest
     steps:
