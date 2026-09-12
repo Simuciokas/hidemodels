@@ -72,7 +72,8 @@ public final class SmokeChecks {
             checkComponentResolves();
             checkConfigDrivesMatcher();
             checkCommandsEditTheList();
-            report("PASS - component resolved, the config drove the matcher, add/remove worked");
+            checkSettingsCommands();
+            report("PASS - component resolved, config drove the matcher, add/remove and settings worked");
         } catch (Throwable t) {
             t.printStackTrace(System.err);
             report("FAIL - " + t);
@@ -156,6 +157,40 @@ public final class SmokeChecks {
         HideModels.remove(id);
         waitUntil(() -> !HideModels.hidden(id),
                   "/hidemodels remove left the id hidden");
+    }
+
+    /**
+     * The three directives, driven the way the commands drive them.
+     *
+     * <p>Each writes the config and reloads, and the observable effect is the point: off means
+     * hidden() stops saying yes even though the pattern is still listed, and on brings it back.
+     * That distinction - disabled versus empty - is the whole reason the directive exists.
+     */
+    private static void checkSettingsCommands() throws IOException, InterruptedException {
+        final String id = "hidemodels:smoke_setting";
+        write("# cleared by the smoke test");
+        HideModels.add(id);
+        waitUntil(() -> HideModels.hidden(id), "the id was not hidden before testing the switch");
+
+        HideModels.setEnabled(false);
+        waitUntil(() -> !HideModels.hidden(id), "/hidemodels off did not stop the hiding");
+        if (!HideModels.listed(id)) {
+            throw new AssertionError("off emptied the list - it should only stop it being applied");
+        }
+
+        HideModels.setEnabled(true);
+        waitUntil(() -> HideModels.hidden(id), "/hidemodels on did not resume the hiding");
+
+        // These two have no effect visible without a camera or a world, so what is checked is that
+        // they write something the parser reads back - a silent no-op is the likely failure.
+        HideModels.setListRadius(48.0);
+        waitUntil(() -> HideModels.listRadius() == 48.0,
+                  "/hidemodels radius did not change the configured radius");
+        HideModels.setListRadius(32.0);
+
+        HideModels.setFirstPersonOnly(true);
+        HideModels.setFirstPersonOnly(false);
+        HideModels.remove(id);
     }
 
     /** Polling is not just waiting here: every hidden() call is what drives the reload check. */

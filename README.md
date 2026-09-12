@@ -208,6 +208,13 @@ renderer down with it.
 | `/hidemodels list bones [radius]` | the same, but individual bone ids |
 | `/hidemodels add <id>` | hide it now — writes the line and reloads |
 | `/hidemodels remove <id>` | stop hiding it |
+| `/hidemodels on` / `off` | stop hiding without emptying the list |
+| `/hidemodels first-person on` / `off` | hide only while the camera is in first person |
+| `/hidemodels radius <blocks>` | the default radius for `list` |
+
+**Every setting is also a command, and every command edits the config.** The three directives below
+can be typed into the file or set in game, and both routes write the same file and reload it — so
+there is no second place where state could live and disagree.
 
 Each row shows the piece count, the id, and the distance to the nearest piece; ids your config
 already hides are green and marked `hidden`. Radius defaults to `list-radius` in the config (32)

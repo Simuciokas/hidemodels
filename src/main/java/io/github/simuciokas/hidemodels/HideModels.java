@@ -201,6 +201,12 @@ public final class HideModels {
                 .withStyle(ChatFormatting.GRAY));
         NearbyModels.say(Component.literal("  /hidemodels remove <id>  - stop hiding it")
                 .withStyle(ChatFormatting.GRAY));
+        NearbyModels.say(Component.literal("  /hidemodels on | off  - hiding without emptying the list")
+                .withStyle(ChatFormatting.GRAY));
+        NearbyModels.say(Component.literal("  /hidemodels first-person on | off  - hide only while "
+                + "the camera is in first person").withStyle(ChatFormatting.GRAY));
+        NearbyModels.say(Component.literal("  /hidemodels radius <blocks>  - default radius for list")
+                .withStyle(ChatFormatting.GRAY));
         NearbyModels.say(Component.literal("  config/" + MOD_ID
                 + ".txt holds the list and the directives (default radius " + listRadius + ")")
                 .withStyle(ChatFormatting.DARK_GRAY));
@@ -308,6 +314,88 @@ public final class HideModels {
             NearbyModels.say(Component.literal("hidemodels: could not write config/" + MOD_ID
                     + ".txt - " + e).withStyle(ChatFormatting.RED));
         }
+    }
+
+    /**
+     * The three directives, as commands.
+     *
+     * <p>Each one edits the config the same way add and remove do - the file stays the thing that
+     * is true, so a setting changed in game and a setting typed into the file cannot disagree, and
+     * a command is never a second place state might live.
+     *
+     * <p>Written in the CANONICAL spelling even when the file used an alias: the parser accepts
+     * "firstperson" and "first-person" as well, but a file this mod has written should read the way
+     * the documentation does.
+     */
+    public static void setEnabled(boolean on) {
+        directive(on ? null : "off", "off", "disabled");
+        say("hiding " + (on ? "on" : "off"), on || patterns.length == 0);
+    }
+
+    public static void setFirstPersonOnly(boolean only) {
+        directive(only ? "first-person-only" : null,
+                  "first-person-only", "firstperson", "first-person");
+        say("first person only: " + (only ? "on" : "off"), true);
+    }
+
+    public static void setListRadius(double blocks) {
+        final double clamped = Math.min(Math.max(blocks, 1.0), MAX_LIST_RADIUS);
+        directive("list-radius " + fmt(clamped), "list-radius");
+        say("list radius: " + fmt(clamped) + " blocks", true);
+    }
+
+    /**
+     * Rewrites one directive in the config: removes every spelling of it, then appends the new one.
+     *
+     * <p>Removal takes the aliases too, or setting something off would leave a line the parser
+     * still honours - and the setting would appear to ignore the command.
+     *
+     * @param line     the directive to write, or null to only remove it
+     * @param spellings every form the parser recognises, matched case-insensitively
+     */
+    private static void directive(String line, String... spellings) {
+        try {
+            if (!Files.isRegularFile(CONFIG)) {
+                writeDefaults();
+            }
+            final List<String> kept = new ArrayList<>();
+            for (String existing : Files.readAllLines(CONFIG)) {
+                final String trimmed = existing.trim().toLowerCase(Locale.ROOT);
+                boolean drop = false;
+                for (String spelling : spellings) {
+                    // "list-radius 32" is a prefix match; "off" must match the whole line, or a
+                    // pattern containing the word would be eaten.
+                    if (spelling.equals("list-radius") ? trimmed.startsWith(spelling)
+                                                       : trimmed.equals(spelling)) {
+                        drop = true;
+                        break;
+                    }
+                }
+                if (!drop) {
+                    kept.add(existing);
+                }
+            }
+            if (line != null) {
+                kept.add(line);
+            }
+            Files.write(CONFIG, kept);
+            reloadNow();
+        } catch (IOException e) {
+            NearbyModels.say(Component.literal("hidemodels: could not write config/" + MOD_ID
+                    + ".txt - " + e).withStyle(ChatFormatting.RED));
+        }
+    }
+
+    /** One decimal at most, so "32" does not print as "32.0" in a config line. */
+    private static String fmt(double v) {
+        final double rounded = Math.round(v * 10.0) / 10.0;
+        return (rounded == Math.rint(rounded)) ? Long.toString((long) rounded)
+                                               : Double.toString(rounded);
+    }
+
+    private static void say(String what, boolean good) {
+        NearbyModels.say(Component.literal("hidemodels: " + what)
+                .withStyle(good ? ChatFormatting.GREEN : ChatFormatting.YELLOW));
     }
 
     /** The loaded pattern that already covers this id, or null. */
@@ -498,12 +586,14 @@ public final class HideModels {
                 # too-broad fragment will hide things you still want to see, such as teleporters
                 # or signposts.
                 #
-                # DIRECTIVES, each on a line of its own:
-                #     off                 disable without emptying the list
+                # DIRECTIVES, each on a line of its own. Every one of them also has a command,
+                # which edits THIS FILE and reloads it - so the two can never disagree:
+                #     off                 disable without emptying the list   (/hidemodels off)
                 #     first-person-only   hide only while the camera is in first person, so the
                 #                         model reappears in third person (F5) - useful when you
                 #                         want a mount out of your view but still want to see it
-                #     list-radius 32      default radius for /hidemodels list
+                #                                              (/hidemodels first-person on)
+                #     list-radius 32      default radius for /hidemodels list (/hidemodels radius 32)
                 #
                 # IN GAME: /hidemodels list [radius] prints every model around you with its piece
                 # count and distance, marking the ones this file already hides - so the ids can be

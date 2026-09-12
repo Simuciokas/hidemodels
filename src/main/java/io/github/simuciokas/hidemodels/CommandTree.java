@@ -96,6 +96,33 @@ public final class CommandTree {
                                     HideModels.add(StringArgumentType.getString(ctx, "id"));
                                     return 1;
                                 })))
+                // THE DIRECTIVES, as commands. Each writes the config and reloads, so the file
+                // stays the single description of what this mod is doing - a setting changed here
+                // and a setting typed into the file can never disagree.
+                .then(b.literal("on").executes(ctx -> {
+                    HideModels.setEnabled(true);
+                    return 1;
+                }))
+                .then(b.literal("off").executes(ctx -> {
+                    HideModels.setEnabled(false);
+                    return 1;
+                }))
+                .then(b.literal("first-person")
+                        .then(b.literal("on").executes(ctx -> {
+                            HideModels.setFirstPersonOnly(true);
+                            return 1;
+                        }))
+                        .then(b.literal("off").executes(ctx -> {
+                            HideModels.setFirstPersonOnly(false);
+                            return 1;
+                        })))
+                .then(b.literal("radius")
+                        .then(b.argument("blocks", DoubleArgumentType.doubleArg(1.0, 256.0))
+                                .executes(ctx -> {
+                                    HideModels.setListRadius(
+                                            DoubleArgumentType.getDouble(ctx, "blocks"));
+                                    return 1;
+                                })))
                 .then(b.literal("remove")
                         .then(b.argument("id", StringArgumentType.greedyString())
                                 .suggests(listed)
