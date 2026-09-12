@@ -336,6 +336,20 @@ jobs:
 
       - run: ./gradlew build -Pminecraft_version=${{ matrix.mc }} -Ploader=${{ matrix.loader }}
 
+      # WHAT THIS JAR ACTUALLY CONTAINS, ignoring what it says about itself. The group-check job
+      # compares these: versions that share a jar must produce identical classes, and the day one
+      # stops doing so is the day its group is wrong.
+      - name: Fingerprint
+        run: |
+          python tools/fingerprint_jar.py build/libs/*-${{ matrix.loader }}.jar > fingerprint.txt
+          cat fingerprint.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fingerprint-${{ matrix.loader }}-${{ matrix.mc }}
+          path: fingerprint.txt
+          retention-days: 7
+
       - uses: actions/upload-artifact@v7
         with:
           name: hidemodels-${{ matrix.mc }}-${{ matrix.loader }}
@@ -389,6 +403,17 @@ jobs:
           done
           exit 1
 
+      - name: Fingerprint
+        run: |
+          python tools/fingerprint_jar.py build/libs/*-neoforge.jar > fingerprint.txt
+          cat fingerprint.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fingerprint-neoforge-${{ matrix.mc }}
+          path: fingerprint.txt
+          retention-days: 7
+
       - uses: actions/upload-artifact@v7
         with:
           name: hidemodels-${{ matrix.mc }}-neoforge
@@ -396,6 +421,50 @@ jobs:
           if-no-files-found: error
           # The release job consumes these in the same run; nothing reads them later.
           retention-days: 7
+
+  # ARE THE RELEASE GROUPS STILL TRUE? The build ships one jar per group rather than per Minecraft
+  # version, which is only honest while every version in a group compiles to identical classes. This
+  # rebuilds nothing - it compares the fingerprints the build jobs already produced - and fails if a
+  # version has drifted away from the group whose jar it would be sold under.
+  #
+  # Python only, no JDK: the groups are read out of build.gradle, which is where they are declared.
+  group-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build, build-neoforge]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: fingerprint-fabric-*
+          path: fp-fabric
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: fingerprint-neoforge-*
+          path: fp-neoforge
+
+      # The artifact directories are named fingerprint-<loader>-<version>; the checker wants them
+      # named for the version alone, since a group is about Minecraft versions.
+      - name: Check each loader's jars against the groups
+        run: |
+          for loader in fabric neoforge; do
+            echo "=== $loader ==="
+            rm -rf "fp-$loader-versions" && mkdir -p "fp-$loader-versions"
+            for dir in fp-$loader/fingerprint-$loader-*; do
+              [ -d "$dir" ] || continue
+              version="${dir##*fingerprint-$loader-}"
+              cp "$dir/fingerprint.txt" "fp-$loader-versions/$version.txt"
+            done
+            python tools/check_groups.py "fp-$loader-versions"
+          done
 
   # ONE TAG SHIPS THE WHOLE RANGE. A v* tag publishes a single Release carrying a jar per supported
   # Minecraft version, built by the matrix above.
@@ -409,18 +478,21 @@ jobs:
       contents: write        # creates the release and uploads the jars
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [targets, smoke, smoke-neoforge, gametest, gametest-production, build,
-            build-neoforge]
+            build-neoforge, group-check]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       # Only for docs/releases/<tag>.md, below.
       - uses: actions/checkout@v5
 
+      # ONE JAR PER GROUP, taken from the newest version in each. Every other version in a group
+      # builds the identical jar - that is what the group-check job proves - so downloading all
+      # eighteen would be collecting the same four files over and over.
       - uses: actions/download-artifact@v8
         with:
-          pattern: hidemodels-*
+          pattern: hidemodels-{26.2,1.21.11,1.21.8,1.21.4}-*
           path: dist
-          merge-multiple: true      # every jar in one directory, not one directory per version
+          merge-multiple: true
 
       # NOTES COME FROM THE REPO WHEN THERE ARE ANY. --generate-notes alone lists commit subjects,
       # which describe the work rather than the release - useful to us, meaningless to someone
@@ -473,6 +545,9 @@ jobs:
   # "fabric,quilt" went out as a single loader name and came back as
   # "Field loaders failed validation with error: length". Two jobs, two literal lists, no
   # cleverness.
+  # PUBLISHED PER GROUP, NOT PER VERSION. A Modrinth version carries a LIST of game versions, so
+  # the four jars cover all eighteen Minecraft versions in four rows rather than eighteen - which is
+  # also what a person choosing a download sees.
   modrinth-fabric:
     permissions: {}
     if: startsWith(github.ref, 'refs/tags/v') && vars.MODRINTH_PROJECT_ID != ''
@@ -482,8 +557,37 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ['26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
-             '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5']
+        include:
+          - rep: '26.2'
+            id: '26.1-26.2'
+            versions: |
+              26.2
+              26.1.2
+              26.1.1
+              26.1
+          - rep: '1.21.11'
+            id: '1.21.9-1.21.11'
+            versions: |
+              1.21.11
+              1.21.10
+              1.21.9
+          - rep: '1.21.8'
+            id: '1.21.5-1.21.8'
+            versions: |
+              1.21.8
+              1.21.7
+              1.21.6
+              1.21.5
+          - rep: '1.21.4'
+            id: '1.20.5-1.21.4'
+            versions: |
+              1.21.4
+              1.21.3
+              1.21.2
+              1.21.1
+              1.21
+              1.20.6
+              1.20.5
     steps:
       - uses: actions/checkout@v5      # only for the changelog file
         with:
@@ -491,43 +595,35 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: hidemodels-${{ matrix.mc }}-fabric
+          name: hidemodels-${{ matrix.rep }}-fabric
           path: dist
 
       - id: version
         run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      # PINNED TO A COMMIT, NOT A TAG - this is a third-party action holding a token that can
-      # publish under our name. v3.3.1. Nothing updates the pin automatically; check it when the
-      # release process is next touched, at github.com/Kir-Antipov/mc-publish/releases.
+      # PINNED TO A COMMIT, NOT A TAG - third-party code holding a token that publishes under our
+      # name. v3.3.1; check github.com/Kir-Antipov/mc-publish/releases when touching this.
       - uses: Kir-Antipov/mc-publish@52307b03863581dec6b652b83e597aec02ebb075
         with:
           modrinth-id: ${{ vars.MODRINTH_PROJECT_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
           files: dist/*.jar
-          name: Hide Models ${{ steps.version.outputs.number }} for Fabric/Quilt ${{ matrix.mc }}
-          version: mc${{ matrix.mc }}-${{ steps.version.outputs.number }}-fabric
+          name: Hide Models ${{ steps.version.outputs.number }} for Fabric/Quilt ${{ matrix.id }}
+          version: mc${{ matrix.id }}-${{ steps.version.outputs.number }}-fabric
           version-type: release
-          game-versions: ${{ matrix.mc }}
-          # USE THAT VERSION VERBATIM. The default filter is "releases | min-major | min-minor",
-          # which narrows a RESOLVED set of versions - sensible when you hand it a range, wrong when
-          # you hand it one exact id. It quietly emptied the list for four of twenty-nine versions,
-          # which published with no Minecraft version at all while reporting success. We know the id;
-          # Modrinth validates it on upload anyway.
+          game-versions: ${{ matrix.versions }}
+          # Verbatim, no filtering - the default narrows a resolved set and has silently emptied it.
           game-version-filter: none
-          # QUILT SITS ON THE FABRIC FILE because it is the same file - CI launches this very jar
-          # under Quilt Loader on all eighteen versions.
+          # Quilt sits on the Fabric file because it IS the Fabric file; CI launches this jar under
+          # Quilt Loader on every version in the group.
           loaders: |
             fabric
             quilt
           dependencies: |
             fabric-api(required)
           changelog-file: docs/releases/${{ github.ref_name }}.md
-          # Featured: newest Minecraft, and the loader most people here are on.
-          modrinth-featured: ${{ matrix.mc == '26.2' }}
-          # A TAG RE-RUN MUST NOT FAIL BECAUSE THE VERSION IS ALREADY THERE. The GitHub release job
-          # is idempotent for the same reason, and a release that half-published once should be
-          # finishable by re-running it.
+          modrinth-featured: ${{ matrix.rep == '26.2' }}
+          # Re-running a tag must not fail on versions that already published.
           modrinth-fail-mode: warn
 
   modrinth-neoforge:
@@ -539,8 +635,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ['26.2', '26.1.2', '1.21.11', '1.21.10', '1.21.8', '1.21.5', '1.21.4', '1.21.3',
-             '1.21.1', '1.21', '1.20.6']
+        # The same groups, minus the versions NeoForge publishes no stable build for.
+        include:
+          - rep: '26.2'
+            id: '26.1-26.2'
+            versions: |
+              26.2
+              26.1.2
+          - rep: '1.21.11'
+            id: '1.21.9-1.21.11'
+            versions: |
+              1.21.11
+              1.21.10
+          - rep: '1.21.8'
+            id: '1.21.5-1.21.8'
+            versions: |
+              1.21.8
+              1.21.5
+          - rep: '1.21.4'
+            id: '1.20.5-1.21.4'
+            versions: |
+              1.21.4
+              1.21.3
+              1.21.1
+              1.21
+              1.20.6
     steps:
       - uses: actions/checkout@v5
         with:
@@ -548,7 +667,7 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: hidemodels-${{ matrix.mc }}-neoforge
+          name: hidemodels-${{ matrix.rep }}-neoforge
           path: dist
 
       - id: version
@@ -559,11 +678,11 @@ jobs:
           modrinth-id: ${{ vars.MODRINTH_PROJECT_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
           files: dist/*.jar
-          name: Hide Models ${{ steps.version.outputs.number }} for NeoForge ${{ matrix.mc }}
-          version: mc${{ matrix.mc }}-${{ steps.version.outputs.number }}-neoforge
+          name: Hide Models ${{ steps.version.outputs.number }} for NeoForge ${{ matrix.id }}
+          version: mc${{ matrix.id }}-${{ steps.version.outputs.number }}-neoforge
           version-type: release
-          game-versions: ${{ matrix.mc }}
-          game-version-filter: none     # see the Fabric job above
+          game-versions: ${{ matrix.versions }}
+          game-version-filter: none
           loaders: neoforge
           # No Fabric API here: NeoForge's own events do that work.
           changelog-file: docs/releases/${{ github.ref_name }}.md

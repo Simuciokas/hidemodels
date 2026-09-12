@@ -9,31 +9,35 @@ server's view of the world are all untouched.
 
 ## Install
 
-1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer.
-2. Drop the jar **for your Minecraft version** into `mods/` — they are named
-   `hidemodels-1.5.0+mc26.2.jar`, `hidemodels-1.5.0+mc1.21.8.jar` and so on. Loader refuses to load
-   the wrong one rather than failing later.
+1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer, or NeoForge.
+2. Drop the jar **covering your Minecraft version** into `mods/`. Each jar names the range it
+   covers — `hidemodels-1.5.0+mc26.1-26.2-fabric.jar`, `hidemodels-1.5.0+mc1.21.5-1.21.8-fabric.jar`
+   — and declares that range, so Loader refuses the wrong one rather than failing later.
+
+**Why a range rather than one jar per version.** Across each range the compiled mod is
+byte-identical: the same classes, the same mixins, differing only in the metadata that names the
+range. Shipping four files instead of eighteen is therefore not a compromise, it is the truth about
+what was built — and a CI job rebuilds every version on every push and fails if any of them stops
+matching the group whose jar it would ship under.
 
 Requirements, all declared in `fabric.mod.json`:
 
 | | |
 |---|---|
-| Minecraft | 1.21.x jars: exactly the version named, e.g. `=1.21.8`. 26.x jars: that version and its patch releases, e.g. `~26.1` covers 26.1.1 and 26.1.2 — see below |
-| Fabric Loader | `>=0.19.0` |
+| Minecraft | the range the jar names, e.g. `>=1.21.5 <=1.21.8`. Bounded at both ends: it claims nothing it was not built against |
+| Fabric Loader | `>=0.19.0` — or Quilt Loader, which runs the same jar |
 | Java | `>=25` on 26.x, `>=21` on 1.21.x — each version's own requirement |
-| Fabric API | **not needed** |
+| Fabric API | **required** on Fabric and Quilt. Not on NeoForge, where its work is done by NeoForge's own events |
 | Other mods | none |
 
 Client-only (`"environment": "client"`), so there is nothing to install server-side.
 
-**Why 1.21.x pins exactly and 26.x does not.** Those two paths are built differently, so they are
-compatible at different granularities. A 1.21.x jar is remapped to that version's intermediary
-names, and a mixin whose target moved does not fail loudly — it simply never applies, so the mod
-would hide nothing with nothing in the log to say why. Pinning exactly makes Loader refuse that jar
-up front instead, and there is a jar for every Minecraft release in the range, so nothing is left
-uncovered. A 26.x jar is never remapped at all — the client jar is already in readable names, which
-is why this project has no Loom — so it is genuinely compatible across a minor's patch releases, and
-says so.
+**Why the range is bounded at both ends.** An open `>=1.21.5` would claim versions this jar has
+never been built or tested against, and the failure that produces is the worst kind: a 1.21.x jar is
+remapped to one version's intermediary names, and a mixin whose target moved does not fail loudly —
+it simply never applies, so the mod hides nothing with nothing in the log to explain it. Every jar
+therefore states exactly the span it was built and tested across, and Loader refuses anything
+outside it.
 
 ## Which versions it can target
 
@@ -94,7 +98,7 @@ part of the range:
 render, and asserts the two things most likely to break when a version moves underneath the mod:
 that the `item_model` component still resolves out of the registry, and that editing
 `config/hidemodels.txt` still drives the matcher. It needs nothing but Fabric Loader, which is what
-lets it run everywhere — including 26.x, where there is no Loom and `gradle/run26.gradle` assembles
+lets it run everywhere — including 26.x, where there is no Loom and `gradle/runclient.gradle` assembles
 the launch by hand (client jar, loader's own libraries from `fabric-installer.json`, natives, and a
 stub asset index so no gigabyte is downloaded to reach a title screen).
 
@@ -105,7 +109,7 @@ ModelEngine and no server are needed, because the mod keys on a vanilla componen
 entity, which is what makes it runnable anywhere.
 
 **That includes 26.x, where there is no Loom.** The harness is published for 26.x like any other
-version, and it is just a mod: `gradle/run26.gradle` puts it in the run directory beside the mod
+version, and it is just a mod: `gradle/runclient.gradle` puts it in the run directory beside the mod
 under test and launches the client by hand, so 26.x runs the identical test class. The harness never
 needed Loom — only a launcher, which that file already was. The limit below 1.21.4 is real, though:
 Fabric publishes no client gametest module there at all, checked against each version's own
@@ -113,8 +117,8 @@ Fabric publishes no client gametest module there at all, checked against each ve
 
 CI runs the smoke test on all eighteen versions and the gametest on nine of them — all four 26.x
 releases and 1.21.4 through 1.21.8 — under xvfb.
-What the smoke test cannot cover is anything needing a world: the render hook, the command mixin
-and `ChatOut` are only exercised where the gametest runs.
+What the smoke test cannot cover is anything needing a world: the render hook, the registered
+command and `ChatOut` are only exercised where the gametest runs.
 
 **The gametest does not run in CI on 1.21.9 and later.** On a hosted runner their integrated server
 freezes at `Preparing spawn area: 16%` until the harness gives up with `Timeout loading world`. It
