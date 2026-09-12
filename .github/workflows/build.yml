@@ -60,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: |
@@ -108,7 +108,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: |
@@ -163,7 +163,7 @@ jobs:
       # BOTH TOOLCHAINS, EVERY JOB. The build picks the one matching the client jar it compiles
       # against - 26.x is class-file 69 (Java 25), 1.21.x is 65 (Java 21) - so the matrix does not
       # have to carry a java column that only ever repeats the version prefix.
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: |
