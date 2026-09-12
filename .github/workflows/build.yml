@@ -47,22 +47,27 @@ jobs:
   # Everything excluded is still launched and exercised by the smoke job above.
   #
   # WHY NOT 1.21.9 - 1.21.11. On a GitHub runner their integrated server freezes at "Preparing
-  # spawn area: 16%" - the identical percentage, logged minute after minute, until the harness's
-  # one-minute budget expires - and the run fails with "Timeout loading world". It is not slowness
-  # and it is not this mod: the same commit passes on 1.21.4 and 1.21.8 on the same runner, and
-  # passes on 1.21.11 on a developer machine in 21 seconds. Ruled out by experiment: render
-  # distance, per-frame cost, a frame-rate cap (which made it worse - the harness steps client and
-  # server together, so a slower client is a slower server), llvmpipe's thread count, the client
-  # pausing on lost focus, and Minecraft's background pool being one thread wide on a two-core
-  # runner. Run it locally on those versions instead: ./gradlew runClientGameTest
-  # -Pminecraft_version=1.21.11
+  # spawn area: 16%" until the harness's one-minute budget expires, and the run fails with "Timeout
+  # loading world". It is not this mod and it is not the runner:
+  #
+  #   * 1.21.4 - 1.21.8 and all four 26.x versions load a world on the same runner, and 26.x passes
+  #     through that very 16% line in under a second
+  #   * 1.21.11 loads in 21 seconds on a developer machine
+  #   * launching those three WITHOUT Loom - the production-mode launcher used by the job below -
+  #     fails on the runner in exactly the same way, which rules out Loom's dev environment
+  #
+  # Also ruled out by experiment: render distance, per-frame cost, a frame-rate cap (which made it
+  # worse - the harness steps client and server together, so a slower client is a slower server),
+  # llvmpipe's thread count, the client pausing on lost focus, and Minecraft's background pool being
+  # one thread wide on a two-core runner. What is left is something specific to 1.21.9+ world
+  # generation under a constrained runner, and it is not worth more CI minutes to chase.
+  # Run it locally on those versions: ./gradlew runClientGameTest -Pminecraft_version=1.21.11
   gametest:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         mc: ['26.2', '26.1.2', '26.1.1', '26.1',
-             '1.21.11', '1.21.10', '1.21.9',
              '1.21.4', '1.21.5', '1.21.6', '1.21.7', '1.21.8']
     steps:
       - uses: actions/checkout@v5
@@ -84,21 +89,11 @@ jobs:
       # fails the job. The run config forces java.awt.headless: without it Fabric reports a bad mod
       # set in a modal dialog and waits for a click that will never come, burning the whole timeout
       # while looking exactly like a test still running.
-      # THREE VERSIONS TAKE A DIFFERENT LAUNCHER. Loom's dev launch of 1.21.9+ freezes here at
-      # "Preparing spawn area: 16%" until the harness times out, while the same runner loads a world
-      # for 26.x through the hand-rolled launcher without trouble. So those three run the identical
-      # test through that launcher instead - obfuscated jar, intermediary mappings, remapped mods,
-      # the way an installed game runs. Everything else uses Loom's task, and 26.x defines one with
-      # the same name, so neither needs a special case.
+      # Loom provides this task on 1.21.x; gradle/runclient.gradle defines one with the same name on
+      # 26.x, so the matrix needs no special case.
       - name: Client game test
         timeout-minutes: 20
-        run: |
-          case "${{ matrix.mc }}" in
-            1.21.9|1.21.10|1.21.11) TASK=runClientGameTestStandalone ;;
-            *)                      TASK=runClientGameTest ;;
-          esac
-          echo "running $TASK for ${{ matrix.mc }}"
-          xvfb-run -a ./gradlew "$TASK" -Pminecraft_version=${{ matrix.mc }}
+        run: xvfb-run -a ./gradlew runClientGameTest -Pminecraft_version=${{ matrix.mc }}
 
       - name: Upload the run log on failure
         if: failure()
@@ -110,6 +105,38 @@ jobs:
             run/logs/
             build/run*/logs/
             build/run*/crash-reports/
+          if-no-files-found: ignore
+
+  # THE SAME GAMETEST, RUN THE WAY AN INSTALLED GAME RUNS: obfuscated client jar, intermediary
+  # mappings applied by Loader at launch, mods remapped on the way in. Every other gametest job
+  # above is a DEVELOPMENT launch, where the runtime keeps official names - and that difference
+  # hides real bugs. It hid one here: the clicked-command check looked its target up by name, found
+  # nothing against intermediary, and reported the path as absent on a version that has it.
+  #
+  # One version is enough to keep that path exercised; it is a cross-check on the harness, not
+  # per-version coverage.
+  gametest-production:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: |
+            25
+            21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Client game test, production-mode launch
+        timeout-minutes: 20
+        run: xvfb-run -a ./gradlew runClientGameTestStandalone -Pminecraft_version=1.21.8
+      - name: Upload the run log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gametest-production-log
+          path: build/run*/logs/
           if-no-files-found: ignore
 
   # EVERY SUPPORTED VERSION, ACTUALLY LAUNCHED. The gametest above covers more per version but runs
