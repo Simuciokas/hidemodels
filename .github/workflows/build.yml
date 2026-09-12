@@ -468,7 +468,13 @@ jobs:
   # Runs after the GitHub release, and inherits its gate on the test jobs: if the smoke run failed
   # anywhere, neither publish happens. Skips silently until MODRINTH_PROJECT_ID is set, so a fork
   # without the secret is not a broken workflow.
-  modrinth:
+  # PUBLISHED PER LOADER, IN TWO JOBS. One job with a conditional expression cannot express what
+  # Modrinth wants here: the loaders field is a LIST, and an expression can only produce a string.
+  # "fabric,quilt" went out as a single loader name and came back as
+  # "Field loaders failed validation with error: length". Two jobs, two literal lists, no
+  # cleverness.
+  modrinth-fabric:
+    permissions: {}
     if: startsWith(github.ref, 'refs/tags/v') && vars.MODRINTH_PROJECT_ID != ''
     needs: release
     runs-on: ubuntu-latest
@@ -478,67 +484,80 @@ jobs:
       matrix:
         mc: ['26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
              '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5']
-        loader: ['fabric']
-        # The same eleven the build matrix publishes a NeoForge jar for.
-        include:
-          - {mc: '26.2', loader: 'neoforge'}
-          - {mc: '26.1.2', loader: 'neoforge'}
-          - {mc: '1.21.11', loader: 'neoforge'}
-          - {mc: '1.21.10', loader: 'neoforge'}
-          - {mc: '1.21.8', loader: 'neoforge'}
-          - {mc: '1.21.5', loader: 'neoforge'}
-          - {mc: '1.21.4', loader: 'neoforge'}
-          - {mc: '1.21.3', loader: 'neoforge'}
-          - {mc: '1.21.1', loader: 'neoforge'}
-          - {mc: '1.21', loader: 'neoforge'}
-          - {mc: '1.20.6', loader: 'neoforge'}
     steps:
       - uses: actions/checkout@v5      # only for the changelog file
+        with:
+          persist-credentials: false
 
       - uses: actions/download-artifact@v8
         with:
-          name: hidemodels-${{ matrix.mc }}-${{ matrix.loader }}
+          name: hidemodels-${{ matrix.mc }}-fabric
           path: dist
 
-      # The tag without its leading v, so the Modrinth version reads mc26.2-1.5.0-fabric - the same
-      # string the jar itself is named with.
       - id: version
         run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      # PINNED TO A COMMIT, NOT A TAG. This is a third-party action holding a token that can publish
-      # under our name; a tag can be moved, a commit cannot. v3.3.1.
-      #
-      # Nothing updates this pin automatically, which is the trade being made rather than an
-      # oversight: a pinned action keeps behaving exactly as it did the day it was pinned, and the
-      # failure mode is missing out on fixes, not breaking on a Tuesday. Check it when the release
-      # process is next touched - github.com/Kir-Antipov/mc-publish/releases - and move the SHA and
-      # the version comment together.
+      # PINNED TO A COMMIT, NOT A TAG - this is a third-party action holding a token that can
+      # publish under our name. v3.3.1. Nothing updates the pin automatically; check it when the
+      # release process is next touched, at github.com/Kir-Antipov/mc-publish/releases.
       - uses: Kir-Antipov/mc-publish@52307b03863581dec6b652b83e597aec02ebb075
         with:
           modrinth-id: ${{ vars.MODRINTH_PROJECT_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
           files: dist/*.jar
-          # Named the way Sodium names its versions: "Hide Models 1.5.0 for Fabric 26.2", with a
-          # version string of mc26.2-1.5.0-fabric. Sorting by Minecraft version is what someone
-          # scanning a long version list actually wants, and the loader goes last because there are
-          # now three of them.
-          name: >-
-            Hide Models ${{ steps.version.outputs.number }} for
-            ${{ matrix.loader == 'fabric' && 'Fabric/Quilt' || 'NeoForge' }} ${{ matrix.mc }}
-          version: mc${{ matrix.mc }}-${{ steps.version.outputs.number }}-${{ matrix.loader }}
+          name: Hide Models ${{ steps.version.outputs.number }} for Fabric/Quilt ${{ matrix.mc }}
+          version: mc${{ matrix.mc }}-${{ steps.version.outputs.number }}-fabric
           version-type: release
           game-versions: ${{ matrix.mc }}
-          # QUILT IS LISTED ON THE FABRIC JAR because the Fabric jar IS the Quilt jar - the same
-          # file, and CI launches it under Quilt Loader on all eighteen versions. Stated rather than
-          # inferred: letting the action guess from fabric.mod.json would claim only Fabric, and
-          # would have no way of knowing the NeoForge jar is a different file entirely.
-          loaders: ${{ matrix.loader == 'fabric' && 'fabric,quilt' || 'neoforge' }}
-          # Fabric API is required on Fabric and Quilt, and irrelevant on NeoForge, where the same
-          # work is done by NeoForge's own events.
-          dependencies: ${{ matrix.loader == 'fabric' && 'fabric-api(required)' || '' }}
+          # QUILT SITS ON THE FABRIC FILE because it is the same file - CI launches this very jar
+          # under Quilt Loader on all eighteen versions.
+          loaders: |
+            fabric
+            quilt
+          dependencies: |
+            fabric-api(required)
           changelog-file: docs/releases/${{ github.ref_name }}.md
-          # FEATURED IS DECIDED, NOT RACED. The action unfeatures older versions on every upload, so
-          # with twenty-nine jobs in parallel the featured one was whichever finished last -
-          # arbitrary, and different every release. Newest Minecraft, and the loader most people
-          # here are on.
-          modrinth-featured: ${{ matrix.mc == '26.2' && matrix.loader == 'fabric' }}
+          # Featured: newest Minecraft, and the loader most people here are on.
+          modrinth-featured: ${{ matrix.mc == '26.2' }}
+          # A TAG RE-RUN MUST NOT FAIL BECAUSE THE VERSION IS ALREADY THERE. The GitHub release job
+          # is idempotent for the same reason, and a release that half-published once should be
+          # finishable by re-running it.
+          modrinth-fail-mode: warn
+
+  modrinth-neoforge:
+    permissions: {}
+    if: startsWith(github.ref, 'refs/tags/v') && vars.MODRINTH_PROJECT_ID != ''
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mc: ['26.2', '26.1.2', '1.21.11', '1.21.10', '1.21.8', '1.21.5', '1.21.4', '1.21.3',
+             '1.21.1', '1.21', '1.20.6']
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: hidemodels-${{ matrix.mc }}-neoforge
+          path: dist
+
+      - id: version
+        run: echo "number=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: Kir-Antipov/mc-publish@52307b03863581dec6b652b83e597aec02ebb075
+        with:
+          modrinth-id: ${{ vars.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          files: dist/*.jar
+          name: Hide Models ${{ steps.version.outputs.number }} for NeoForge ${{ matrix.mc }}
+          version: mc${{ matrix.mc }}-${{ steps.version.outputs.number }}-neoforge
+          version-type: release
+          game-versions: ${{ matrix.mc }}
+          loaders: neoforge
+          # No Fabric API here: NeoForge's own events do that work.
+          changelog-file: docs/releases/${{ github.ref_name }}.md
+          modrinth-fail-mode: warn
