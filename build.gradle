@@ -198,6 +198,13 @@ if (loader != 'fabric') {
     sourceSets.test.resources.setSrcDirs([])
 }
 
+// THE CHECKS ARE SHARED, THE ENTRYPOINTS ARE NOT. src/smoketest holds assertions that name nothing
+// but Minecraft and the mod, so one copy serves both loaders; each loader's test source set adds
+// its own two-line entrypoint on top - a ClientModInitializer on Fabric, a @Mod on NeoForge.
+if (loader == 'fabric') {
+    sourceSets.test.java.srcDir 'src/smoketest/java'
+}
+
 // The gametest class implements an interface that does not exist on every version, so it is
 // compiled - and declared as an entrypoint - only where it can be.
 if (!hasGametest) {
@@ -376,15 +383,74 @@ tasks.register('downloadMinecraft') {
     }
 }
 
+// The NeoForge test mod: a source set of its own, so nothing test-shaped can reach the published
+// jar, and a run configuration that loads it beside the real mod.
+if (loader == 'neoforge') {
+    sourceSets {
+        neoTest {
+            java.srcDirs = ['src/smoketest/java', 'src/neoforge-test/java']
+            resources.srcDirs = ['src/neoforge-test/resources']
+            compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+            runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
+        }
+    }
+}
+
 if (loader == 'neoforge') {
     neoForge {
         version = neoForgeVersion
-        // No runs declared: the Fabric side's gametest and smoke harnesses are Fabric's, and
-        // NeoForge's own game-test story is a separate piece of work. What this build guarantees
-        // today is that the NeoForge jar compiles against the real NeoForge and carries correct
-        // metadata - the targets checker still proves every mixin resolves, because the mixins are
-        // vanilla and loader-agnostic.
         validateAccessTransformers = false
+
+        // Both mods come from source sets rather than jars, which is how ModDevGradle runs a dev
+        // client: no packaging step between a change and a run.
+        mods {
+            hidemodels {
+                sourceSet sourceSets.main
+            }
+            hidemodels_test {
+                sourceSet sourceSets.neoTest
+            }
+        }
+
+        runs {
+            smokeTest {
+                client()
+                // The same contract as the Fabric smoke run: the property arms the checks, and the
+                // verdict is written to a file because no exit from a client thread is trustworthy.
+                systemProperty 'hidemodels.smoketest', 'true'
+                systemProperty 'java.awt.headless', 'true'
+                gameDirectory = layout.buildDirectory.dir("run-neoforge-${project.minecraft_version}")
+            }
+        }
+    }
+
+    // The verdict, read the same way the Fabric side reads it - and the task is called smokeTest on
+    // both paths, so CI runs one command whichever loader it is testing.
+    def neoRunDir = layout.buildDirectory.dir("run-neoforge-${project.minecraft_version}").get().asFile
+    tasks.matching { it.name == 'runSmokeTest' }.configureEach {
+        ignoreExitValue = true
+        doFirst {
+            delete new File(neoRunDir, 'smoketest-result.txt')
+            neoRunDir.mkdirs()
+            writeTestClientOptions(new File(neoRunDir, 'options.txt'))
+        }
+    }
+    tasks.register('smokeTest') {
+        group = 'verification'
+        description = 'Launches the NeoForge client and checks the mod runs on this version.'
+        dependsOn 'runSmokeTest'
+        doLast {
+            def f = new File(neoRunDir, 'smoketest-result.txt')
+            if (!f.isFile()) {
+                throw new GradleException('the smoke test produced no verdict - the client probably '
+                        + 'died before reaching it; see the output above')
+            }
+            def verdict = f.text.trim()
+            if (!verdict.startsWith('PASS')) {
+                throw new GradleException(verdict)
+            }
+            logger.lifecycle("smoke test: ${verdict}")
+        }
     }
 }
 

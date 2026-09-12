@@ -1,0 +1,18 @@
+# Metadata for the TEST mod, which is never published. It is a second mod rather than a flag on the
+# first, so that not one line of test code can end up in the jar people download.
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "LGPL-3.0-only"
+
+[[mods]]
+modId = "hidemodels_test"
+version = "1.0.0"
+displayName = "Hide Models smoke test"
+description = "Startup self-check for the NeoForge build. Inert unless -Dhidemodels.smoketest is set."
+
+[[dependencies.hidemodels_test]]
+modId = "hidemodels"
+type = "required"
+versionRange = "[0,)"
+ordering = "AFTER"
+side = "CLIENT"

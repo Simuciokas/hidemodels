@@ -196,6 +196,48 @@ jobs:
             build/run*/crash-reports/
           if-no-files-found: ignore
 
+  # THE NEOFORGE JAR, ACTUALLY LAUNCHED. Same contract as the Fabric smoke job and the same task
+  # name - the build defines smokeTest on both paths - but a completely different runtime: NeoForge's
+  # own loader, its own mod metadata, its own mixin plumbing. Those are exactly the NeoForge-specific
+  # things that a compile cannot check, and the mod's shared code is what the checks assert.
+  #
+  # Eleven versions, matching the eleven NeoForge publishes a stable build for.
+  smoke-neoforge:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mc: ['26.2', '26.1.2', '1.21.11', '1.21.10', '1.21.8', '1.21.5', '1.21.4', '1.21.3',
+             '1.21.1', '1.21', '1.20.6']
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: |
+            25
+            21
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Smoke test
+        timeout-minutes: 25
+        run: xvfb-run -a ./gradlew smokeTest -Ploader=neoforge -Pminecraft_version=${{ matrix.mc }}
+
+      - name: Upload the run log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-neoforge-log-${{ matrix.mc }}
+          path: |
+            build/run-neoforge-*/logs/
+            build/run-neoforge-*/crash-reports/
+          if-no-files-found: ignore
+
   # One source tree, two build paths: 26.x compiles against Mojang's already-readable client jar
   # with no mappings at all, 1.21.x goes through Loom and is remapped to intermediary. Both are
   # built on every push, because the only thing that reliably catches a version-specific break is

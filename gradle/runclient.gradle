@@ -17,6 +17,13 @@
 // It is deliberately NOT a general-purpose launcher. No accounts, no realms, no multiplayer - it
 // starts the client offline, runs a test, and reports.
 
+// FABRIC ONLY. Everything in this file assembles a FABRIC launch - Fabric Loader, its libraries,
+// Fabric API as a mod. NeoForge brings its own toolchain and ModDevGradle generates its runs, so on
+// that path this file has nothing to say and would only collide with task names.
+if (project.loader != 'fabric') {
+    return
+}
+
 def legacy = project.ext.isLegacy
 def mc = project.minecraft_version
 def mcRoot = layout.buildDirectory.dir("minecraft/${mc}").get().asFile
