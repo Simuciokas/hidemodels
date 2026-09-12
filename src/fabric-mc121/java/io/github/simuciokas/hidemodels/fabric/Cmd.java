@@ -15,6 +15,7 @@
  */
 package io.github.simuciokas.hidemodels.fabric;
 
+import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.ArgumentType;
 import io.github.simuciokas.hidemodels.CommandTree;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -50,5 +51,15 @@ public final class Cmd implements CommandTree.Builders<FabricClientCommandSource
     public <T> RequiredArgumentBuilder<FabricClientCommandSource, T> argument(
             String name, ArgumentType<T> type) {
         return ClientCommandManager.argument(name, type);
+    }
+
+    /**
+     * The live client-command dispatcher, for the test that checks tab completion.
+     *
+     * <p>Only the gametest uses it - the mod registers its tree and never needs to look at it
+     * again - but it belongs here because it is the same class that moved between versions.
+     */
+    public static CommandDispatcher<FabricClientCommandSource> dispatcher() {
+        return ClientCommandManager.getActiveDispatcher();
     }
 }

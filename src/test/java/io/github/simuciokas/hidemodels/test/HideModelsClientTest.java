@@ -15,7 +15,11 @@
  */
 package io.github.simuciokas.hidemodels.test;
 
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.suggestion.Suggestions;
 import io.github.simuciokas.hidemodels.HideModels;
+import io.github.simuciokas.hidemodels.fabric.Cmd;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import io.github.simuciokas.hidemodels.mixin.ItemDisplayAccessor;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
@@ -157,7 +161,32 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
             });
 
-            // 4. THE COMMANDS THAT EDIT THE LIST. add/remove write the config themselves and force
+            // 4. TAB COMPLETION, asked of the real dispatcher rather than of our own provider.
+            //    The suggestions are the whole reason the command was worth registering properly,
+            //    and "it is wired up" is not the same claim as "the client gets the list" - the
+            //    provider could be attached to the wrong node, or never reached at all.
+            //
+            //    A null source is safe here and only here: these nodes declare no requirement, so
+            //    brigadier never touches it, and neither provider reads the context.
+            context.runOnClient(client -> {
+                final CommandDispatcher<FabricClientCommandSource> dispatcher = Cmd.dispatcher();
+                if (dispatcher == null) {
+                    throw new AssertionError("no client command dispatcher - the command never registered");
+                }
+                final Suggestions suggestions = dispatcher.getCompletionSuggestions(
+                        dispatcher.parse(HideModels.MOD_ID + " remove ",
+                                         (FabricClientCommandSource) null)).join();
+                final boolean offered = suggestions.getList().stream()
+                        .anyMatch(s -> TEST_MODEL.equals(s.getText()));
+                if (!offered) {
+                    throw new AssertionError("/hidemodels remove did not suggest the hidden id "
+                            + TEST_MODEL + " - got " + suggestions.getList());
+                }
+                System.out.println("[hidemodels-gametest] remove suggested "
+                        + suggestions.getList().size() + " id(s)");
+            });
+
+            // 5. THE COMMANDS THAT EDIT THE LIST. add/remove write the config themselves and force
             //    a reload, so the assertion is the same one a user makes: type it, and the thing is
             //    hidden without touching a file or waiting.
             final String byCommand = "hidemodels:added_by_command";
@@ -169,7 +198,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                     client.getConnection().sendCommand(HideModels.MOD_ID + " remove " + byCommand));
             context.waitFor(client -> !HideModels.hidden(byCommand));
 
-            // 5. THE CLICKED PATH, on the versions that have one. Clicking a run_command component
+            // 6. THE CLICKED PATH, on the versions that have one. Clicking a run_command component
             //    calls sendUnattendedCommand rather than sendCommand from 1.21.6 on, which is a
             //    SECOND injection point - and one that is easy to lose silently, because losing it
             //    means the command goes to the server instead, where it looks like a typo rather

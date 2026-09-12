@@ -506,6 +506,11 @@ dependencies {
         // same way Loader supplies itself.
         if (hasGametest) {
             testCompileOnly "net.fabricmc.fabric-api:fabric-client-gametest-api-v1:${gametestModuleVersion}"
+            // AND THE API ITSELF. The gametest module is only the harness; the test also reaches
+            // for the client command API, to ask the real dispatcher what it would suggest. On the
+            // Loom path this arrives with main's dependencies; here the test source set is
+            // assembled by hand and has to be told.
+            testCompileOnly "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
         }
 
         // The smoke test is a client mod like any other, so it needs the same three things the mod
