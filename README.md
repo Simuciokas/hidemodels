@@ -11,12 +11,12 @@ server's view of the world are all untouched.
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer, or NeoForge.
 2. Drop the jar **covering your Minecraft version** into `mods/`. Each jar names the range it
-   covers — `hidemodels-1.5.0+mc26.1-26.2-fabric.jar`, `hidemodels-1.5.0+mc1.21.5-1.21.8-fabric.jar`
+   covers — `hidemodels-1.6.0+mc26.1-26.2-fabric.jar`, `hidemodels-1.6.0+mc1.21.5-1.21.11-fabric.jar`
    — and declares that range, so Loader refuses the wrong one rather than failing later.
 
 **Why a range rather than one jar per version.** Across each range the compiled mod is
 byte-identical: the same classes, the same mixins, differing only in the metadata that names the
-range. Shipping four files instead of eighteen is therefore not a compromise, it is the truth about
+range. Shipping seven files instead of twenty-nine is therefore not a compromise, it is the truth about
 what was built — and a CI job rebuilds every version on every push and fails if any of them stops
 matching the group whose jar it would ship under.
 
@@ -24,7 +24,7 @@ Requirements, all declared in `fabric.mod.json`:
 
 | | |
 |---|---|
-| Minecraft | the range the jar names, e.g. `>=1.21.5 <=1.21.8`. Bounded at both ends: it claims nothing it was not built against |
+| Minecraft | the range the jar names, e.g. `>=1.21.5 <=1.21.11`. Bounded at both ends: it claims nothing it was not built against |
 | Fabric Loader | `>=0.19.0` — or Quilt Loader, which runs the same jar |
 | Java | `>=25` on 26.x, `>=21` on 1.21.x — each version's own requirement |
 | Fabric API | **required** on Fabric and Quilt. Not on NeoForge, where its work is done by NeoForge's own events |
@@ -296,7 +296,7 @@ permanently altered, and the player's own config applies again next time they co
 
 ```sh
 export JAVA_HOME=/path/to/jdk-25
-./gradlew build          # -> build/libs/hidemodels-1.5.0+mc26.2.jar
+./gradlew build          # -> build/libs/hidemodels-1.6.0+mc26.1-26.2-fabric.jar
 ```
 
 No local Minecraft install is needed: the compile classpath — client jar plus MC's own libraries —

@@ -503,7 +503,7 @@ jobs:
       # runner, or a CI change that has to be published from the same code - and `gh release create`
       # fails outright when the release exists. Uploading over the existing one leaves the notes and
       # the download count intact.
-      # A CHECKSUM FILE beside the jars. Twenty-nine files built by a machine nobody can see is
+      # A CHECKSUM FILE beside the jars. Seven files built by a machine nobody can see is
       # exactly the case where "is this the jar CI produced" is worth being able to answer.
       - name: Checksums
         run: |
