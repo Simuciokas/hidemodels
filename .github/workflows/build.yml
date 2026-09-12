@@ -509,6 +509,12 @@ jobs:
           version: mc${{ matrix.mc }}-${{ steps.version.outputs.number }}-fabric
           version-type: release
           game-versions: ${{ matrix.mc }}
+          # USE THAT VERSION VERBATIM. The default filter is "releases | min-major | min-minor",
+          # which narrows a RESOLVED set of versions - sensible when you hand it a range, wrong when
+          # you hand it one exact id. It quietly emptied the list for four of twenty-nine versions,
+          # which published with no Minecraft version at all while reporting success. We know the id;
+          # Modrinth validates it on upload anyway.
+          game-version-filter: none
           # QUILT SITS ON THE FABRIC FILE because it is the same file - CI launches this very jar
           # under Quilt Loader on all eighteen versions.
           loaders: |
@@ -557,6 +563,7 @@ jobs:
           version: mc${{ matrix.mc }}-${{ steps.version.outputs.number }}-neoforge
           version-type: release
           game-versions: ${{ matrix.mc }}
+          game-version-filter: none     # see the Fabric job above
           loaders: neoforge
           # No Fabric API here: NeoForge's own events do that work.
           changelog-file: docs/releases/${{ github.ref_name }}.md
