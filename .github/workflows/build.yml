@@ -284,3 +284,8 @@ jobs:
           # action guess loaders from fabric.mod.json risks listing ones it was never built for.
           loaders: fabric
           changelog-file: docs/releases/${{ github.ref_name }}.md
+          # FEATURED IS DECIDED, NOT RACED. The action unfeatures older versions on every upload, so
+          # with fourteen jobs in parallel the featured one was whichever finished last - arbitrary,
+          # and different every release. The newest Minecraft version is the one worth showing at the
+          # top of the project page.
+          modrinth-featured: ${{ matrix.mc == '26.2' }}
