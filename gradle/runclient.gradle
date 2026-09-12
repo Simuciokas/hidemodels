@@ -26,6 +26,13 @@ def nativesDir = new File(mcRoot, 'natives')
 def assetsDir = new File(mcRoot, 'assets')
 def runDir = layout.buildDirectory.dir("run${mc}").get().asFile
 
+// Minecraft's own libraries, MINUS ASM. 1.21.x ships asm 9.6 among its libraries and Fabric Loader
+// brings its own newer one; with both on the classpath Loader refuses to start at all - "duplicate
+// ASM classes found on classpath" - before a single mod is read. Loader's copy is the one that has
+// to win, because its mixin machinery is built against it. 26.x ships no ASM, so this is a no-op
+// there.
+def mcLibJars = fileTree(dir: mcLibs, include: '**/*.jar', exclude: '**/org/ow2/asm/**')
+
 // Fabric Loader itself. Its runtime dependencies are NOT here - see loaderLibraries below, which
 // is where the rest of the launch classpath comes from.
 configurations {
@@ -167,9 +174,14 @@ tasks.register('stubAssets') {
 tasks.register('testModJar', Jar) {
     group = 'verification'
     description = 'Packages the test source set as a loadable mod.'
-    archiveBaseName = 'hidemodels-test'
-    archiveVersion = ''
-    destinationDirectory = new File(runDir, 'mods')
+    // archiveFileName, not base + version: build.gradle stamps every archive task with a
+    // "<mod>+mc<version>" archiveVersion, which is right for a published jar and noise for a test
+    // mod that only ever lives in a run directory. Setting the whole name opts out of that.
+    archiveFileName = 'hidemodels-test.jar'
+    // NOT into the run directory's mods folder, which the run tasks below clear before each
+    // launch: a task whose output lives inside another task's scratch space gets its output
+    // deleted out from under it, and then fails as "input file does not exist" on the next run.
+    destinationDirectory = layout.buildDirectory.dir('testmod')
     from sourceSets.test.output
     dependsOn 'testClasses'
     // Same marker the shipped jar carries: on 26.x intermediary IS the official mapping, so there
@@ -190,9 +202,10 @@ if (!legacy) {
         doFirst {
             def mods = new File(runDir, 'mods')
             mods.mkdirs()
-            delete fileTree(mods) { include 'hidemodels-1*.jar' }
+            delete fileTree(mods)
             copy {
                 from tasks.jar.archiveFile
+                from tasks.named('testModJar').get().archiveFile
                 into mods
             }
             // A stale verdict would be indistinguishable from a fresh one.
@@ -201,7 +214,7 @@ if (!legacy) {
             writeTestClientOptions(new File(runDir, 'options.txt'))
         }
 
-        classpath = files(clientJar) + fileTree(dir: mcLibs, include: '**/*.jar') +
+        classpath = files(clientJar) + mcLibJars +
                 configurations.loaderRuntime + files(loaderLibraries)
         mainClass = 'net.fabricmc.loader.impl.launch.knot.KnotClient'
         workingDir = runDir
@@ -259,10 +272,10 @@ if (!legacy) {
         doFirst {
             def mods = new File(runDir, 'mods')
             mods.mkdirs()
-            delete fileTree(mods) { include 'hidemodels-1*.jar' }
-            delete fileTree(mods) { include 'fabric-*.jar' }
+            delete fileTree(mods)
             copy {
                 from tasks.jar.archiveFile
+                from tasks.named('testModJar').get().archiveFile
                 into mods
             }
             // The harness and the API it needs, dropped in as mods. No remapping on 26.x - intermediary
@@ -275,7 +288,7 @@ if (!legacy) {
             writeTestClientOptions(new File(runDir, 'options.txt'))
         }
 
-        classpath = files(clientJar) + fileTree(dir: mcLibs, include: '**/*.jar') +
+        classpath = files(clientJar) + mcLibJars +
                 configurations.loaderRuntime + files(loaderLibraries)
         mainClass = 'net.fabricmc.loader.impl.launch.knot.KnotClient'
         workingDir = runDir
@@ -326,7 +339,10 @@ if (!legacy) {
 //
 // Everything a released mod needs at runtime, because that is exactly what this is: an obfuscated
 // client jar, intermediary mappings for Loader to bridge with, and mods that have been remapped.
-if (legacy && project.hasGametest) {
+// gametestModuleVersion, not just hasGametest: Loom resolves the harness from fabric-api's POM, so
+// a Loom version can have a gametest without this project knowing the module's version. Registering
+// the task anyway resolved "...:fabric-client-gametest-api-v1:null" and failed the job.
+if (legacy && project.hasGametest && project.gametestModuleVersion != null) {
 
     // The test mod has to be remapped like any other mod. It is compiled against official names
     // and would find nothing at runtime otherwise - the same reason the mod's own jar goes through
@@ -342,8 +358,7 @@ if (legacy && project.hasGametest) {
         description = 'Remaps the test mod to intermediary so a production-mode client can load it.'
         dependsOn 'testModJar'
         inputFile = tasks.named('testModJar', Jar).flatMap { it.archiveFile }
-        archiveBaseName = 'hidemodels-test-remapped'
-        archiveVersion = ''
+        archiveFileName = 'hidemodels-test-remapped.jar'
         addNestedDependencies = false
     }
 
@@ -365,7 +380,7 @@ if (legacy && project.hasGametest) {
             writeTestClientOptions(new File(runDir, 'options.txt'))
         }
 
-        classpath = files(clientJar) + fileTree(dir: mcLibs, include: '**/*.jar') +
+        classpath = files(clientJar) + mcLibJars +
                 configurations.loaderRuntime + files(loaderLibraries) +
                 configurations.intermediaryMappings
         mainClass = 'net.fabricmc.loader.impl.launch.knot.KnotClient'

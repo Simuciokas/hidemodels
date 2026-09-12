@@ -41,12 +41,18 @@ def FABRIC_API = [
 //   https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/<api version>/<...>.pom
 def GAMETEST_MODULE = [
         '26.2'   : '6.0.2+0f4f1dca9e',
-        // 1.21.9 - 1.21.11 are here for the STANDALONE launcher only. Loom resolves the module
-        // itself from fabric-api's POM, so the Loom path never reads these; the hand-rolled launch
-        // has no POM resolution and must be told.
+        // The 1.21.x rows are for the STANDALONE launcher only. Loom resolves the module itself
+        // from fabric-api's POM, so the Loom path never reads them; the hand-rolled launch has no
+        // POM resolution and must be told. Every version with a Fabric API row above needs a row
+        // here too, or the standalone task resolves ...:null - which is how this was found.
         '1.21.11': '4.3.5+bfe9fcf43e',
         '1.21.10': '4.2.13+14b92d896f',
         '1.21.9' : '4.2.13+14b92d897d',
+        '1.21.8' : '4.2.5+8a98c3fc2c',
+        '1.21.7' : '4.2.5+8a98c3fc6c',
+        '1.21.6' : '4.2.5+98137fcb96',
+        '1.21.5' : '4.2.0+dac2d6e349',
+        '1.21.4' : '4.1.1+6816ccd404',
         '26.1.2' : '5.1.0+0a5283664c',
         '26.1.1' : '5.1.0+0a5283664c',
         '26.1'   : '5.1.0+0a5283664c',
