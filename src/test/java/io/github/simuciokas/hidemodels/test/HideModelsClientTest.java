@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContex
 import net.minecraft.world.entity.Display;
 import java.io.IOException;
 import java.lang.reflect.Method;
+import net.minecraft.client.gui.screens.Screen;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import net.minecraft.world.entity.Entity;
@@ -44,6 +45,31 @@ public final class HideModelsClientTest implements FabricClientGameTest {
         } catch (IOException e) {
             throw new AssertionError("could not write " + CONFIG, e);
         }
+    }
+
+    /**
+     * Is this the method a clicked run_command ends up calling?
+     *
+     * <p>BY SIGNATURE, NOT BY NAME, because this test runs in two different worlds. Under Loom the
+     * runtime keeps official names and {@code sendUnattendedCommand} is findable; under the
+     * standalone launcher the client is the real obfuscated jar with intermediary-named mods, where
+     * the same method answers to something like {@code method_54650}. A name check silently found
+     * nothing there and reported the path as absent on a version that has it - which is exactly the
+     * false pass this section exists to prevent.
+     *
+     * <p>{@code void (String, Screen)} is specific enough to be unambiguous on every version this
+     * runs against - it is the only such method on the connection. If a future version adds a
+     * second one, this would need the intermediary name per version rather than a signature.
+     */
+    private static boolean isUnattendedCommandSend(Method m) {
+        if (m.getParameterCount() != 2 || m.getReturnType() != void.class) {
+            return false;
+        }
+        final Class<?>[] params = m.getParameterTypes();
+        if (params[0] != String.class || !Screen.class.isAssignableFrom(params[1])) {
+            return false;
+        }
+        return true;
     }
 
     @Override
@@ -99,9 +125,9 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.runOnClient(client -> client.getConnection().sendCommand("hidemodels help"));
             context.waitTicks(10);
 
-            // 3. THE MATCHER, fed the way the mod is actually configured: by its file. There is
-            //    no "add" command - patterns are edited into config/hidemodels.txt and picked up
-            //    by a poll that watches the mtime, at most once a RELOAD_INTERVAL_MS.
+            // 3. THE MATCHER, fed by the FILE rather than by the add command - both routes exist
+            //    and both are checked: this one covers the mtime poll that picks up a hand edit,
+            //    step 4 below covers the command that writes and reloads immediately.
             writeConfig(TEST_MODEL);
 
             //    waitFor rather than a fixed sleep: each call to hidden() is what drives the
@@ -143,7 +169,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.runOnClient(client -> {
                 final Object connection = client.getConnection();
                 for (Method m : connection.getClass().getMethods()) {
-                    if (!m.getName().equals("sendUnattendedCommand") || m.getParameterCount() != 2) {
+                    if (!isUnattendedCommandSend(m)) {
                         continue;
                     }
                     clickable[0] = true;

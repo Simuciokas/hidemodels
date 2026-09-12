@@ -62,6 +62,7 @@ jobs:
       fail-fast: false
       matrix:
         mc: ['26.2', '26.1.2', '26.1.1', '26.1',
+             '1.21.11', '1.21.10', '1.21.9',
              '1.21.4', '1.21.5', '1.21.6', '1.21.7', '1.21.8']
     steps:
       - uses: actions/checkout@v5
@@ -83,11 +84,21 @@ jobs:
       # fails the job. The run config forces java.awt.headless: without it Fabric reports a bad mod
       # set in a modal dialog and waits for a click that will never come, burning the whole timeout
       # while looking exactly like a test still running.
-      # Loom provides this task on 1.21.x; gradle/run26.gradle defines one with the same name on
-      # 26.x, so the matrix needs no special case.
+      # THREE VERSIONS TAKE A DIFFERENT LAUNCHER. Loom's dev launch of 1.21.9+ freezes here at
+      # "Preparing spawn area: 16%" until the harness times out, while the same runner loads a world
+      # for 26.x through the hand-rolled launcher without trouble. So those three run the identical
+      # test through that launcher instead - obfuscated jar, intermediary mappings, remapped mods,
+      # the way an installed game runs. Everything else uses Loom's task, and 26.x defines one with
+      # the same name, so neither needs a special case.
       - name: Client game test
         timeout-minutes: 20
-        run: xvfb-run -a ./gradlew runClientGameTest -Pminecraft_version=${{ matrix.mc }}
+        run: |
+          case "${{ matrix.mc }}" in
+            1.21.9|1.21.10|1.21.11) TASK=runClientGameTestStandalone ;;
+            *)                      TASK=runClientGameTest ;;
+          esac
+          echo "running $TASK for ${{ matrix.mc }}"
+          xvfb-run -a ./gradlew "$TASK" -Pminecraft_version=${{ matrix.mc }}
 
       - name: Upload the run log on failure
         if: failure()

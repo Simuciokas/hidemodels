@@ -41,6 +41,12 @@ def FABRIC_API = [
 //   https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/<api version>/<...>.pom
 def GAMETEST_MODULE = [
         '26.2'   : '6.0.2+0f4f1dca9e',
+        // 1.21.9 - 1.21.11 are here for the STANDALONE launcher only. Loom resolves the module
+        // itself from fabric-api's POM, so the Loom path never reads these; the hand-rolled launch
+        // has no POM resolution and must be told.
+        '1.21.11': '4.3.5+bfe9fcf43e',
+        '1.21.10': '4.2.13+14b92d896f',
+        '1.21.9' : '4.2.13+14b92d897d',
         '26.1.2' : '5.1.0+0a5283664c',
         '26.1.1' : '5.1.0+0a5283664c',
         '26.1'   : '5.1.0+0a5283664c',
@@ -467,6 +473,6 @@ tasks.withType(AbstractArchiveTask).configureEach {
     archiveVersion = "${project.mod_version}+mc${project.minecraft_version}"
 }
 
-// 26.x has no Loom and therefore no run task of its own; this supplies one, and is inert on any
-// version Loom handles.
-apply from: 'gradle/run26.gradle'
+// The hand-rolled client launcher. It exists because 26.x has no Loom, and it now serves 1.21.x
+// as well - see the file for why that matters.
+apply from: 'gradle/runclient.gradle'
