@@ -18,13 +18,22 @@ Requirements, all declared in `fabric.mod.json`:
 
 | | |
 |---|---|
-| Minecraft | the version the jar names (Loader refuses to load it on anything else) |
+| Minecraft | 1.21.x jars: exactly the version named, e.g. `=1.21.8`. 26.x jars: that version and its patch releases, e.g. `~26.1` covers 26.1.1 and 26.1.2 — see below |
 | Fabric Loader | `>=0.19.0` |
 | Java | `>=25` on 26.x, `>=21` on 1.21.x — each version's own requirement |
 | Fabric API | **not needed** |
 | Other mods | none |
 
 Client-only (`"environment": "client"`), so there is nothing to install server-side.
+
+**Why 1.21.x pins exactly and 26.x does not.** Those two paths are built differently, so they are
+compatible at different granularities. A 1.21.x jar is remapped to that version's intermediary
+names, and a mixin whose target moved does not fail loudly — it simply never applies, so the mod
+would hide nothing with nothing in the log to say why. Pinning exactly makes Loader refuse that jar
+up front instead, and there is a jar for every Minecraft release in the range, so nothing is left
+uncovered. A 26.x jar is never remapped at all — the client jar is already in readable names, which
+is why this project has no Loom — so it is genuinely compatible across a minor's patch releases, and
+says so.
 
 ## Which versions it can target
 

@@ -365,15 +365,29 @@ tasks.withType(JavaCompile).configureEach {
     it.options.encoding = 'UTF-8'
 }
 
-// The metadata has to name the version it was built for, or Loader will happily load a 1.21.8 jar
-// on 26.2 and fail at the first missing method. Templated rather than edited per build.
+// WHICH MINECRAFT THIS JAR ADMITS TO, and the two paths do not get the same answer.
+//
+// It used to be "~<version>" for both, which was wrong in a way that hides: Fabric reads ~1.21.2 as
+// >=1.21.2 <1.22.0, so the 1.21.2 jar loaded happily on 1.21.11 - a jar remapped against 1.21.2's
+// intermediary names, running against 1.21.11's. Mixins that no longer match are not an error, they
+// are silence, so the mod would simply hide nothing and look broken with nothing in the log.
+//
+// 1.21.x therefore pins EXACTLY. Those jars are remapped per version, and the promise the filename
+// makes - one jar per version, the wrong one refused up front - is only true if the metadata says
+// so. There is one jar for every Minecraft release in the range, so nothing is left uncovered.
+//
+// 26.x keeps "~". Nothing is remapped there (the client jar is already in official names, which is
+// why this project has no Loom), and ~26.1 spans 26.1, 26.1.1 and 26.1.2 while stopping short of
+// 26.2 - patch releases of one minor, which is the granularity at which that path is actually
+// compatible. Verified against Loader's own VersionPredicate rather than read off the semver docs.
+def mcDep = legacy ? "=${project.minecraft_version}" : "~${project.minecraft_version}"
 processResources {
     inputs.property 'version', project.version
-    inputs.property 'mcDep', "~${project.minecraft_version}"
+    inputs.property 'mcDep', mcDep
     inputs.property 'javaVersion', javaVersion
     filesMatching(['fabric.mod.json', 'hidemodels.mixins.json']) {
         expand 'version': project.version,
-               'mcDep': "~${project.minecraft_version}",
+               'mcDep': mcDep,
                'javaVersion': javaVersion
     }
 }
