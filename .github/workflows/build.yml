@@ -206,6 +206,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # FEWER AT ONCE, because the failures here are not ours. Eleven jobs starting together all
+      # fetch net.neoforged:minecraft-dependencies from maven.neoforged.net, and that host has now
+      # dropped the request twice, on two different versions - while returning 200 to a plain curl
+      # for both. Four at a time asks less of it.
+      max-parallel: 4
       matrix:
         mc: ['26.2', '26.1.2', '1.21.11', '1.21.10', '1.21.8', '1.21.5', '1.21.4', '1.21.3',
              '1.21.1', '1.21', '1.20.6']
@@ -224,9 +229,21 @@ jobs:
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
+      # ONE RETRY, for that same host. A dependency-resolution failure costs seconds, so a second
+      # attempt is cheap; a real failure costs one extra run of a two-minute test, which is a price
+      # worth paying to stop an unrelated maven hiccup turning the matrix red. It does NOT paper
+      # over flaky code: the mod's own failures fail both attempts.
       - name: Smoke test
         timeout-minutes: 25
-        run: xvfb-run -a ./gradlew smokeTest -Ploader=neoforge -Pminecraft_version=${{ matrix.mc }}
+        run: |
+          for attempt in 1 2; do
+            if xvfb-run -a ./gradlew smokeTest -Ploader=neoforge -Pminecraft_version=${{ matrix.mc }}; then
+              exit 0
+            fi
+            echo "attempt $attempt failed"
+            sleep 20
+          done
+          exit 1
 
       - name: Upload the run log on failure
         if: failure()
