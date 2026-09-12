@@ -67,10 +67,26 @@ ext.neoForgeVersion = NEOFORGE[project.minecraft_version]
 // jar stops matching the group it claims - because the failure mode of a stale group is a jar that
 // installs happily and misbehaves quietly.
 def GROUPS = [
-        ['26.2', '26.1.2', '26.1.1', '26.1'],
-        ['1.21.11', '1.21.10', '1.21.9'],
-        ['1.21.8', '1.21.7', '1.21.6', '1.21.5'],
-        ['1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5'],
+        fabric  : [
+                ['26.2', '26.1.2', '26.1.1', '26.1'],
+                ['1.21.11', '1.21.10', '1.21.9'],
+                ['1.21.8', '1.21.7', '1.21.6', '1.21.5'],
+                ['1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5'],
+        ],
+        // NEOFORGE SPLITS WHERE FABRIC DOES NOT, and the reason is worth keeping: a Fabric jar is
+        // remapped to intermediary, which is stable across a Minecraft rename, while NeoForge runs
+        // on Mojang's official names, where the same rename lands in the bytecode. 1.21.10 and
+        // 1.21.11 produce identical Fabric jars and different NeoForge ones - found by the
+        // group-check job on its first run, before it could ship.
+        //
+        // Only versions NeoForge has a stable build for appear here.
+        neoforge: [
+                ['26.2', '26.1.2'],
+                ['1.21.11'],
+                ['1.21.10'],
+                ['1.21.8', '1.21.5'],
+                ['1.21.4', '1.21.3', '1.21.1', '1.21', '1.20.6'],
+        ],
 ]
 
 // Numeric compare, so "1.21.10" sorts above "1.21.9" rather than below it as a string would.
@@ -87,10 +103,11 @@ def compareVersions = { String a, String b ->
     return 0
 }
 
-def currentGroup = GROUPS.find { project.minecraft_version in it }
+def currentGroup = GROUPS[loader].find { project.minecraft_version in it }
 if (currentGroup == null) {
-    throw new GradleException("Minecraft ${project.minecraft_version} is in no release group - add it "
-            + "to GROUPS in build.gradle, and let groupCheck tell you whether it shares a jar")
+    throw new GradleException("Minecraft ${project.minecraft_version} is in no ${loader} release "
+            + "group - add it to GROUPS in build.gradle, and let group-check tell you whether it "
+            + "really shares that group's jar")
 }
 def sortedGroup = currentGroup.sort(false, compareVersions)
 def groupLow = sortedGroup.first()
@@ -193,7 +210,9 @@ tasks.register('printGroups') {
     group = 'help'
     description = 'Prints each release group: the versions that share one jar.'
     doLast {
-        GROUPS.each { g -> println g.sort(false, compareVersions).join(' ') }
+        GROUPS.each { loaderName, groups ->
+            groups.each { g -> println "${loaderName} ${g.sort(false, compareVersions).join(' ')}" }
+        }
     }
 }
 

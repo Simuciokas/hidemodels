@@ -8,11 +8,16 @@ this checks it on every push, because what would break it - Mojang renaming a me
 touches, or Fabric's intermediary moving - arrives without warning and produces a jar that installs
 happily and misbehaves quietly.
 
+IT HAS ALREADY EARNED ITS KEEP. On its first run it found that 1.21.10 and 1.21.11 share a Fabric
+jar but not a NeoForge one: a Fabric jar is remapped to intermediary, which survives a Minecraft
+rename, while NeoForge runs on official names where the same rename lands in the bytecode. Hence
+groups are declared per loader.
+
 Reads the groups out of build.gradle, so membership is written down in exactly one place, and reads
 one fingerprint file per version from fingerprint_jar.py. Parsing the build file rather than asking
-Gradle keeps this job free of a JDK and a toolchain setup for what is, in the end, four lines.
+Gradle keeps this job free of a JDK and a toolchain setup for what is, in the end, nine lines.
 
-  python tools/check_groups.py <fingerprint dir>
+  python tools/check_groups.py <loader> <fingerprint dir>
 """
 import os
 import re
@@ -21,19 +26,24 @@ import sys
 BUILD_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "build.gradle")
 
 
-def groups_from_build():
-    """The GROUPS list in build.gradle, which is where membership is declared."""
+def groups_from_build(loader):
+    """The GROUPS entry for one loader, from build.gradle, where membership is declared."""
     text = open(BUILD_FILE, encoding="utf-8").read()
-    block = re.search(r"def GROUPS = \[(.*?)\n\]", text, re.S)
+    block = re.search(r"def GROUPS = \[(.*?)\n\]\n", text, re.S)
     if not block:
-        raise SystemExit("could not find the GROUPS list in build.gradle")
+        raise SystemExit("could not find the GROUPS map in build.gradle")
+    section = re.search(r"\b" + re.escape(loader) + r"\s*:\s*\[(.*?)\n\s*\]", block.group(1), re.S)
+    if not section:
+        raise SystemExit("no %r section in the GROUPS map" % loader)
     return [re.findall(r"'([^']+)'", line)
-            for line in block.group(1).splitlines() if "'" in line]
+            for line in section.group(1).splitlines() if "'" in line]
 
 
 def read_fingerprints(root):
     """version -> hash. download-artifact gives each artifact its own directory."""
     out = {}
+    if not os.path.isdir(root):
+        return out
     for name in sorted(os.listdir(root)):
         path = os.path.join(root, name)
         if os.path.isdir(path):
@@ -45,12 +55,13 @@ def read_fingerprints(root):
 
 
 def main(argv):
-    if len(argv) != 2:
-        raise SystemExit("usage: check_groups.py <fingerprint dir>")
-    prints = read_fingerprints(argv[1])
+    if len(argv) != 3:
+        raise SystemExit("usage: check_groups.py <loader> <fingerprint dir>")
+    loader, root = argv[1], argv[2]
+    prints = read_fingerprints(root)
 
     problems = []
-    for group in groups_from_build():
+    for group in groups_from_build(loader):
         seen = {v: prints[v] for v in group if v in prints}
         missing = [v for v in group if v not in prints]
         label = " ".join(group)
@@ -69,9 +80,9 @@ def main(argv):
 
     if problems:
         print("")
-        print("%d group(s) no longer share a jar. Either split the group in build.gradle, or find"
-              % len(problems))
-        print("what moved - a version whose classes differ cannot ship its group's jar.")
+        print("%d %s group(s) no longer share a jar. Either split the group in build.gradle, or"
+              % (len(problems), loader))
+        print("find what moved - a version whose classes differ cannot ship its group's jar.")
         return 1
     return 0
 
