@@ -21,11 +21,47 @@ permissions:
   contents: read
 
 jobs:
+  # A TAGGED COMMIT IS ABOUT TO BE BUILT TWICE. `git push --follow-tags` sends the branch and the
+  # tag as two separate push events, both of which match the triggers above, and their concurrency
+  # groups differ by ref so neither cancels the other - deliberately, because a release run must
+  # survive whatever lands next. The result is seventy identical test jobs racing the release for
+  # runners and slowing down the only run that publishes anything.
+  #
+  # So the branch half stands down when the commit it is building already carries a v tag. Every
+  # other job needs this one, and a skipped dependency skips its dependants, so one gate covers the
+  # whole matrix.
+  #
+  # ONLY WHEN THE TAG IS PUSHED WITH THE COMMIT. Tag an older commit and its branch run has long
+  # since finished, so nothing is saved and nothing is lost - the gate simply says no and the run
+  # proceeds, which is the right way round for a check that could otherwise skip real testing.
+  duplicate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0          # tags are not fetched at depth 1, and this asks about tags
+      - id: check
+        run: |
+          if [ "${GITHUB_REF}" != "${GITHUB_REF#refs/tags/}" ]; then
+            echo "this IS the tag run - it publishes, so it always runs"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "$(git tag --points-at HEAD | grep '^v' || true)" ]; then
+            echo "$(git tag --points-at HEAD | grep '^v') points at this commit - the tag run covers it"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # WHAT THE COMPILER CANNOT CHECK. Mixin targets are strings resolved at launch, so a method
   # Mojang renamed compiles perfectly and fails at startup - and the mod claims a range of
   # versions it is only ever compiled against one of. This job checks every target and every
   # imported vanilla type against each supported version's own client jar.
   targets:
+    needs: duplicate
+    if: needs.duplicate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -76,6 +112,8 @@ jobs:
   # generation under a constrained runner, and it is not worth more CI minutes to chase.
   # Run it locally on those versions: ./gradlew runClientGameTest -Pminecraft_version=1.21.11
   gametest:
+    needs: duplicate
+    if: needs.duplicate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -133,6 +171,8 @@ jobs:
   # One version is enough to keep that path exercised; it is a cross-check on the harness, not
   # per-version coverage.
   gametest-production:
+    needs: duplicate
+    if: needs.duplicate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -171,6 +211,8 @@ jobs:
   # 26.x has no Loom and therefore no run task; gradle/run26.gradle assembles the launch by hand, so
   # the task name is the same on both paths and the matrix needs no special case.
   smoke:
+    needs: duplicate
+    if: needs.duplicate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -238,6 +280,8 @@ jobs:
   #
   # Eleven versions, matching the eleven NeoForge publishes a stable build for.
   smoke-neoforge:
+    needs: duplicate
+    if: needs.duplicate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -299,6 +343,8 @@ jobs:
   # built on every push, because the only thing that reliably catches a version-specific break is
   # compiling it - the target checker above is static and cannot see member access.
   build:
+    needs: duplicate
+    if: needs.duplicate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -368,6 +414,8 @@ jobs:
   # 1.21.9, 1.21.7, 1.21.6, 1.21.2 and 1.20.5 - have only betas or an alpha, checked against their
   # maven rather than guessed.
   build-neoforge:
+    needs: duplicate
+    if: needs.duplicate.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -521,11 +569,11 @@ jobs:
             echo "release $GITHUB_REF_NAME exists - replacing its jars"
             gh release upload "$GITHUB_REF_NAME" dist/*.jar dist/SHA256SUMS.txt --clobber
           elif [ -f "$notes" ]; then
-            gh release create "$GITHUB_REF_NAME" dist/*.jar \
+            gh release create "$GITHUB_REF_NAME" dist/*.jar dist/SHA256SUMS.txt \
               --title "$GITHUB_REF_NAME" --notes-file "$notes" --generate-notes
           else
             echo "no $notes - falling back to generated notes"
-            gh release create "$GITHUB_REF_NAME" dist/*.jar \
+            gh release create "$GITHUB_REF_NAME" dist/*.jar dist/SHA256SUMS.txt \
               --title "$GITHUB_REF_NAME" --generate-notes
           fi
 
