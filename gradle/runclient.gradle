@@ -66,8 +66,10 @@ dependencies {
     loaderRuntime "net.fabricmc:fabric-loader:${project.loader_version}"
     if (legacy) {
         intermediaryMappings "net.fabricmc:intermediary:${mc}:v2"
-        quiltLoaderRuntime "org.quiltmc:quilt-loader:${project.quilt_loader_version}"
     }
+    // Not inside that guard: whether Quilt can run 26.x is the question, so the loader has to be
+    // available there to ask it.
+    quiltLoaderRuntime "org.quiltmc:quilt-loader:${project.quilt_loader_version}"
     fabricApiRuntime "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
     if (project.hasGametest) {
         gametestHarness "net.fabricmc.fabric-api:fabric-client-gametest-api-v1:${project.gametestModuleVersion}"
@@ -438,12 +440,21 @@ if (legacy) {
 // IS the Quilt jar. This launches it to find out, rather than claiming support from the fact that
 // a compatibility layer exists.
 //
-// THE OPEN QUESTION IS FABRIC API. Quilt's own fork of it, QFAPI, stopped at Minecraft 1.21 in
-// alpha form in 2024 - so if Quilt cannot load the real Fabric API this mod now depends on, Quilt
-// support ends there too, whatever Quilt Loader itself can do.
-if (legacy) {
+// THE OPEN QUESTION WAS FABRIC API. Quilt's own fork of it, QFAPI, stopped at Minecraft 1.21 in
+// alpha form in 2024 - but Quilt Loader turns out to load the real Fabric API, so that is not the
+// limit it looked like.
+//
+// Registered for EVERY version, 26.x included. Whether Quilt Loader has a game provider for 26.x
+// is exactly the kind of thing worth finding out by running it.
+if (true) {
     def quiltLoaderLibraries = {
-        def loaderJar = configurations.quiltLoaderRuntime.files.find { it.name.startsWith('quilt-loader') }
+        File loaderJar = configurations.quiltLoaderRuntime.files.find {
+            it.name.startsWith('quilt-loader')
+        }
+        if (loaderJar == null) {
+            throw new GradleException('quilt-loader did not resolve - see the quiltLoaderRuntime '
+                    + 'configuration')
+        }
         def json = new java.util.zip.ZipFile(loaderJar).withCloseable { zip ->
             def entry = zip.entries().toList().find { it.name == 'quilt_installer.json' }
             entry == null ? null : zip.getInputStream(entry).getText('UTF-8')
@@ -459,15 +470,18 @@ if (legacy) {
     tasks.register('runQuiltSmokeTest', JavaExec) {
         group = 'verification'
         description = "Launches ${mc} under QUILT Loader with the Fabric jar, to see if it runs."
-        dependsOn 'remapJar', 'remapTestModJar', 'extractNatives', 'stubAssets', 'downloadMinecraft'
+        dependsOn(legacy ? ['remapJar', 'remapTestModJar'] : ['jar', 'testModJar'])
+        dependsOn 'extractNatives', 'stubAssets', 'downloadMinecraft'
 
         doFirst {
             def mods = new File(runDir, 'mods')
             mods.mkdirs()
             delete fileTree(mods)
             copy {
-                from tasks.named('remapJar').get().archiveFile
-                from tasks.named('remapTestModJar').get().archiveFile
+                // 1.21.x needs the remapped jars; 26.x has nothing to remap, so the built ones are
+                // what a user would install.
+                from tasks.named(legacy ? 'remapJar' : 'jar').get().archiveFile
+                from tasks.named(legacy ? 'remapTestModJar' : 'testModJar').get().archiveFile
                 from configurations.fabricApiRuntime
                 into mods
             }
@@ -476,7 +490,8 @@ if (legacy) {
         }
 
         classpath = files(clientJar) + mcLibJars + configurations.quiltLoaderRuntime +
-                files(quiltLoaderLibraries) + configurations.intermediaryMappings
+                files(quiltLoaderLibraries) +
+                (legacy ? configurations.intermediaryMappings : files())
         mainClass = 'org.quiltmc.loader.impl.launch.knot.KnotClient'
         workingDir = runDir
 

@@ -244,15 +244,17 @@ jobs:
   # its own abandoned fork of. This job launches the actual jar under actual Quilt Loader, with the
   # REAL Fabric API, and runs the same checks as everywhere else.
   #
-  # 1.21.x only: Quilt Loader has no game provider for 26.x, so those versions are Fabric and
-  # NeoForge. Four versions spread across the range rather than all twelve - this is a check on the
-  # loader's compatibility layer, which does not vary per Minecraft version the way the mod does.
+  # ALL EIGHTEEN, the same as Fabric. An earlier version of this comment said Quilt Loader had no
+  # game provider for 26.x and sampled four versions instead - both halves were wrong, and the
+  # second only looked reasonable because of the first. Quilt runs 26.2 as happily as it runs
+  # 1.20.6, so there is no reason to test it on less than the mod supports.
   smoke-quilt:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        mc: ['1.21.11', '1.21.8', '1.21.1', '1.20.6']
+        mc: ['26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
+             '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5']
     steps:
       - uses: actions/checkout@v5
 
