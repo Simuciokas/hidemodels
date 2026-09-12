@@ -5,6 +5,12 @@
   "name": "Hide Models",
   "description": "Hides chosen ModelEngine model pieces client-side by their item_model id - e.g. a mount's head, or a whole pet - by cancelling their rendering rather than removing the entities.",
   "authors": [ "Simuciokas" ],
+  "icon": "assets/hidemodels/icon.png",
+  "contact": {
+    "homepage": "https://github.com/Simuciokas/hidemodels",
+    "sources": "https://github.com/Simuciokas/hidemodels",
+    "issues": "https://github.com/Simuciokas/hidemodels/issues"
+  },
   "license": "LGPL-3.0-only",
   "environment": "client",
   "entrypoints": {},
