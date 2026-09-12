@@ -27,21 +27,26 @@ if (!(loader in ['fabric', 'neoforge'])) {
 }
 ext.loader = loader
 
-// NeoForge's own versions, one per Minecraft version. Their numbering follows Minecraft's minor:
-// 21.8.x is for 1.21.8, 26.2.x for 26.2 - which is tidy but not derivable, because the patch
-// number is theirs. From https://maven.neoforged.net/releases/net/neoforged/neoforge
+// NeoForge's own versions, one per Minecraft version, STABLE ONLY. Their numbering tracks
+// Minecraft's: 21.8.x is for 1.21.8, 26.1.2.x for 26.1.2 - tidy, but not derivable, because the
+// build number is theirs.
+//
+// SEVEN SUPPORTED MINECRAFT VERSIONS ARE ABSENT HERE, and that is NeoForge's release history
+// rather than an omission: 26.1.1, 1.21.9, 1.21.7, 1.21.6, 1.21.2 and 1.20.5 have only beta
+// builds, and 26.1 only an alpha. Those stay Fabric-only rather than shipping a jar built against
+// a toolchain its own authors have not called finished.
+// From https://maven.neoforged.net/releases/net/neoforged/neoforge
 def NEOFORGE = [
         '26.2'   : '26.2.0.87',
         '26.1.2' : '26.1.2.109',
         '1.21.11': '21.11.45',
         '1.21.10': '21.10.64',
         '1.21.8' : '21.8.54',
-        '1.21.7' : '21.7.28',
-        '1.21.6' : '21.6.20',
         '1.21.5' : '21.5.98',
         '1.21.4' : '21.4.157',
-        '1.21.3' : '21.3.86',
-        '1.21.1' : '21.1.209',
+        '1.21.3' : '21.3.97',
+        '1.21.1' : '21.1.250',
+        '1.21'   : '21.0.167',
         '1.20.6' : '20.6.141',
 ]
 ext.neoForgeVersion = NEOFORGE[project.minecraft_version]
@@ -114,7 +119,13 @@ if (legacy && fabricApiVersion == null) {
 // Loom remaps a Fabric mod to intermediary, which is meaningless on NeoForge: it runs with
 // Mojang's official names, the same names this source is written in, so nothing needs remapping
 // there at all - on ANY Minecraft version. ModDevGradle supplies the game instead.
-if (loader == 'fabric' && legacy) {
+// "Loom is in play" is not the same question as "is this an older Minecraft": Loom is Fabric's
+// remapper, so a NeoForge build never uses it whatever the version. Everything Loom provides - the
+// run configs, the smokeTest wrapper, the dev classpath - hangs off this rather than off `legacy`,
+// which is what made a NeoForge build on 1.21.x fail with "could not find method loom()".
+def usesLoom = (loader == 'fabric' && legacy)
+ext.usesLoom = usesLoom
+if (usesLoom) {
     apply plugin: 'fabric-loom'
 }
 if (loader == 'neoforge') {
@@ -210,7 +221,7 @@ processTestResources {
 // dependencies - Gradle gives a test source set neither of the latter by default. True on both
 // paths; on 26.x main's classpath is assembled by hand below rather than by Loom, so this has to
 // wait until those file collections exist.
-if (legacy) {
+if (usesLoom) {
     sourceSets.test.compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
     sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
 }
@@ -264,7 +275,7 @@ ext.writeTestClientOptions = { File f ->
     f.text = kept.join(System.lineSeparator()) + System.lineSeparator()
 }
 
-if (legacy) {
+if (usesLoom) {
     def prepareClientOptions = tasks.register('prepareClientOptions') {
         description = 'Mutes the client and trims its render distance before it launches.'
         doLast {
@@ -447,7 +458,7 @@ if (!legacy) {
 // The target has to match the client jar it will run beside: 26.x is class-file major 69 = Java
 // 25, 1.21.x is 65 = Java 21. Mixin refuses to load classes newer than its declared
 // compatibilityLevel, so hidemodels.mixins.json is templated to agree rather than hardcoded.
-if (legacy) {
+if (usesLoom) {
     loom {
         runs {
             // Runs EVERYWHERE Loom can launch, unlike the gametest below - which is the point of
@@ -487,7 +498,7 @@ if (legacy) {
 // THE SMOKE TEST'S VERDICT COMES FROM A FILE, not the exit code - see the test class for why no
 // exit from a client thread survives contact with GLFW on Windows. The run task is therefore
 // allowed to "fail", and this is the task to actually invoke.
-if (legacy) {
+if (usesLoom) {
     tasks.matching { it.name == 'runSmokeTest' }.configureEach {
         ignoreExitValue = true
         // A stale PASS from a previous run would be indistinguishable from a real one.

@@ -207,6 +207,23 @@ jobs:
       matrix:
         mc: ['26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
              '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5']
+        loader: ['fabric']
+        # NeoForge, on the eleven versions it has a STABLE build for. The other seven - 26.1.1,
+        # 26.1, 1.21.9, 1.21.7, 1.21.6, 1.21.2 and 1.20.5 - have only betas or an alpha, so they
+        # stay Fabric-only. Listed rather than derived: which combinations exist is a fact about
+        # NeoForge's release history, and it is checked against their maven, not guessed.
+        include:
+          - {mc: '26.2', loader: 'neoforge'}
+          - {mc: '26.1.2', loader: 'neoforge'}
+          - {mc: '1.21.11', loader: 'neoforge'}
+          - {mc: '1.21.10', loader: 'neoforge'}
+          - {mc: '1.21.8', loader: 'neoforge'}
+          - {mc: '1.21.5', loader: 'neoforge'}
+          - {mc: '1.21.4', loader: 'neoforge'}
+          - {mc: '1.21.3', loader: 'neoforge'}
+          - {mc: '1.21.1', loader: 'neoforge'}
+          - {mc: '1.21', loader: 'neoforge'}
+          - {mc: '1.20.6', loader: 'neoforge'}
     steps:
       - uses: actions/checkout@v5
 
@@ -228,13 +245,13 @@ jobs:
         uses: actions/cache@v5
         with:
           path: build/minecraft
-          key: mc-${{ matrix.mc }}-${{ hashFiles('gradle.properties') }}
+          key: mc-${{ matrix.mc }}-${{ matrix.loader }}-${{ hashFiles('gradle.properties') }}
 
-      - run: ./gradlew build -Pminecraft_version=${{ matrix.mc }}
+      - run: ./gradlew build -Pminecraft_version=${{ matrix.mc }} -Ploader=${{ matrix.loader }}
 
       - uses: actions/upload-artifact@v7
         with:
-          name: hidemodels-${{ matrix.mc }}
+          name: hidemodels-${{ matrix.mc }}-${{ matrix.loader }}
           path: build/libs/*.jar
           if-no-files-found: error
 
