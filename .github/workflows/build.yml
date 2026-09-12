@@ -271,6 +271,12 @@ jobs:
 
       # PINNED TO A COMMIT, NOT A TAG. This is a third-party action holding a token that can publish
       # under our name; a tag can be moved, a commit cannot. v3.3.1.
+      #
+      # Nothing updates this pin automatically, which is the trade being made rather than an
+      # oversight: a pinned action keeps behaving exactly as it did the day it was pinned, and the
+      # failure mode is missing out on fixes, not breaking on a Tuesday. Check it when the release
+      # process is next touched - github.com/Kir-Antipov/mc-publish/releases - and move the SHA and
+      # the version comment together.
       - uses: Kir-Antipov/mc-publish@52307b03863581dec6b652b83e597aec02ebb075
         with:
           modrinth-id: ${{ vars.MODRINTH_PROJECT_ID }}
