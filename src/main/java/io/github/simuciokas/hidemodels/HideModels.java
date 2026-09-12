@@ -176,7 +176,12 @@ public final class HideModels {
         if (command == null) {
             return false;
         }
-        final String line = command.trim();
+        // The typed path hands it over without a slash; a CLICKED one is trimmed by the game before
+        // it gets here. Stripping it anyway costs nothing and means the two paths cannot diverge.
+        String line = command.trim();
+        if (line.startsWith("/")) {
+            line = line.substring(1).trim();
+        }
         final String lower = line.toLowerCase(Locale.ROOT);
         if (!lower.equals(MOD_ID) && !lower.startsWith(MOD_ID + " ")) {
             return false;
@@ -195,8 +200,12 @@ public final class HideModels {
                     .withStyle(ChatFormatting.GRAY));
             NearbyModels.say(Component.literal("  /hidemodels list bones [radius]  - individual bone ids")
                     .withStyle(ChatFormatting.GRAY));
-            NearbyModels.say(Component.literal("  edit config/" + MOD_ID
-                    + ".txt to change what is hidden (default radius " + listRadius + ")")
+            NearbyModels.say(Component.literal("  /hidemodels add <id>  - hide it now (or click an id in the list)")
+                    .withStyle(ChatFormatting.GRAY));
+            NearbyModels.say(Component.literal("  /hidemodels remove <id>  - stop hiding it")
+                    .withStyle(ChatFormatting.GRAY));
+            NearbyModels.say(Component.literal("  config/" + MOD_ID
+                    + ".txt holds the list and the directives (default radius " + listRadius + ")")
                     .withStyle(ChatFormatting.DARK_GRAY));
             return true;
         }
@@ -220,9 +229,149 @@ public final class HideModels {
             NearbyModels.report(radius, bones);
             return true;
         }
+        if (arg[0].equalsIgnoreCase("add")) {
+            if (arg.length < 2) {
+                NearbyModels.say(Component.literal(
+                        "hidemodels: add what? try /hidemodels list to see the ids around you")
+                        .withStyle(ChatFormatting.RED));
+                return true;
+            }
+            add(rest.substring(arg[0].length()).trim());
+            return true;
+        }
+        if (arg[0].equalsIgnoreCase("remove") || arg[0].equalsIgnoreCase("rm")) {
+            if (arg.length < 2) {
+                NearbyModels.say(Component.literal(
+                        "hidemodels: remove what? try /hidemodels list to see what is hidden")
+                        .withStyle(ChatFormatting.RED));
+                return true;
+            }
+            remove(rest.substring(arg[0].length()).trim());
+            return true;
+        }
         NearbyModels.say(Component.literal("hidemodels: unknown subcommand '" + arg[0]
                 + "' - try /hidemodels help").withStyle(ChatFormatting.RED));
         return true;
+    }
+
+    /**
+     * Adds a pattern and applies it immediately.
+     *
+     * <p>Appends to the config rather than rewriting it: the file is hand-edited and full of
+     * comments and directives explaining itself, and a round-trip through this class would flatten
+     * all of that. A line is added at the end, where a person would have put it.
+     */
+    private static void add(String raw) {
+        final String pattern = raw.trim().toLowerCase(Locale.ROOT);
+        if (pattern.isEmpty() || pattern.startsWith("#")) {
+            NearbyModels.say(Component.literal("hidemodels: '" + raw + "' is not an id")
+                    .withStyle(ChatFormatting.RED));
+            return;
+        }
+        // Already covered is not the same as already present: a broader fragment may cover this id
+        // without being equal to it, and adding the narrower one would be a no-op the user cannot
+        // see. Say which line is doing the work instead.
+        final String covering = coveringPattern(pattern);
+        if (covering != null) {
+            NearbyModels.say(Component.literal("hidemodels: already hidden by '" + covering + "'")
+                    .withStyle(ChatFormatting.YELLOW));
+            return;
+        }
+        try {
+            if (!Files.isRegularFile(CONFIG)) {
+                writeDefaults();
+            }
+            final String existing = Files.readString(CONFIG);
+            final String sep = existing.isEmpty() || existing.endsWith("\n") ? "" : System.lineSeparator();
+            Files.writeString(CONFIG, existing + sep + pattern + System.lineSeparator());
+            reloadNow();
+            NearbyModels.say(Component.literal("hidemodels: hiding '" + pattern + "' ("
+                    + patterns.length + " pattern" + (patterns.length == 1 ? "" : "s") + ")")
+                    .withStyle(ChatFormatting.GREEN));
+        } catch (IOException e) {
+            NearbyModels.say(Component.literal("hidemodels: could not write config/" + MOD_ID
+                    + ".txt - " + e).withStyle(ChatFormatting.RED));
+        }
+    }
+
+    /**
+     * Removes a pattern, matching the line exactly rather than by substring.
+     *
+     * <p>Substring removal would be a trap: removing {@code mount/head} while the file says
+     * {@code mount/} would either delete the broader line - hiding far more than asked - or do
+     * nothing while claiming success. So an exact line is removed, and a broader line that still
+     * covers the id is reported rather than touched.
+     */
+    private static void remove(String raw) {
+        final String pattern = raw.trim().toLowerCase(Locale.ROOT);
+        if (pattern.isEmpty()) {
+            NearbyModels.say(Component.literal("hidemodels: remove what?").withStyle(ChatFormatting.RED));
+            return;
+        }
+        try {
+            if (!Files.isRegularFile(CONFIG)) {
+                NearbyModels.say(Component.literal("hidemodels: nothing is hidden yet")
+                        .withStyle(ChatFormatting.YELLOW));
+                return;
+            }
+            final List<String> kept = new ArrayList<>();
+            int removed = 0;
+            for (String line : Files.readAllLines(CONFIG)) {
+                if (line.trim().toLowerCase(Locale.ROOT).equals(pattern)) {
+                    removed++;
+                    continue;
+                }
+                kept.add(line);
+            }
+            if (removed == 0) {
+                final String covering = coveringPattern(pattern);
+                if (covering != null) {
+                    NearbyModels.say(Component.literal("hidemodels: '" + pattern
+                            + "' is not a line of its own - it is covered by '" + covering
+                            + "', remove that instead").withStyle(ChatFormatting.YELLOW));
+                } else {
+                    NearbyModels.say(Component.literal("hidemodels: '" + pattern
+                            + "' is not in the list").withStyle(ChatFormatting.YELLOW));
+                }
+                return;
+            }
+            Files.write(CONFIG, kept);
+            reloadNow();
+            NearbyModels.say(Component.literal("hidemodels: stopped hiding '" + pattern + "' ("
+                    + patterns.length + " pattern" + (patterns.length == 1 ? "" : "s") + " left)")
+                    .withStyle(ChatFormatting.GREEN));
+        } catch (IOException e) {
+            NearbyModels.say(Component.literal("hidemodels: could not write config/" + MOD_ID
+                    + ".txt - " + e).withStyle(ChatFormatting.RED));
+        }
+    }
+
+    /** The loaded pattern that already covers this id, or null. */
+    private static String coveringPattern(String id) {
+        final String[] pats = patterns;
+        for (int i = 0; i < pats.length; i++) {
+            if (id.contains(pats[i])) {
+                return pats[i];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Re-reads the config at once, rather than waiting up to a second for the poll.
+     *
+     * <p>A command that edits the file should be believed immediately: the confirmation message
+     * reports the new pattern count, and the next frame should already hide the thing.
+     */
+    private static void reloadNow() {
+        try {
+            lastModified = Files.isRegularFile(CONFIG)
+                    ? Files.getLastModifiedTime(CONFIG).toMillis() : 0;
+            lastCheck = System.currentTimeMillis();
+            load();
+        } catch (IOException e) {
+            // Same rule as the poll: a broken read keeps the previous list rather than emptying it.
+        }
     }
 
     /** Parses a radius in blocks, clamped to what one scan can sensibly cover. 0 means invalid. */
@@ -392,6 +541,10 @@ public final class HideModels {
                 # count and distance, marking the ones this file already hides - so the ids can be
                 # read off the screen instead of unzipping a resource pack. "list bones" prints
                 # individual bone ids, for hiding one piece of a model.
+                #
+                # CLICK AN ID in that list to hide it, or type /hidemodels add <id>. Lines added
+                # that way land at the end of this file, below whatever you have written here.
+                # /hidemodels remove <id> takes one back out.
                 #
                 # Saved changes apply within a second; no restart needed.
                 """;

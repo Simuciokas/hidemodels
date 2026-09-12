@@ -26,7 +26,10 @@ def FABRIC_API = [
         '1.21.4' : '0.119.4+1.21.4',
         '1.21.5' : '0.128.2+1.21.5',
         '1.21.6' : '0.128.2+1.21.6',
+        '1.21.7' : '0.129.0+1.21.7',
         '1.21.8' : '0.136.1+1.21.8',
+        '1.21.9' : '0.134.1+1.21.9',
+        '1.21.10': '0.138.4+1.21.10',
         '1.21.11': '0.141.6+1.21.11',
 ]
 def fabricApiVersion = FABRIC_API[project.minecraft_version]
@@ -49,6 +52,15 @@ if (legacy) {
 // cannot bridge it, since a 1.21.x build is remapped to intermediary and the runtime name is
 // method_NNNN. Everything else in src/main compiles unchanged across the whole range.
 sourceSets.main.java.srcDir(legacy ? 'src/mc121/java' : 'src/mc26/java')
+
+// A SECOND SPLIT, on a DIFFERENT BOUNDARY, which is why it is not folded into the one above.
+// ClickEvent was a class with a constructor through 1.21.4 and became a sealed interface of records
+// in 1.21.5 - so the divide runs through the middle of the 1.21.x range, while ChatOut's divide is
+// between 1.21.x and 26.x. Listed explicitly rather than compared as versions: the list is short,
+// it is the same shape as hasGametest below, and a new version defaults to the modern form, which
+// is the one that will keep being right.
+def clickEventIsClass = project.minecraft_version in ['1.21.2', '1.21.3', '1.21.4']
+sourceSets.main.java.srcDir(clickEventIsClass ? 'src/click121/java' : 'src/click1215/java')
 
 // The gametest class implements an interface that does not exist on every version, so it is
 // compiled - and declared as an entrypoint - only where it can be.

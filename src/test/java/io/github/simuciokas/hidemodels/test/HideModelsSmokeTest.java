@@ -53,7 +53,8 @@ public final class HideModelsSmokeTest implements ClientModInitializer {
             waitForClient();
             checkComponentResolves();
             checkConfigDrivesMatcher();
-            report("PASS - component resolved and the config drove the matcher");
+            checkCommandsEditTheList();
+            report("PASS - component resolved, the config drove the matcher, add/remove worked");
         } catch (Throwable t) {
             t.printStackTrace(System.err);
             report("FAIL - " + t);
@@ -113,6 +114,30 @@ public final class HideModelsSmokeTest implements ClientModInitializer {
         if (HideModels.hidden("hidemodels:not_listed")) {
             throw new AssertionError("hidden() matched an id that was never listed");
         }
+    }
+
+    /**
+     * The add and remove commands, which are the only part of them that works without a world.
+     *
+     * <p>Calls the handler directly rather than through the connection, because there is no server
+     * to have a connection to. That skips the mixin - the gametest covers interception where it can
+     * run - but it does cover everything the handler itself does: parsing, writing the config, and
+     * forcing the reload. On 26.x, where no gametest exists, this is the only automated proof that
+     * the commands do anything at all, and the file-writing half is the half most likely to break
+     * on a machine or a version nobody tried.
+     */
+    private static void checkCommandsEditTheList() throws IOException, InterruptedException {
+        final String id = "hidemodels:smoke_command";
+        write("# cleared by the smoke test");
+        waitUntil(() -> !HideModels.hidden(id), "the pattern list never started empty");
+
+        HideModels.handleCommand(HideModels.MOD_ID + " add " + id);
+        waitUntil(() -> HideModels.hidden(id),
+                  "/hidemodels add wrote nothing the matcher picked up");
+
+        HideModels.handleCommand(HideModels.MOD_ID + " remove " + id);
+        waitUntil(() -> !HideModels.hidden(id),
+                  "/hidemodels remove left the id hidden");
     }
 
     /** Polling is not just waiting here: every hidden() call is what drives the reload check. */

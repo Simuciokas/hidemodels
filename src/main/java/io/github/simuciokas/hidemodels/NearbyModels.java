@@ -95,14 +95,28 @@ public final class NearbyModels {
             final Map.Entry<String, Group> row = rows.get(i);
             final Group g = row.getValue();
             final boolean listed = HideModels.listed(row.getKey());
+
+            // CLICK THE ID TO HIDE IT. The whole point of this report is to get ids out of the
+            // game and into the config, and the shortest path from "I can see it" to "it is gone"
+            // is one click. Only ids that are NOT yet hidden are clickable: a click that silently
+            // did nothing would be worse than no click at all, and removal is deliberately not
+            // wired to a click, because undoing something by clicking the same place you just
+            // clicked is how people hide things by accident.
+            final Component id = listed
+                    ? Component.literal(row.getKey()).withStyle(ChatFormatting.GREEN)
+                    : Component.literal(row.getKey()).withStyle(
+                            ClickRun.style("/" + HideModels.MOD_ID + " add " + row.getKey())
+                                    .withColor(ChatFormatting.WHITE)
+                                    .withUnderlined(true));
+
             final Component line = Component.literal("  x" + g.pieces + "  ")
                     .withStyle(ChatFormatting.DARK_GRAY)
-                    .append(Component.literal(row.getKey())
-                            .withStyle(listed ? ChatFormatting.GREEN : ChatFormatting.WHITE))
+                    .append(id)
                     .append(Component.literal("  " + fmt(Math.sqrt(g.nearestSq)) + "m")
                             .withStyle(ChatFormatting.DARK_GRAY))
                     .append(listed ? Component.literal("  hidden").withStyle(ChatFormatting.GREEN)
-                                   : Component.empty());
+                                   : Component.literal("  click to hide")
+                                             .withStyle(ChatFormatting.DARK_GRAY));
             say(line);
         }
         if (rows.size() > shown) {

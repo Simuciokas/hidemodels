@@ -11,7 +11,7 @@ server's view of the world are all untouched.
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer.
 2. Drop the jar **for your Minecraft version** into `mods/` — they are named
-   `hidemodels-1.4.2+mc26.2.jar`, `hidemodels-1.4.2+mc1.21.8.jar` and so on. Loader refuses to load
+   `hidemodels-1.5.0+mc26.2.jar`, `hidemodels-1.5.0+mc1.21.8.jar` and so on. Loader refuses to load
    the wrong one rather than failing later.
 
 Requirements, all declared in `fabric.mod.json`:
@@ -86,7 +86,7 @@ part of the range:
 |---|---|---|---|---|
 | 26.2, 26.1.2, 26.1.1, 26.1 | yes | yes | **yes** | **no** — Fabric ships no gametest module for 26.x |
 | 1.21.11 … 1.21.9 | yes | yes | **yes** | locally only — see below |
-| 1.21.8 … 1.21.4 | yes | yes | **yes** | **yes** |
+| 1.21.8 … 1.21.4 | yes | yes | **yes** | **yes** — all five |
 | 1.21.3, 1.21.2 | yes | yes | **yes** | **no** — the gametest API does not exist yet |
 
 `./gradlew smokeTest -Pminecraft_version=1.21.2` starts a real client with the mod, waits for it to
@@ -103,7 +103,7 @@ reads the component, intercepts its own command, and honours its config. No Mode
 server are needed, because the mod keys on a vanilla component on a vanilla entity — which is what
 makes it runnable anywhere.
 
-CI runs the smoke test on all fourteen versions and the gametest on 1.21.4 and 1.21.8, under xvfb.
+CI runs the smoke test on all fourteen versions and the gametest on 1.21.4 through 1.21.8, under xvfb.
 What the smoke test cannot cover is anything needing a world: the render hook, the command mixin
 and `ChatOut` are only exercised where the gametest runs.
 
@@ -173,6 +173,8 @@ renderer down with it.
 | `/hidemodels` | status: pattern count, on/off, first-person and server-opt-out state |
 | `/hidemodels list [radius]` | every model within the radius, grouped by model, nearest first |
 | `/hidemodels list bones [radius]` | the same, but individual bone ids |
+| `/hidemodels add <id>` | hide it now — writes the line and reloads |
+| `/hidemodels remove <id>` | stop hiding it |
 
 Each row shows the piece count, the id, and the distance to the nearest piece; ids your config
 already hides are green and marked `hidden`. Radius defaults to `list-radius` in the config (32)
@@ -181,11 +183,20 @@ and is clamped to 256. Output is capped at 40 rows.
 ```
 hidemodels: 3 models within 32 blocks (12 pieces)
   x8  modelengine:some_mount/     0.9m  hidden
-  x2  modelengine:internal_fire/  0.9m
-  x2  modelengine:warp_core/      14.3m
+  x2  modelengine:internal_fire/  0.9m  click to hide
+  x2  modelengine:warp_core/      14.3m  click to hide
 ```
 
-This is the fast way to fill in the config: stand next to the thing, run the command, copy the id.
+**The ids are clickable.** Anything not already hidden is underlined and runs `add` for you, so the
+whole loop is: stand next to the thing, run `list`, click it, watch it vanish. Ids that are already
+hidden are not clickable — a click that did nothing would be worse than none, and removal stays a
+typed command on purpose, so nothing disappears from your config by a stray click in chat.
+
+`add` appends to the config rather than rewriting it, leaving your comments and directives where
+you put them, and reloads immediately instead of waiting for the poll. It tells you when an id is
+already covered by a broader line rather than silently adding a redundant one. `remove` deletes a
+line that matches exactly; if the id is only hidden because of a broader pattern, it says which one
+rather than deleting more than you asked.
 
 The command is handled entirely on the client and is **not** forwarded to the server. It also isn't
 registered in the command tree, so it won't tab-complete — vanilla builds that tree from what the
@@ -231,7 +242,7 @@ permanently altered, and the player's own config applies again next time they co
 
 ```sh
 export JAVA_HOME=/path/to/jdk-25
-./gradlew build          # -> build/libs/hidemodels-1.4.2+mc26.2.jar
+./gradlew build          # -> build/libs/hidemodels-1.5.0+mc26.2.jar
 ```
 
 No local Minecraft install is needed: the compile classpath — client jar plus MC's own libraries —

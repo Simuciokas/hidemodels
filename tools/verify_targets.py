@@ -83,8 +83,18 @@ def parse_mixins():
             full = full + "$" + "$".join(rest)
 
         members = []
-        for meth in re.findall(r'@Inject\s*\(\s*method\s*=\s*"([^"]+)"', src):
-            members.append(("method", meth))
+        # An @Inject carrying require = 0 targets a method that DOES NOT EXIST on every supported
+        # version, and says so: Mixin treats zero matches as success there. ClientPacketListener
+        # gained sendUnattendedCommand in 1.21.6, and the mod hooks it where it exists so that a
+        # clicked command is intercepted like a typed one. Reporting that as a missing target on
+        # 1.21.2 would be reporting the design as a fault, so those are collected separately and
+        # only ever noted.
+        for inject in re.findall(r'@Inject\s*\(((?:[^()]|\([^()]*\))*)\)', src, re.S):
+            meth = re.search(r'method\s*=\s*"([^"]+)"', inject)
+            if not meth:
+                continue
+            optional = re.search(r'require\s*=\s*0\b', inject) is not None
+            members.append(("optional method" if optional else "method", meth.group(1)))
         for inv in re.findall(r'@Invoker\("([^"]+)"\)', src):
             members.append(("invoker", inv))
         for acc in re.findall(r'@Accessor\("([^"]+)"\)', src):
@@ -276,14 +286,20 @@ def map_descriptor(desc, classes):
 
 
 def check_version(version, mixins):
-    """Returns (ok, [problem, ...]) for one Minecraft version."""
+    """Returns (ok, [problem, ...], [note, ...]) for one Minecraft version.
+
+    Notes are for targets that are ALLOWED to be missing here - an @Inject declared require = 0,
+    aimed at a method a later version introduced. They are printed, because "this hook is inactive
+    on 1.21.2" is worth knowing, but they never fail the check.
+    """
     try:
         jar, maps = client_jar(version)
     except SystemExit as e:
-        return False, [str(e)]
+        return False, [str(e)], []
     classes, methods, fields = ({}, {}, {}) if maps is None else load_mappings(maps)
     obf_class = lambda c: classes.get(c, c)
     problems = []
+    notes = []
 
     for mx in mixins:
         target = obf_class(mx["class"])
@@ -309,8 +325,13 @@ def check_version(version, mixins):
                 obf_name = (methods.get((mx["class"], member))
                             or fields.get((mx["class"], member)) or member)
                 if obf_name not in names:
-                    problems.append("%s: %s %s.%s is absent"
-                                    % (mx["file"], kind, mx["class"], member))
+                    if kind == "optional method":
+                        # Declared require = 0: absent here is the expected case, not a fault.
+                        notes.append("%s.%s not on this version (optional target)"
+                                     % (mx["class"].rsplit(".", 1)[-1], member))
+                    else:
+                        problems.append("%s: %s %s.%s is absent"
+                                        % (mx["file"], kind, mx["class"], member))
 
     for imp, users in sorted(IMPORTS.items()):
         # An inner class is imported with a dot but lives under a dollar; accept either spelling.
@@ -333,7 +354,7 @@ def check_version(version, mixins):
             if obf_field not in {n for n, _ in found}:
                 problems.append("%s.%s is absent (%s)" % (cls, field, why))
 
-    return (not problems), problems
+    return (not problems), problems, notes
 
 
 def main(argv):
@@ -350,11 +371,13 @@ def main(argv):
 
     worst = 0
     for v in versions:
-        ok, problems = check_version(v, mixins)
+        ok, problems, notes = check_version(v, mixins)
         print("%-8s %s" % (v, "OK - every target resolves" if ok
                            else "%d problem%s" % (len(problems), "" if len(problems) == 1 else "s")))
         for p in problems:
             print("           %s" % p)
+        for n in notes:
+            print("           note: %s" % n)
         if not ok:
             worst = 1
     return worst

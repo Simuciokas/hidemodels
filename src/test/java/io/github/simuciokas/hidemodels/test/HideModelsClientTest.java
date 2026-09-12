@@ -7,6 +7,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.fabricmc.fabric.api.client.gametest.v1.context.TestSingleplayerContext;
 import net.minecraft.world.entity.Display;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import net.minecraft.world.entity.Entity;
@@ -114,6 +115,58 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                             "hidden() matched an id that was never added - the matcher is too eager");
                 }
             });
+
+            // 4. THE COMMANDS THAT EDIT THE LIST. add/remove write the config themselves and force
+            //    a reload, so the assertion is the same one a user makes: type it, and the thing is
+            //    hidden without touching a file or waiting.
+            final String byCommand = "hidemodels:added_by_command";
+            context.runOnClient(client ->
+                    client.getConnection().sendCommand(HideModels.MOD_ID + " add " + byCommand));
+            context.waitFor(client -> HideModels.hidden(byCommand));
+
+            context.runOnClient(client ->
+                    client.getConnection().sendCommand(HideModels.MOD_ID + " remove " + byCommand));
+            context.waitFor(client -> !HideModels.hidden(byCommand));
+
+            // 5. THE CLICKED PATH, on the versions that have one. Clicking a run_command component
+            //    calls sendUnattendedCommand rather than sendCommand from 1.21.6 on, which is a
+            //    SECOND injection point - and one that is easy to lose silently, because losing it
+            //    means the command goes to the server instead, where it looks like a typo rather
+            //    than a bug in this mod.
+            //
+            //    Reached by reflection because this one test source compiles for 1.21.4 too, where
+            //    the method does not exist. Safe here and only here: a development runtime keeps
+            //    the official names, while a released jar runs against intermediary and would need
+            //    the remapped name - which is exactly why the mod itself uses a mixin and not this.
+            final String byClick = "hidemodels:added_by_click";
+            final boolean[] clickable = {false};
+            context.runOnClient(client -> {
+                final Object connection = client.getConnection();
+                for (Method m : connection.getClass().getMethods()) {
+                    if (!m.getName().equals("sendUnattendedCommand") || m.getParameterCount() != 2) {
+                        continue;
+                    }
+                    clickable[0] = true;
+                    try {
+                        // null screen: the mod cancels at HEAD, so nothing ever reads it.
+                        m.invoke(connection, HideModels.MOD_ID + " add " + byClick, null);
+                    } catch (ReflectiveOperationException e) {
+                        throw new AssertionError("could not drive the clicked-command path", e);
+                    }
+                    break;
+                }
+            });
+            // Printed rather than inferred: without it, "the test passed" reads the same whether the
+            // clicked path was exercised or quietly skipped, and skipping is the failure this
+            // section exists to catch.
+            System.out.println("[hidemodels-gametest] clicked-command path "
+                    + (clickable[0] ? "exercised" : "absent on this version (pre-1.21.6)"));
+            if (clickable[0]) {
+                context.waitFor(client -> HideModels.hidden(byClick));
+                context.runOnClient(client -> client.getConnection()
+                        .sendCommand(HideModels.MOD_ID + " remove " + byClick));
+                context.waitFor(client -> !HideModels.hidden(byClick));
+            }
 
             // Kept for a human to look at when a run fails; asserts nothing by itself, because a
             // screenshot comparison would fail on every unrelated resource-pack or lighting change.

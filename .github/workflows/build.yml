@@ -41,6 +41,9 @@ jobs:
   # 1.21.9 and later cannot load a world on a hosted runner (see below). Every one of those
   # versions is still launched and exercised by the smoke job above.
   #
+  # Fabric API - and with it the gametest module - exists for EVERY version from 1.21.4 up, so this
+  # list is bounded by what works, not by what is published: 1.21.4 through 1.21.8, all five.
+  #
   # WHY NOT 1.21.9 - 1.21.11. On a GitHub runner their integrated server freezes at "Preparing
   # spawn area: 16%" - the identical percentage, logged minute after minute, until the harness's
   # one-minute budget expires - and the run fails with "Timeout loading world". It is not slowness
@@ -56,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ['1.21.4', '1.21.8']
+        mc: ['1.21.4', '1.21.5', '1.21.6', '1.21.7', '1.21.8']
     steps:
       - uses: actions/checkout@v5
 
@@ -90,7 +93,7 @@ jobs:
           if-no-files-found: ignore
 
   # EVERY SUPPORTED VERSION, ACTUALLY LAUNCHED. The gametest above covers more per version but runs
-  # on only two of fourteen: Fabric's client gametest API did not exist before 1.21.4, 26.x has no
+  # on five of fourteen: Fabric's client gametest API did not exist before 1.21.4, 26.x has no
   # gametest module at all, and 1.21.9+ cannot load a world on a hosted runner. This job starts a
   # real client on all fourteen instead, and checks the two things most likely to break when a version
   # moves underneath the mod - that the item_model component still resolves out of the registry, and
