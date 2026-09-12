@@ -12,9 +12,12 @@ import net.minecraft.client.Minecraft;
  * A self-contained startup check that needs NOTHING but Fabric Loader.
  *
  * <p>WHY THIS EXISTS ALONGSIDE THE GAMETEST. Fabric's client gametest API covers far more, but it
- * simply does not exist on four of the ten versions this mod supports: it was added in 1.21.4, and
- * Fabric API for 26.x ships no gametest module at all (44 bundled modules, none of them). Those
- * four versions would otherwise have no automated proof that a single line of the mod runs.
+ * was only added in 1.21.4 - so on 1.21.3 and earlier, six of the eighteen supported versions,
+ * there is no harness to run and this is the only automated proof that a line of the mod runs.
+ * It also carries the three versions that have a harness but cannot load a world on a CI runner,
+ * 1.21.9 through 1.21.11.
+ * (26.x DOES have one, contrary to an earlier note here: the module is published for it, and
+ * gradle/run26.gradle launches it by hand. The thing 26.x lacks is Loom, not the harness.)
  *
  * <p>So this deliberately depends on nothing beyond {@code ClientModInitializer}, which every
  * version has, and drives itself from a watcher thread rather than a tick event - a tick event
@@ -122,9 +125,9 @@ public final class HideModelsSmokeTest implements ClientModInitializer {
      * <p>Calls the handler directly rather than through the connection, because there is no server
      * to have a connection to. That skips the mixin - the gametest covers interception where it can
      * run - but it does cover everything the handler itself does: parsing, writing the config, and
-     * forcing the reload. On 26.x, where no gametest exists, this is the only automated proof that
-     * the commands do anything at all, and the file-writing half is the half most likely to break
-     * on a machine or a version nobody tried.
+     * forcing the reload. Below 1.21.4, where no harness exists, this is the only automated proof
+     * that the commands do anything at all, and the file-writing half is the half most likely to
+     * break on a machine or a version nobody tried.
      */
     private static void checkCommandsEditTheList() throws IOException, InterruptedException {
         final String id = "hidemodels:smoke_command";

@@ -26,9 +26,18 @@ def runDir = layout.buildDirectory.dir("run${mc}").get().asFile
 // is where the rest of the launch classpath comes from.
 configurations {
     loaderRuntime
+    // The client gametest harness, as MODS rather than classpath entries: Loader discovers them
+    // from mods/ like any other mod, and the harness only starts when its entrypoint is found
+    // there. Resolved without transitives on purpose - fabric-api's POM lists all forty-odd
+    // modules, while the jar itself already bundles the ones needed at runtime.
+    gametestHarness { transitive = false }
 }
 dependencies {
     loaderRuntime "net.fabricmc:fabric-loader:${project.loader_version}"
+    if (project.hasGametest) {
+        gametestHarness "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
+        gametestHarness "net.fabricmc.fabric-api:fabric-client-gametest-api-v1:${project.gametestModuleVersion}"
+    }
 }
 
 /**
@@ -205,6 +214,71 @@ tasks.register('runSmokeTest26', JavaExec) {
     ]
     // The verdict comes from the file, so however the JVM dies is not this task's business.
     ignoreExitValue = true
+}
+
+/**
+ * The SAME client gametest Loom runs on 1.21.x, on the versions Loom cannot launch.
+ *
+ * <p>This is possible because the harness is just a mod: Fabric publishes fabric-client-gametest-api-v1
+ * for 26.x too, and what was missing here was never the API - it was a launcher. This file already
+ * had one. So the harness jars go into mods/ beside the mod and the test mod, the property that
+ * activates it goes on the command line, and the test that runs is the same class, driving a real
+ * world through a real client.
+ *
+ * <p>Unlike the smoke test, the verdict comes from the EXIT CODE: the harness stops the game itself
+ * when the test finishes, which is a controlled shutdown rather than a thread halting mid-frame, so
+ * the exit status survives. That is why this task does not set ignoreExitValue.
+ */
+tasks.register('runClientGameTest', JavaExec) {
+    group = 'verification'
+    description = "Runs the client gametest on ${mc}: builds a world, summons a model, checks the mod."
+    dependsOn 'jar', 'testModJar', 'extractNatives', 'stubAssets', 'downloadMinecraft'
+    onlyIf {
+        if (!project.hasGametest) {
+            logger.lifecycle("no client gametest harness published for ${mc} - skipping")
+        }
+        project.hasGametest
+    }
+
+    doFirst {
+        def mods = new File(runDir, 'mods')
+        mods.mkdirs()
+        delete fileTree(mods) { include 'hidemodels-1*.jar' }
+        delete fileTree(mods) { include 'fabric-*.jar' }
+        copy {
+            from tasks.jar.archiveFile
+            into mods
+        }
+        // The harness and the API it needs, dropped in as mods. No remapping on 26.x - intermediary
+        // is the identity mapping there, which is the same reason the mod's own jar ships with
+        // Fabric-Loom-Remap: false.
+        copy {
+            from configurations.gametestHarness
+            into mods
+        }
+        writeTestClientOptions(new File(runDir, 'options.txt'))
+    }
+
+    classpath = files(clientJar) + fileTree(dir: mcLibs, include: '**/*.jar') +
+            configurations.loaderRuntime + files(loaderLibraries)
+    mainClass = 'net.fabricmc.loader.impl.launch.knot.KnotClient'
+    workingDir = runDir
+
+    jvmArgs = [
+            "-Djava.library.path=${nativesDir}".toString(),
+            "-Dorg.lwjgl.librarypath=${nativesDir}".toString(),
+            '-Dfabric.client.gametest',
+            '-Djava.awt.headless=true',
+    ]
+    args = [
+            '--gameDir', runDir.absolutePath,
+            '--assetsDir', assetsDir.absolutePath,
+            '--assetIndex', 'stub',
+            '--accessToken', '0',
+            '--version', mc,
+            '--userType', 'legacy',
+            '--username', 'GameTest',
+    ]
 }
 
 tasks.register('smokeTest') {

@@ -36,13 +36,15 @@ jobs:
   # the mod reads it, intercepts its command and honours its config. This is the only coverage that
   # exercises the mod's own logic rather than its ability to load.
   #
-  # A NARROWER RANGE THAN THE MOD SUPPORTS, for three unrelated reasons: Fabric's client gametest
-  # API does not exist before 1.21.4, 26.x has no Loom and therefore no run task at all, and
-  # 1.21.9 and later cannot load a world on a hosted runner (see below). Every one of those
-  # versions is still launched and exercised by the smoke job above.
+  # A NARROWER RANGE THAN THE MOD SUPPORTS, for two reasons - and note that "26.x has no Loom" is
+  # NOT one of them. Fabric publishes the client gametest harness for 26.x as well, and the harness
+  # is just a mod: gradle/run26.gradle drops it into the run directory and launches it by hand, so
+  # 26.x runs the very same test class. What actually bounds this list:
   #
-  # Fabric API - and with it the gametest module - exists for EVERY version from 1.21.4 up, so this
-  # list is bounded by what works, not by what is published: 1.21.4 through 1.21.8, all five.
+  #   * the harness does not exist below 1.21.4 - checked against each version's own fabric-api POM
+  #   * 1.21.9 through 1.21.11 cannot load a world on a hosted runner (see below)
+  #
+  # Everything excluded is still launched and exercised by the smoke job above.
   #
   # WHY NOT 1.21.9 - 1.21.11. On a GitHub runner their integrated server freezes at "Preparing
   # spawn area: 16%" - the identical percentage, logged minute after minute, until the harness's
@@ -59,7 +61,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ['1.21.4', '1.21.5', '1.21.6', '1.21.7', '1.21.8']
+        mc: ['26.2', '26.1.2', '26.1.1', '26.1',
+             '1.21.4', '1.21.5', '1.21.6', '1.21.7', '1.21.8']
     steps:
       - uses: actions/checkout@v5
 
@@ -80,6 +83,8 @@ jobs:
       # fails the job. The run config forces java.awt.headless: without it Fabric reports a bad mod
       # set in a modal dialog and waits for a click that will never come, burning the whole timeout
       # while looking exactly like a test still running.
+      # Loom provides this task on 1.21.x; gradle/run26.gradle defines one with the same name on
+      # 26.x, so the matrix needs no special case.
       - name: Client game test
         timeout-minutes: 20
         run: xvfb-run -a ./gradlew runClientGameTest -Pminecraft_version=${{ matrix.mc }}
@@ -89,12 +94,16 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: gametest-log-${{ matrix.mc }}
-          path: run/logs/
+          # Loom runs in run/, the hand-rolled 26.x launcher in build/run<version>/.
+          path: |
+            run/logs/
+            build/run*/logs/
+            build/run*/crash-reports/
           if-no-files-found: ignore
 
   # EVERY SUPPORTED VERSION, ACTUALLY LAUNCHED. The gametest above covers more per version but runs
-  # on five of eighteen: Fabric's client gametest API did not exist before 1.21.4, 26.x has no
-  # gametest module at all, and 1.21.9+ cannot load a world on a hosted runner. This job starts a
+  # on nine of eighteen: the harness does not exist below 1.21.4, and 1.21.9 through 1.21.11
+  # cannot load a world on a hosted runner. This job starts a
   # real client on all eighteen instead, and checks the two things most likely to break when a version
   # moves underneath the mod - that the item_model component still resolves out of the registry, and
   # that the config still drives the matcher.

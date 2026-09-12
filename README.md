@@ -85,7 +85,7 @@ part of the range:
 
 | Minecraft | targets check | builds a jar | smoke test (real client) | client gametest |
 |---|---|---|---|---|
-| 26.2, 26.1.2, 26.1.1, 26.1 | yes | yes | **yes** | **no** — Fabric ships no gametest module for 26.x |
+| 26.2, 26.1.2, 26.1.1, 26.1 | yes | yes | **yes** | **yes** |
 | 1.21.11 … 1.21.9 | yes | yes | **yes** | locally only — see below |
 | 1.21.8 … 1.21.4 | yes | yes | **yes** | **yes** — all five |
 | 1.21.3 … 1.20.5 | yes | yes | **yes** | **no** — the gametest API does not exist yet |
@@ -100,11 +100,19 @@ stub asset index so no gigabyte is downloaded to reach a title screen).
 
 `./gradlew runClientGameTest -Pminecraft_version=1.21.8` goes further where Fabric's harness exists:
 it builds a world, summons an `item_display` carrying `minecraft:item_model`, and asserts the mod
-reads the component, intercepts its own command, and honours its config. No ModelEngine and no
-server are needed, because the mod keys on a vanilla component on a vanilla entity — which is what
-makes it runnable anywhere.
+reads the component, intercepts its own command — typed *and* clicked — and honours its config. No
+ModelEngine and no server are needed, because the mod keys on a vanilla component on a vanilla
+entity, which is what makes it runnable anywhere.
 
-CI runs the smoke test on all eighteen versions and the gametest on 1.21.4 through 1.21.8, under xvfb.
+**That includes 26.x, where there is no Loom.** The harness is published for 26.x like any other
+version, and it is just a mod: `gradle/run26.gradle` puts it in the run directory beside the mod
+under test and launches the client by hand, so 26.x runs the identical test class. The harness never
+needed Loom — only a launcher, which that file already was. The limit below 1.21.4 is real, though:
+Fabric publishes no client gametest module there at all, checked against each version's own
+`fabric-api` POM.
+
+CI runs the smoke test on all eighteen versions and the gametest on nine of them — all four 26.x
+releases and 1.21.4 through 1.21.8 — under xvfb.
 What the smoke test cannot cover is anything needing a world: the render hook, the command mixin
 and `ChatOut` are only exercised where the gametest runs.
 

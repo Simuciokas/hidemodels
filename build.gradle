@@ -21,8 +21,10 @@ ext.isLegacy = legacy   // read by gradle/run26.gradle, which cannot see a local
 // rather than resolved from the network so a build stays reproducible and offline-capable; add a
 // row when adding a version to the matrix.
 def FABRIC_API = [
-        '1.21.2' : '0.106.1+1.21.2',
-        '1.21.3' : '0.114.1+1.21.3',
+        '26.2'   : '0.160.0+26.2',
+        '26.1.2' : '0.155.3+26.1.2',
+        '26.1.1' : '0.155.3+26.1.2',
+        '26.1'   : '0.155.3+26.1.2',
         '1.21.4' : '0.119.4+1.21.4',
         '1.21.5' : '0.128.2+1.21.5',
         '1.21.6' : '0.128.2+1.21.6',
@@ -32,11 +34,25 @@ def FABRIC_API = [
         '1.21.10': '0.138.4+1.21.10',
         '1.21.11': '0.141.6+1.21.11',
 ]
+// The client gametest harness is a SEPARATE artifact, never bundled inside the fabric-api jar -
+// not even on versions where it works. It has to be named, and on the 26.x path it has to be named
+// explicitly, because there is no Loom to resolve it from fabric-api's POM. Find the version for a
+// new entry in that POM:
+//   https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/<api version>/<...>.pom
+def GAMETEST_MODULE = [
+        '26.2'   : '6.0.2+0f4f1dca9e',
+        '26.1.2' : '5.1.0+0a5283664c',
+        '26.1.1' : '5.1.0+0a5283664c',
+        '26.1'   : '5.1.0+0a5283664c',
+]
 def fabricApiVersion = FABRIC_API[project.minecraft_version]
-// Fabric's client gametest API arrived in 1.21.4; before that the module does not exist, and 26.x
-// does not ship it either. Checked by version rather than by probing the jar, so configuration
-// stays offline.
-def hasGametest = fabricApiVersion != null && !(project.minecraft_version in ['1.21.2', '1.21.3'])
+// Fabric's client gametest API arrived in 1.21.4 and is published for every version since,
+// 26.x INCLUDED - the map above is the list of versions it can run on, so being in it is the test.
+// (It is absent below 1.21.4: checked against each version's own fabric-api POM, not assumed.)
+def hasGametest = fabricApiVersion != null
+ext.gametestModuleVersion = GAMETEST_MODULE[project.minecraft_version]
+ext.fabricApiVersion = fabricApiVersion
+ext.hasGametest = hasGametest
 if (legacy && fabricApiVersion == null) {
     // Only the gametest needs it, so this must not stop an ordinary build.
     logger.lifecycle("no Fabric API pinned for ${project.minecraft_version} - runClientGameTest "
@@ -304,6 +320,14 @@ dependencies {
         // Both are provided at runtime by the Fabric installation.
         compileOnly "net.fabricmc:fabric-loader:${project.loader_version}"
         compileOnly "net.fabricmc:sponge-mixin:${project.mixin_version}"
+
+        // The client gametest harness, for the TEST source set only. On the Loom path this arrives
+        // through fabric-api's POM; here it has to be named, because there is no Loom to read that
+        // POM. compileOnly because it is supplied at runtime as a mod in the run directory, the
+        // same way Loader supplies itself.
+        if (hasGametest) {
+            testCompileOnly "net.fabricmc.fabric-api:fabric-client-gametest-api-v1:${gametestModuleVersion}"
+        }
 
         // The smoke test is a client mod like any other, so it needs the same three things the mod
         // does. compileOnly on the test side for the same reason: Loader supplies them at runtime,
