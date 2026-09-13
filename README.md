@@ -1,11 +1,20 @@
 # Hide Models
 
-A client-side Fabric mod for **Minecraft 1.20.5 – 26.2** that stops chosen [ModelEngine](https://mythiccraft.io/index.php?resources/modelengine.1/)
-model pieces from rendering — a mount's head that blocks your view, a pet that follows you around,
-a visual effect you'd rather not see — chosen by their `item_model` id.
+A client-side Fabric mod for **Minecraft 1.20.5 – 26.2** that stops chosen server-side model pieces
+from rendering — a mount's head that blocks your view, a pet that follows you around, a visual
+effect you'd rather not see — chosen by their `item_model` id.
 
 It **cancels rendering only**. Entities are never removed, so hitboxes, interactions and the
 server's view of the world are all untouched.
+
+**It keys on the vanilla mechanism, not on any one plugin.** A model piece is an `item_display`
+entity, or an armor stand wearing the piece on its head, whose item carries `item_model` (or
+`custom_model_data` before 1.21.2). That is how [ModelEngine](https://mythiccraft.io/index.php?resources/modelengine.1/),
+[BetterModel](https://modrinth.com/plugin/bettermodel), [Nexo](https://docs.nexomc.com) and
+[Oraxen](https://docs.oraxen.com/creating-content/furniture/display-entities) furniture all render,
+so all of them work without the mod knowing they exist — and so does anything else built the same
+way. What is tested is the *shape*, not the plugin: the client gametest builds both entity forms and
+asserts each one resolves to its id and is hidden by the config.
 
 ## Install
 
@@ -259,9 +268,9 @@ state without asking the server anything.
 
 ## Finding ids without the command
 
-Every piece of a ModelEngine model is an `item_display` whose item carries an `item_model`
-component. Since 1.21.4 those ids resolve to item definition files inside the server's resource
-pack:
+Every piece of a model is an `item_display` — or an armor stand wearing it as a helmet — whose item
+carries an `item_model` component. Since 1.21.4 those ids resolve to item definition files inside
+the server's resource pack:
 
 ```
 modelengine:some_mount/head  ->  assets/modelengine/items/some_mount/head.json

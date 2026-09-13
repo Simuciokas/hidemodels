@@ -18,9 +18,7 @@ package io.github.simuciokas.hidemodels.mixin;
 import io.github.simuciokas.hidemodels.HideModels;
 import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
-import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -33,6 +31,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * state is even extracted, so a hidden piece costs almost nothing. Crucially this only affects
  * DRAWING - the entity still exists, keeps its hitbox, and the server is none the wiser, which is
  * what makes it safe where discarding the entity outright would not be.
+ *
+ * <p>It asks about EVERY entity rather than filtering to a type first, because which entity types
+ * carry a model is HideModels' business - item displays and armor stands today - and this hook
+ * should not need editing when that list grows.
  */
 @Mixin(EntityRenderDispatcher.class)
 public abstract class EntityRenderDispatcherMixin {
@@ -42,15 +44,8 @@ public abstract class EntityRenderDispatcherMixin {
             E entity, Frustum frustum, double camX, double camY, double camZ,
             CallbackInfoReturnable<Boolean> cir) {
 
-        if (!(entity instanceof Display.ItemDisplay display)) {
-            return;
-        }
-        final ItemStack stack = ((ItemDisplayAccessor) display).hidemodels$getItemStack();
-        final String model = HideModels.modelIdOf(stack);
-        if (model == null) {
-            return;
-        }
-        if (HideModels.hidden(model)) {
+        final String model = HideModels.modelIdOfEntity(entity);
+        if (model != null && HideModels.hidden(model)) {
             cir.setReturnValue(false);
         }
     }

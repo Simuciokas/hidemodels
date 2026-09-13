@@ -273,6 +273,46 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 context.waitFor(client -> !HideModels.hidden(byClick));
             }
 
+            // 7. THE OTHER SHAPE A MODEL ARRIVES IN. Everything above rides on an item_display,
+            //    which is how ModelEngine, BetterModel, Nexo and Oraxen's display furniture all
+            //    render - but the same plugins have a legacy mode, and older ones only ever had
+            //    one: an armor stand wearing the model on its head. Same component, same config
+            //    line, different entity class, and that last part is the whole risk - a type check
+            //    that only names Display.ItemDisplay silently ignores half the ecosystem.
+            //
+            //    THIS IS A SHAPE TEST, NOT A PLUGIN TEST. No ModelEngine is installed and none is
+            //    needed: what is asserted is that an entity built the way those plugins build one
+            //    resolves to its model id and gets hidden by the config. Whether a given plugin
+            //    still emits this shape is that plugin's business and can change without telling us.
+            //
+            //    Equipped by /item replace rather than summon NBT on purpose: the entity's own
+            //    equipment tag was ArmorItems before 1.21.5 and equipment after, while this command
+            //    reads the same on every version the gametest runs on.
+            final String standModel = "hidemodels:legacy_rig/head";
+            singleplayer.getServer().runCommand(
+                    "summon armor_stand ~ ~1 ~ {Tags:[\"hidemodels_stand\"]}");
+            singleplayer.getServer().runCommand(
+                    "item replace entity @e[tag=hidemodels_stand,limit=1] armor.head with "
+                            + "stone[minecraft:item_model=\"" + standModel + "\"]");
+            context.waitTicks(20);
+
+            context.runOnClient(client -> {
+                boolean seen = false;
+                for (Entity entity : client.level.entitiesForRendering()) {
+                    if (standModel.equals(HideModels.modelIdOfEntity(entity))) {
+                        seen = true;
+                    }
+                }
+                if (!seen) {
+                    throw new AssertionError("an armor stand wearing " + standModel + " did not "
+                            + "resolve to that id - the legacy model shape is not being read");
+                }
+            });
+
+            writeConfig(standModel);
+            context.waitFor(client -> HideModels.hidden(standModel));
+            System.out.println("[hidemodels-gametest] armor stand shape hidden");
+
             // Kept for a human to look at when a run fails; asserts nothing by itself, because a
             // screenshot comparison would fail on every unrelated resource-pack or lighting change.
             context.takeScreenshot("hidemodels-after-hide");

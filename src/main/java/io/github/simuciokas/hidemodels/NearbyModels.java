@@ -15,7 +15,6 @@
  */
 package io.github.simuciokas.hidemodels;
 
-import io.github.simuciokas.hidemodels.mixin.ItemDisplayAccessor;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -27,9 +26,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
-import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.item.ItemStack;
 
 /**
  * The {@code /hidemodels list} report: every item_model id within a radius, so the ids you need for
@@ -81,7 +78,7 @@ public final class NearbyModels {
         }
 
         if (found.isEmpty()) {
-            say(Component.literal("hidemodels: no item_display models"
+            say(Component.literal("hidemodels: no models"
                     + (filter == null ? "" : " under '" + filter + "'")
                     + " within " + fmt(radius) + " blocks")
                     .withStyle(ChatFormatting.YELLOW));
@@ -163,7 +160,11 @@ public final class NearbyModels {
         }
         final double r2 = radius * radius;
         for (Entity e : level.entitiesForRendering()) {
-            if (!(e instanceof Display.ItemDisplay display)) {
+            // Asked of HideModels so the report and the render hook can never disagree about what
+            // counts as a model piece - an id the list does not show but hiding still catches, or
+            // the reverse, is a small and infuriating bug.
+            final String id = HideModels.modelIdOfEntity(e);
+            if (id == null) {
                 continue;
             }
             // MEASURED AGAINST THE PLAYER ENTITY, not its position vector, and not as a style
@@ -172,11 +173,6 @@ public final class NearbyModels {
             // entity overload keeps 1.21.5 through 1.21.11 compiling to the same bytes.
             final double dSq = e.distanceToSqr(mc.player);
             if (dSq > r2) {
-                continue;
-            }
-            final ItemStack stack = ((ItemDisplayAccessor) display).hidemodels$getItemStack();
-            final String id = HideModels.modelIdOf(stack);
-            if (id == null) {
                 continue;
             }
             // MATCHED FROM THE START, not as a substring the way the hide list matches: the filter

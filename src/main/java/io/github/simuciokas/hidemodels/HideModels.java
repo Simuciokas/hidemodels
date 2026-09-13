@@ -15,6 +15,7 @@
  */
 package io.github.simuciokas.hidemodels;
 
+import io.github.simuciokas.hidemodels.mixin.ItemDisplayAccessor;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -27,6 +28,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.component.DataComponentType;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.Display;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.decoration.ArmorStand;
 
 /**
  * Hides chosen ModelEngine model pieces client-side, by their {@code item_model} id.
@@ -131,6 +136,30 @@ public final class HideModels {
         }
         final Object value = stack.get(type);
         return (value == null) ? null : value.toString();
+    }
+
+    /**
+     * The model id an entity is showing, or null when it is not showing one.
+     *
+     * <p>TWO SHAPES, BECAUSE THE PLUGINS USE TWO. A model piece is normally an item_display, which
+     * is how ModelEngine, BetterModel, Nexo and Oraxen's display furniture all render since the
+     * entity existed; before that - and still, in those plugins' legacy modes - a piece is an
+     * armor stand wearing the item on its head. Both put the same component on the same kind of
+     * ItemStack, so both answer to the same config line, and the caller never learns which it was.
+     *
+     * <p>Named rather than overloading modelIdOf: a null literal would pick between an ItemStack
+     * and an Entity by guesswork, and one caller passes exactly that.
+     */
+    public static String modelIdOfEntity(Entity entity) {
+        if (entity instanceof Display.ItemDisplay display) {
+            return modelIdOf(((ItemDisplayAccessor) display).hidemodels$getItemStack());
+        }
+        // HEAD ONLY. That is where a worn model renders, and the other slots hold what an armor
+        // stand is actually wearing - taking them would hide stands for their boots.
+        if (entity instanceof ArmorStand stand) {
+            return modelIdOf(stand.getItemBySlot(EquipmentSlot.HEAD));
+        }
+        return null;
     }
 
     /**
@@ -562,9 +591,10 @@ public final class HideModels {
         final String text = """
                 # hidemodels - one item_model id fragment per line; matched as a SUBSTRING.
                 #
-                # Every piece of a ModelEngine model is an item_display whose item carries an
-                # item_model component. A trailing slash hides the whole model, no slash hides
-                # one bone:
+                # A model piece is an item_display entity - or an armor stand wearing the piece on
+                # its head, which is how the older plugins and the legacy modes of the newer ones
+                # render - whose item carries an item_model component. Either way the same line
+                # here hides it. A trailing slash hides the whole model, no slash hides one bone:
                 #     some_mount/         whole model
                 #     some_mount/head     just the head, so you can see past it while riding
                 #
