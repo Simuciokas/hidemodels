@@ -218,7 +218,7 @@ public final class NearbyModels {
     /**
      * Client-side chat, so nothing is sent to the server.
      *
-     * <p>Delegated to ChatOut, the one class with a per-version copy - see src/mc26 and src/mc121.
+     * <p>Delegated to ChatOut, which has a per-version copy - see src/versions/chat-mc121 and -mc26.
      */
     public static void say(Component text) {
         ChatOut.say(text);

@@ -118,7 +118,7 @@ ext.groupHigh = groupHigh
 ext.groupVersions = sortedGroup
 
 def legacy = !project.minecraft_version.startsWith('26')
-ext.isLegacy = legacy   // read by gradle/run26.gradle, which cannot see a local def
+ext.isLegacy = legacy   // read by gradle/runclient.gradle, which cannot see a local def
 
 // Fabric API is TEST-ONLY here - the harness needs it, the mod does not - but it is published per
 // Minecraft version, so one pinned value would only ever let one version run its tests. Listed
@@ -219,7 +219,7 @@ tasks.register('printGroups') {
 // LocalPlayer.displayClientMessage up to 1.21.x, sendSystemMessage from 26.x - and reflection
 // cannot bridge it, since a 1.21.x build is remapped to intermediary and the runtime name is
 // method_NNNN. Everything else in src/main compiles unchanged across the whole range.
-sourceSets.main.java.srcDir(legacy ? 'src/mc121/java' : 'src/mc26/java')
+sourceSets.main.java.srcDir(legacy ? 'src/versions/chat-mc121/java' : 'src/versions/chat-mc26/java')
 
 // A SECOND SPLIT, on a DIFFERENT BOUNDARY, which is why it is not folded into the one above.
 // ClickEvent was a class with a constructor through 1.21.4 and became a sealed interface of records
@@ -246,7 +246,7 @@ ext.olderThan = { String bound ->
     }
     return false
 }
-sourceSets.main.java.srcDir(olderThan('1.21.5') ? 'src/click121/java' : 'src/click1215/java')
+sourceSets.main.java.srcDir(olderThan('1.21.5') ? 'src/versions/click-mc1214/java' : 'src/versions/click-mc1215/java')
 
 // THE LOADER'S OWN CODE. src/main is loader-agnostic - it knows about Minecraft and nothing else -
 // and everything that talks to Fabric API lives here: the registered command and the disconnect
@@ -263,8 +263,13 @@ sourceSets.main.resources.srcDir("src/${loader}/resources")
 // boundary as ChatOut. A rename in a library, rather than in Minecraft, but the handling is the
 // same shape.
 if (loader == 'fabric') {
-    sourceSets.main.java.srcDir(legacy ? 'src/fabric-mc121/java' : 'src/fabric-mc26/java')
+    sourceSets.main.java.srcDir(legacy ? 'src/versions/cmd-mc121/java' : 'src/versions/cmd-mc26/java')
 }
+
+// THE GAMETEST'S OWN SOURCE, named rather than inherited: Gradle's `test` source set defaults to
+// src/test/java, and everything this project tests with lives under src/testing instead - the
+// gametest here, the shared checks below, and the NeoForge entrypoint further down.
+sourceSets.test.java.setSrcDirs(['src/testing/gametest/java'])
 
 // BOTH TEST HARNESSES ARE FABRIC'S. The smoke test is a ClientModInitializer and the gametest
 // implements a Fabric API interface, so neither compiles on the NeoForge path - and neither should:
@@ -276,11 +281,11 @@ if (loader != 'fabric') {
     sourceSets.test.resources.setSrcDirs([])
 }
 
-// THE CHECKS ARE SHARED, THE ENTRYPOINTS ARE NOT. src/smoketest holds assertions that name nothing
+// THE CHECKS ARE SHARED, THE ENTRYPOINTS ARE NOT. src/testing/checks holds assertions naming nothing
 // but Minecraft and the mod, so one copy serves both loaders; each loader's test source set adds
 // its own two-line entrypoint on top - a ClientModInitializer on Fabric, a @Mod on NeoForge.
 if (loader == 'fabric') {
-    sourceSets.test.java.srcDir 'src/smoketest/java'
+    sourceSets.test.java.srcDir 'src/testing/checks/java'
 }
 
 // The gametest class implements an interface that does not exist on every version, so it is
@@ -292,7 +297,7 @@ if (!hasGametest) {
 // gametest entrypoint naming a class that does not exist on this version makes Loader fail at
 // startup, so the file has to differ, and picking between two readable files beats assembling JSON
 // out of string fragments in a build script.
-sourceSets.test.resources.srcDir 'src/test/templates'
+sourceSets.test.resources.srcDir 'src/testing/gametest/templates'
 processTestResources {
     if (hasGametest) {
         exclude 'fabric.mod.json'
@@ -311,7 +316,7 @@ if (usesLoom) {
     sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
 }
 
-// NOTHING IN src/test IS A JUnit TEST, so the `test` task has nothing to run - both things in
+// NOTHING IN src/testing IS A JUnit TEST, so the `test` task has nothing to run - both things in
 // there are Fabric mods driven by a launched client (smokeTest and runClientGameTest), which is the
 // only way to test a mod whose logic only exists inside a running game. Gradle 9 fails a build when
 // a test task finds sources but discovers no tests, so `./gradlew build` broke on both paths until
@@ -472,8 +477,8 @@ tasks.register('downloadMinecraft') {
 if (loader == 'neoforge') {
     sourceSets {
         neoTest {
-            java.srcDirs = ['src/smoketest/java', 'src/neoforge-test/java']
-            resources.srcDirs = ['src/neoforge-test/resources']
+            java.srcDirs = ['src/testing/checks/java', 'src/testing/neoforge/java']
+            resources.srcDirs = ['src/testing/neoforge/resources']
             compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
             runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
         }

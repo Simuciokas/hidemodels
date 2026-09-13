@@ -51,7 +51,7 @@ each version's own client jar rather than assumed. CI runs that matrix on every 
 | 26.2, 26.1.2, 26.1.1, 26.1 | resolves | the advertised range |
 | 1.21.11 … 1.21.2 | resolves | the advertised range |
 | 1.21.1, 1.21 | resolves | but `item_model` does not exist yet, so the mod falls back to `custom_model_data` — it works, and the ids you write are those values instead |
-| 1.20.6, 1.20.5 | resolves | same `custom_model_data` fallback, plus a second copy of one mixin: `onDisconnect` takes a `Component` here and a `DisconnectionDetails` from 1.21, and a Mixin handler must mirror its target's parameters |
+| 1.20.6, 1.20.5 | resolves | same `custom_model_data` fallback |
 | 1.20.4 and earlier | **no** | no data components at all — `DataComponentType` and the registry the mod resolves through simply are not there. This is a floor, not a to-do |
 
 Two deliberate choices keep that range on one source path, and both look like something to tidy up:
@@ -152,8 +152,8 @@ why they are three separate splits rather than one "old versus new" fork:
 
 | file | boundary | why |
 |---|---|---|
-| `ChatOut` (`src/mc121`, `src/mc26`) | 1.21.x ↔ 26.x | the client-facing chat call was renamed: `LocalPlayer.displayClientMessage` before, `sendSystemMessage` after |
-| `ClickRun` (`src/click121`, `src/click1215`) | 1.21.4 ↔ 1.21.5 | `ClickEvent` was a class with a constructor, and became a sealed interface whose cases are records |
+| `ChatOut` (`src/versions/chat-mc121`, `chat-mc26`) | 1.21.x ↔ 26.x | the client-facing chat call was renamed: `LocalPlayer.displayClientMessage` before, `sendSystemMessage` after |
+| `ClickRun` (`src/versions/click-mc1214`, `click-mc1215`) | 1.21.4 ↔ 1.21.5 | `ClickEvent` was a class with a constructor, and became a sealed interface whose cases are records |
 | `ClientDisconnectMixin` (`src/disconnect1206`, `src/disconnect121`) | 1.20.6 ↔ 1.21 | `onDisconnect` takes a `Component` before and a `DisconnectionDetails` after, and a Mixin handler must mirror its target's parameters |
 
 Reflection cannot paper over any of them: a 1.21.x build is remapped to intermediary, so the runtime
