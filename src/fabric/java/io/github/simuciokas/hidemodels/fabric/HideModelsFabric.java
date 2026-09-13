@@ -19,6 +19,7 @@ import io.github.simuciokas.hidemodels.CommandTree;
 import io.github.simuciokas.hidemodels.HideModels;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 
 /**
@@ -39,6 +40,10 @@ public final class HideModelsFabric implements ClientModInitializer {
     public void onInitializeClient() {
         ClientCommandRegistrationCallback.EVENT.register(
                 (dispatcher, registryAccess) -> dispatcher.register(CommandTree.build(Cmd.INSTANCE)));
+
+        // The config poll. Once a tick rather than once per model piece per frame - see
+        // HideModels.tick.
+        ClientTickEvents.END_CLIENT_TICK.register(client -> HideModels.tick());
 
         // A server's opt-out lasts for one connection.
         ClientPlayConnectionEvents.DISCONNECT.register(

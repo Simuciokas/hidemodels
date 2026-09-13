@@ -26,6 +26,7 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
@@ -46,6 +47,10 @@ public final class HideModelsNeoForge implements CommandTree.Builders<CommandSou
     public HideModelsNeoForge(IEventBus modBus) {
         NeoForge.EVENT_BUS.addListener(RegisterClientCommandsEvent.class,
                 event -> event.getDispatcher().register(CommandTree.build(this)));
+
+        // The config poll, once a tick - see HideModels.tick.
+        NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class,
+                event -> HideModels.tick());
 
         // A server's opt-out lasts one connection, exactly as on Fabric.
         NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingOut.class,

@@ -207,11 +207,24 @@ public final class HideModels {
         if (serverDisabled) {
             return false;                 // checked first: the server's word beats the config
         }
-        maybeReload();
         if (!enabled || patterns.length == 0) {
             return false;
         }
         return !firstPersonOnly || inFirstPerson();
+    }
+
+    /**
+     * The config poll, driven once per client tick by each loader's entrypoint.
+     *
+     * <p>IT USED TO HANG OFF THE RENDER QUERY, which meant asking the clock whether a second had
+     * passed once per model piece per frame - up to some twelve thousand times a second to answer a
+     * question that can only change twenty times a second. System.currentTimeMillis measured at
+     * 7.4ns, about a fifth of the whole hot path.
+     *
+     * <p>A poll belongs on a timer. That is the reason for this; the nanoseconds are a bonus.
+     */
+    public static void tick() {
+        maybeReload();
     }
 
     /** The substring test itself, shared by everything that asks about an id. */
@@ -560,7 +573,7 @@ public final class HideModels {
         return serverDisabled;
     }
 
-    /** Cheap timestamp poll rather than a watch service - this runs from the render thread. */
+    /** Cheap timestamp poll rather than a watch service - this runs once per client tick. */
     private static void maybeReload() {
         final long now = System.currentTimeMillis();
         if (now - lastCheck < RELOAD_INTERVAL_MS) {

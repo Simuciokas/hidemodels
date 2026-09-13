@@ -193,7 +193,12 @@ public final class SmokeChecks {
         HideModels.remove(id);
     }
 
-    /** Polling is not just waiting here: every hidden() call is what drives the reload check. */
+    /**
+     * Waits for the client to catch up with a config the test just wrote.
+     *
+     * <p>The reload is driven by the client tick now, not by these calls - so this really is
+     * waiting, and a client that stopped ticking would time out here rather than hang forever.
+     */
     private static void waitUntil(java.util.function.BooleanSupplier check, String failure)
             throws InterruptedException {
         final long deadline = System.currentTimeMillis() + 30_000L;
