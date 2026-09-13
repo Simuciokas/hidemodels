@@ -1,3 +1,5 @@
+# Build output. Everything generated lands under one of these: Loom's run/, the hand-rolled
+# launcher's build/run<version>/, the downloaded client jars in build/minecraft/.
 build/
 .gradle/
 run/
@@ -5,8 +7,8 @@ run/
 # The compile classpath is downloaded, not committed - Mojang's client jar is not redistributable.
 *.class
 
+# Editors and tooling.
 .idea/
 *.iml
 .vscode/
-build.gradle.bak26
 __pycache__/
