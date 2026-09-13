@@ -20,7 +20,7 @@ asserts each one resolves to its id and is hidden by the config.
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer, or NeoForge.
 2. Drop the jar **covering your Minecraft version** into `mods/`. Each jar names the range it
-   covers — `hidemodels-1.6.0+mc26.1-26.2-fabric.jar`, `hidemodels-1.6.0+mc1.21.5-1.21.11-fabric.jar`
+   covers — `hidemodels-1.7.0+mc26.1-26.2-fabric.jar`, `hidemodels-1.7.0+mc1.21.5-1.21.11-fabric.jar`
    — and declares that range, so Loader refuses the wrong one rather than failing later.
 
 **Why a range rather than one jar per version.** Across each range the compiled mod is
@@ -305,7 +305,7 @@ permanently altered, and the player's own config applies again next time they co
 
 ```sh
 export JAVA_HOME=/path/to/jdk-25
-./gradlew build          # -> build/libs/hidemodels-1.6.0+mc26.1-26.2-fabric.jar
+./gradlew build          # -> build/libs/hidemodels-1.7.0+mc26.1-26.2-fabric.jar
 ```
 
 No local Minecraft install is needed: the compile classpath — client jar plus MC's own libraries —
