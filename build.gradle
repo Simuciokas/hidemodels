@@ -713,11 +713,27 @@ tasks.withType(JavaCompile).configureEach {
 // versions this jar has never been built or tested against, which is the exact bug that made the
 // 1.21.x jars pin to one version in the first place.
 def mcDep = (groupLow == groupHigh) ? "=${groupLow}" : ">=${groupLow} <=${groupHigh}"
+
+// FABRIC API: A FLOOR RATHER THAN ANYTHING. "*" accepts a build from years ago, which does not
+// carry the client command API this mod registers through - and the failure is a crash on a
+// missing class rather than Loader saying the dependency is unmet.
+//
+// The floor is the OLDEST version this jar's group is actually tested against, taken from the
+// FABRIC_API table above and stripped of its "+mc" suffix, which semver reads as build metadata
+// and ignores. Lowest rather than newest on purpose: the jar covers several Minecraft versions and
+// each has its own API build, so anything higher would refuse a setup that works.
+def apiFloor = groupVersions.collect { FABRIC_API[it] }
+        .findAll { it != null }
+        .collect { it.split('\\+')[0] }
+        .min { a, b -> compareVersions(a, b) }
+def fabricApiDep = (apiFloor == null) ? '*' : ">=${apiFloor}"
+
 processResources {
     inputs.property 'version', project.version
     inputs.property 'mcDep', mcDep
     inputs.property 'javaVersion', javaVersion
     inputs.property 'loader', loader
+    inputs.property 'fabricApiDep', fabricApiDep
 
     // NeoForge states its ranges in Maven notation rather than Fabric's semver predicates: exactly
     // this Minecraft version, and this NeoForge build or newer within it.
@@ -731,7 +747,8 @@ processResources {
                'mcDep': mcDep,
                'javaVersion': javaVersion,
                'mcRange': mcRange,
-               'neoForgeRange': neoForgeRange
+               'neoForgeRange': neoForgeRange,
+               'fabricApiDep': fabricApiDep
     }
 }
 

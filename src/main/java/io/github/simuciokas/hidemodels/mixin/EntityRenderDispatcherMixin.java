@@ -44,8 +44,7 @@ public abstract class EntityRenderDispatcherMixin {
             E entity, Frustum frustum, double camX, double camY, double camZ,
             CallbackInfoReturnable<Boolean> cir) {
 
-        final String model = HideModels.modelIdOfEntity(entity);
-        if (model != null && HideModels.hidden(model)) {
+        if (HideModels.shouldHide(entity)) {
             cir.setReturnValue(false);
         }
     }
