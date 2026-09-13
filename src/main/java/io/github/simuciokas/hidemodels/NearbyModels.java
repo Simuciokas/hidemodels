@@ -104,12 +104,10 @@ public final class NearbyModels {
             final Group g = row.getValue();
             final boolean listed = HideModels.listed(row.getKey());
 
-            // CLICK THE ID TO HIDE IT. The whole point of this report is to get ids out of the
-            // game and into the config, and the shortest path from "I can see it" to "it is gone"
-            // is one click. Only ids that are NOT yet hidden are clickable: a click that silently
-            // did nothing would be worse than no click at all, and removal is deliberately not
-            // wired to a click, because undoing something by clicking the same place you just
-            // clicked is how people hide things by accident.
+            // CLICK THE ID TO HIDE IT. Only ids not already hidden are clickable - a click that
+            // silently did nothing would be worse than none - and removal is deliberately never
+            // wired to a click, since undoing by clicking where you just clicked is how people
+            // hide things by accident.
             final Component id = listed
                     ? Component.literal(row.getKey()).withStyle(ChatFormatting.GREEN)
                     : Component.literal(row.getKey()).withStyle(
@@ -117,13 +115,10 @@ public final class NearbyModels {
                                     .withColor(ChatFormatting.WHITE)
                                     .withUnderlined(true));
 
-            // CLICK THE COUNT TO OPEN THE MODEL UP. The id hides the whole thing; the piece count
-            // beside it asks "which pieces?" and answers in place, listing just this model's bones
-            // so one of them can be hidden on its own - the "I want to see past the head but keep
-            // the mount" case, which otherwise means typing list bones and reading past every other
-            // model in range. Only on model rows with pieces to open: in bones mode the row IS a
-            // piece, and an id with no slash has nothing underneath it, so both stay plain text
-            // rather than offering a click that would just reprint the same line.
+            // CLICK THE COUNT TO OPEN THE MODEL UP, listing just this model's bones so one can be
+            // hidden on its own. Only where there is something to open: in bones mode the row IS a
+            // piece and a slashless id has nothing underneath, so both stay plain text rather than
+            // offering a click that would reprint the line it was on.
             final boolean drillable = !bones && row.getKey().endsWith("/");
             final Style countStyle = drillable
                     ? ClickRun.style("/" + HideModels.MOD_ID + " list bones " + fmt(radius)
@@ -171,12 +166,10 @@ public final class NearbyModels {
             if (!(e instanceof Display.ItemDisplay display)) {
                 continue;
             }
-            // MEASURED AGAINST THE PLAYER ENTITY, not against its position vector, and that is
-            // not a style choice: position() is one of the few members this mod touches whose
-            // intermediary name CHANGED mid-range - method_19538 through 1.21.8, method_73189
-            // after - which split an otherwise identical jar in two. Taking the entity overload
-            // means 1.21.5 through 1.21.11 compile to the same bytes, and it is the shorter way to
-            // say the same thing.
+            // MEASURED AGAINST THE PLAYER ENTITY, not its position vector, and not as a style
+            // choice: position()'s intermediary name changed mid-range - method_19538 through
+            // 1.21.8, method_73189 after - which split an otherwise identical jar in two. The
+            // entity overload keeps 1.21.5 through 1.21.11 compiling to the same bytes.
             final double dSq = e.distanceToSqr(mc.player);
             if (dSq > r2) {
                 continue;

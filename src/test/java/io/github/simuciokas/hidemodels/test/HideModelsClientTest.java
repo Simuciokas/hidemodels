@@ -71,16 +71,13 @@ public final class HideModelsClientTest implements FabricClientGameTest {
     /**
      * Is this the method a clicked run_command ends up calling?
      *
-     * <p>BY SIGNATURE, NOT BY NAME, because this test runs in two different worlds. Under Loom the
-     * runtime keeps official names and {@code sendUnattendedCommand} is findable; under the
-     * standalone launcher the client is the real obfuscated jar with intermediary-named mods, where
-     * the same method answers to something like {@code method_54650}. A name check silently found
-     * nothing there and reported the path as absent on a version that has it - which is exactly the
-     * false pass this section exists to prevent.
+     * <p>BY SIGNATURE, NOT BY NAME, because this test runs in two worlds: under Loom the runtime
+     * keeps official names, while the standalone launcher runs intermediary-named mods against the
+     * obfuscated jar, where the same method answers to something like {@code method_54650}. A name
+     * check silently found nothing there and reported the path as absent on a version that has it.
      *
-     * <p>{@code void (String, Screen)} is specific enough to be unambiguous on every version this
-     * runs against - it is the only such method on the connection. If a future version adds a
-     * second one, this would need the intermediary name per version rather than a signature.
+     * <p>{@code void (String, Screen)} is the only such method on the connection across this range.
+     * A future version adding a second would force the intermediary name per version instead.
      */
     private static boolean isUnattendedCommandSend(Method m) {
         if (m.getParameterCount() != 2 || m.getReturnType() != void.class) {
@@ -159,12 +156,9 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
             });
 
-            // 2. THE COMMAND HOOK. Sent through the client's own connection on purpose: that is
-            //    the path ClientPacketListenerMixin intercepts, and it is one of the two mixins a
-            //    launch-to-main-menu smoke test never loads. Running it server-side would bypass
-            //    the very thing being tested. "help" because it is a real subcommand - an invented
-            //    one still proves interception (the mod answers "unknown subcommand") but leaves a
-            //    confusing line in the log.
+            // 2. THE REGISTERED COMMAND. Sent through the client's own connection on purpose:
+            //    that is the path Fabric API's client command layer intercepts, and running it
+            //    server-side would bypass the very thing being tested.
             context.runOnClient(client -> client.getConnection().sendCommand("hidemodels help"));
             context.waitTicks(10);
 

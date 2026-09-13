@@ -219,15 +219,14 @@ public final class SmokeChecks {
     /**
      * Report through a FILE, not an exit code, and then stop caring how the process dies.
      *
-     * <p>Both obvious exits are wrong here. halt() from this thread while the render thread is
-     * inside a GL call makes Windows fast-fail the JVM with 0xC0000409; System.exit() is no better,
-     * because Minecraft's shutdown hooks call into GLFW off the main thread and trip the same
-     * thing. Either way Gradle sees a crashed process and reports FAILED however well the test
-     * went - and a pass that reads as a failure would block every green build.
+     * <p>Both obvious exits are wrong here. halt() from this thread while the render thread is in a
+     * GL call makes Windows fast-fail the JVM with 0xC0000409, and System.exit() trips the same
+     * thing through Minecraft's GLFW shutdown hooks. Either way Gradle sees a crashed process and
+     * reports FAILED however well the test went.
      *
-     * <p>So the verdict goes somewhere the process cannot corrupt on its way out, and the build
-     * reads it from there. How the JVM ends stops mattering, which is the only way to make this
-     * reliable across ten versions of a program that was never built to be scripted.
+     * <p>So the verdict goes where the process cannot corrupt it on the way out, and how the JVM
+     * ends stops mattering - the only way to make this reliable across eighteen versions of a
+     * program that was never built to be scripted.
      */
     private static void report(String verdict) {
         try {

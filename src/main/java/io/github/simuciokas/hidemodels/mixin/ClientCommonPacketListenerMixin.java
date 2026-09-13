@@ -36,11 +36,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * unconditionally - a client without this mod discards unknown channels silently - so a server
  * can simply fire it at every player on join.
  *
- * <p>The override is per-connection: ClientDisconnectMixin clears it on disconnect, so a server
- * cannot leave a client permanently altered, and reconnecting starts from the user's own config
- * again. That half lives in its own class because its target's PARAMETER changed - onDisconnect
- * took a Component until 1.20.6 and a DisconnectionDetails after - and a Mixin handler must mirror
- * its target exactly.
+ * <p>The override is per-connection: each loader's entrypoint clears it on disconnect, so a server
+ * cannot leave a client permanently altered and reconnecting starts from the user's own config.
  */
 @Mixin(ClientCommonPacketListenerImpl.class)
 public abstract class ClientCommonPacketListenerMixin {

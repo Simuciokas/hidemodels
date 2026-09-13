@@ -32,15 +32,13 @@ import net.neoforged.neoforge.common.NeoForge;
 /**
  * What the mod needs from the loader, on NeoForge. The counterpart of HideModelsFabric.
  *
- * <p>The same two things, under different names: a client command to register, and a disconnect to
- * hear about. Everything the command DOES lives in CommandTree, shared with Fabric - the only part
- * that differs is the source type brigadier builds against, which here is vanilla's own
- * CommandSourceStack rather than a Fabric interface.
+ * <p>The same two things under different names: a client command to register and a disconnect to
+ * hear about. What the command DOES lives in CommandTree, shared with Fabric; only the source type
+ * differs, vanilla's CommandSourceStack rather than a Fabric interface.
  *
- * <p>NOTHING ELSE IN THE MOD KNOWS WHICH LOADER IT IS ON. The render hook is a mixin against a
- * vanilla class, and NeoForge runs with Mojang's official names, so the same mixin applies
- * unchanged - which is the whole reason this port is two small classes rather than a second
- * implementation.
+ * <p>NOTHING ELSE IN THE MOD KNOWS WHICH LOADER IT IS ON. NeoForge runs with Mojang's official
+ * names, so the render mixin applies unchanged - which is why this port is two small classes
+ * rather than a second implementation.
  */
 @Mod(value = HideModels.MOD_ID, dist = Dist.CLIENT)
 public final class HideModelsNeoForge implements CommandTree.Builders<CommandSourceStack> {

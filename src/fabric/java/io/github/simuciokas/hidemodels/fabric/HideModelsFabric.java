@@ -24,20 +24,14 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 /**
  * What the mod needs from the loader, on Fabric.
  *
- * <p>THIS CLASS REPLACED THREE MIXINS, which is the point of depending on Fabric API at all:
+ * <p>THIS CLASS REPLACED THREE MIXINS, which is the point of depending on Fabric API at all. The
+ * command needed two injection points - a clicked command takes a different path from a typed one
+ * from 1.21.6, and the second does not exist before that - while a registered command needs
+ * neither and gets tab completion free. The disconnect hook needed a per-version copy, because its
+ * target's parameter changed and a Mixin handler must mirror its target exactly; the event does
+ * not care.
  *
- * <ul>
- *   <li>{@code /hidemodels} was caught by injecting into the client's command-send path. That meant
- *       hooking TWO methods, because a clicked command does not go through the same one as a typed
- *       command from 1.21.6 - and the second hook had to be optional, because it does not exist
- *       before that. A registered command needs neither, and gets tab completion for free.
- *   <li>The disconnect hook cleared the server's opt-out. Its target takes a Component up to 1.20.6
- *       and a DisconnectionDetails after, and a Mixin handler must mirror its target exactly - so
- *       that one mixin needed a per-version copy. The event does not care.
- * </ul>
- *
- * <p>What is left as a mixin is what genuinely has no event behind it: the render hook, and the
- * accessor that reads an item_display's stack.
+ * <p>What stays a mixin is what has no event behind it: the render hook and the stack accessor.
  */
 public final class HideModelsFabric implements ClientModInitializer {
 
@@ -46,8 +40,7 @@ public final class HideModelsFabric implements ClientModInitializer {
         ClientCommandRegistrationCallback.EVENT.register(
                 (dispatcher, registryAccess) -> dispatcher.register(CommandTree.build(Cmd.INSTANCE)));
 
-        // A server's opt-out lasts for one connection. This is the whole of what the disconnect
-        // mixin did, minus the version split its signature forced.
+        // A server's opt-out lasts for one connection.
         ClientPlayConnectionEvents.DISCONNECT.register(
                 (handler, client) -> HideModels.clearServerOverride());
     }

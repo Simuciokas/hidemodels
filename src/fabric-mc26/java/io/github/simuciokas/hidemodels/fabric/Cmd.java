@@ -26,14 +26,10 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 /**
  * The two builder methods Fabric's client command API exposes, for 26.x. See src/fabric-mc121.
  *
- * <p>A FOURTH THING THAT MOVED, and this one is Fabric API's rather than Minecraft's: the class
- * holding these was ClientCommands through 1.21.11 and is ClientCommands from 26.1. The
- * methods, and the FabricClientCommandSource they build against, are identical - so the whole
- * difference is which class name to type, and everything that builds the actual command tree is
- * written once against this shim.
- *
- * <p>It splits on the same boundary as ChatOut, 1.21.x against 26.x, which is why it lives beside
- * it rather than inventing a third set of directories.
+ * <p>FABRIC API'S OWN RENAME, not Minecraft's: the class holding these was ClientCommandManager
+ * through 1.21.11 and is ClientCommands from 26.1. The methods and the FabricClientCommandSource
+ * are identical, so the whole difference is which name to type - and it splits on the same 1.21.x
+ * against 26.x boundary as ChatOut, which is why it lives beside it.
  */
 public final class Cmd implements CommandTree.Builders<FabricClientCommandSource> {
 
@@ -54,10 +50,9 @@ public final class Cmd implements CommandTree.Builders<FabricClientCommandSource
     }
 
     /**
-     * The live client-command dispatcher, for the test that checks tab completion.
+     * The live client-command dispatcher, for the gametest's tab-completion check.
      *
-     * <p>Only the gametest uses it - the mod registers its tree and never needs to look at it
-     * again - but it belongs here because it is the same class that moved between versions.
+     * <p>Here rather than in the test because it is the same class that moved between versions.
      */
     public static CommandDispatcher<FabricClientCommandSource> dispatcher() {
         return ClientCommands.getActiveDispatcher();

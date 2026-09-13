@@ -26,18 +26,14 @@ import java.util.Locale;
 /**
  * The {@code /hidemodels} tree, defined once for every loader.
  *
- * <p>GENERIC IN THE COMMAND SOURCE, which is the only thing the loaders disagree about: Fabric's
- * client commands are built against FabricClientCommandSource and NeoForge's against vanilla's
- * CommandSourceStack. Everything else - the shape of the tree, what each branch does, what gets
- * suggested - is identical, and duplicating it per loader would be duplicating the part that
- * actually changes when the command grows.
+ * <p>GENERIC IN THE COMMAND SOURCE, the only thing the loaders disagree about: Fabric builds
+ * against FabricClientCommandSource and NeoForge against vanilla's CommandSourceStack. The shape of
+ * the tree is identical, so the loader hands in a {@link Builders} of two methods and gets a
+ * finished tree back - duplicating it per loader would duplicate the part that actually changes.
  *
- * <p>So the loader hands in a {@link Builders} of two methods and gets a finished tree back.
- *
- * <p>WHY BRIGADIER AT ALL, rather than the string splitting this replaced: completion. The two
- * arguments worth completing are the two nobody wants to type - an id from the world around you,
- * and a pattern already in your config - and both come from the mod's own state, so the client can
- * offer them without asking the server anything.
+ * <p>Brigadier rather than the string splitting this replaced, for completion: the arguments worth
+ * completing all come from the mod's own state, so the client offers them without asking the
+ * server anything.
  */
 public final class CommandTree {
 

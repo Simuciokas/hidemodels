@@ -82,28 +82,19 @@ public final class HideModels {
     }
 
     /**
-     * True when this item_model id should not be rendered. Called from the render hook for every
-     * item_display in view, so it stays allocation-free on the hot path.
-     */
-    /**
      * The component type this reads, resolved on FIRST USE and then cached.
      *
-     * LOOKED UP BY ID RATHER THAN NAMED. DataComponents.ITEM_MODEL is a static field that exists
-     * only from 1.21.2, so naming it pins the source to that version and up; the registry has held
-     * component types since 1.20.5, and asking for an id a version lacks simply returns null. One
-     * source path therefore covers every version that has components at all - which is why
-     * custom_model_data sits beside item_model here: where both exist the first wins, and where
-     * only the second does, that is what there is to key on.
+     * LOOKED UP BY ID RATHER THAN NAMED, because DataComponents.ITEM_MODEL only exists from 1.21.2
+     * while the registry has held component types since 1.20.5 - and asking for an id a version
+     * lacks simply returns null, which is why custom_model_data sits beside item_model here.
      *
-     * The registry is ITERATED rather than queried by key, because a key is an Identifier - the one
-     * type whose name changed mid-range - and constructing one would reintroduce exactly the
-     * coupling this avoids.
+     * ITERATED rather than queried by key: a key is an Identifier, the one type whose name changed
+     * mid-range, and constructing one would reintroduce the coupling this avoids.
      *
-     * LAZY ON PURPOSE. Resolving this in a static initialiser would run it whenever the class
-     * happens to load, and a client mixin can load during bootstrap while the registries are still
-     * being populated: the lookup would find nothing, cache the null forever, and the mod would
-     * silently do nothing for the whole session with no error to show for it. First use is during
-     * rendering, by which point the registry is long since frozen and complete.
+     * LAZY ON PURPOSE. A static initialiser runs whenever the class happens to load, and a client
+     * mixin can load during bootstrap while the registries are still filling: the lookup would find
+     * nothing, cache the null forever, and the mod would silently do nothing all session with no
+     * error to show for it.
      */
     private static DataComponentType<?> modelComponent;
     private static boolean modelComponentResolved;
@@ -142,6 +133,10 @@ public final class HideModels {
         return (value == null) ? null : value.toString();
     }
 
+    /**
+     * True when this item_model id should not be rendered. Called from the render hook for every
+     * item_display in view, so it stays allocation-free on the hot path.
+     */
     public static boolean hidden(String itemModelId) {
         if (serverDisabled) {
             return false;                 // checked first: the server's word beats the config

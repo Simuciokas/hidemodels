@@ -26,7 +26,7 @@ public final class LoaderInfo {
     private LoaderInfo() {
     }
 
-    /** "1.5.0 ", or "" when the metadata cannot be read - the caller appends it to a status line. */
+    /** The version with a trailing space, or "" when unreadable - it lands in a status line. */
     public static String modVersion() {
         return ModList.get().getModContainerById(HideModels.MOD_ID)
                 .map(c -> c.getModInfo().getVersion().toString() + " ")
