@@ -138,7 +138,12 @@ jobs:
 
       # The client needs a GL context even to reach the title screen; xvfb provides one headlessly.
       - name: Install xvfb
-        run: sudo apt-get update && sudo apt-get install -y xvfb
+        run: |
+          sudo apt-get update
+          # 26.3's new render backend asks for a GLX visual bare Xvfb does not offer
+          # and a Vulkan surface the runner has no driver for; mesa's software
+          # rasteriser answers both, and lavapipe is its Vulkan half.
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers
 
       # The harness exits the game itself and reports through the exit code, so a failed assertion
       # fails the job. The run config forces java.awt.headless: without it Fabric reports a bad mod
@@ -147,8 +152,13 @@ jobs:
       # Loom provides this task on 1.21.x; gradle/runclient.gradle defines one with the same name on
       # 26.x, so the matrix needs no special case.
       - name: Client game test
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
         timeout-minutes: 20
-        run: xvfb-run -a ./gradlew runClientGameTest -Pminecraft_version=${{ matrix.mc }}
+        run: xvfb-run -a -s "-screen 0 1920x1080x24 +extension GLX +extension RENDER" ./gradlew runClientGameTest -Pminecraft_version=${{ matrix.mc }}
 
       - name: Upload the run log on failure
         if: failure()
@@ -189,10 +199,20 @@ jobs:
       # other. One writer keeps it fresh; everyone else restores read-only.
       - uses: gradle/actions/setup-gradle@v5
       - name: Install xvfb
-        run: sudo apt-get update && sudo apt-get install -y xvfb
+        run: |
+          sudo apt-get update
+          # 26.3's new render backend asks for a GLX visual bare Xvfb does not offer
+          # and a Vulkan surface the runner has no driver for; mesa's software
+          # rasteriser answers both, and lavapipe is its Vulkan half.
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers
       - name: Client game test, production-mode launch
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
         timeout-minutes: 20
-        run: xvfb-run -a ./gradlew runClientGameTestStandalone -Pminecraft_version=1.21.8
+        run: xvfb-run -a -s "-screen 0 1920x1080x24 +extension GLX +extension RENDER" ./gradlew runClientGameTestStandalone -Pminecraft_version=1.21.8
       - name: Upload the run log on failure
         if: failure()
         uses: actions/upload-artifact@v7
@@ -237,7 +257,12 @@ jobs:
 
       # The client needs a GL context even to reach the title screen; xvfb provides one headlessly.
       - name: Install xvfb
-        run: sudo apt-get update && sudo apt-get install -y xvfb
+        run: |
+          sudo apt-get update
+          # 26.3's new render backend asks for a GLX visual bare Xvfb does not offer
+          # and a Vulkan surface the runner has no driver for; mesa's software
+          # rasteriser answers both, and lavapipe is its Vulkan half.
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers
 
       - name: Cache Minecraft client jars
         uses: actions/cache@v5
@@ -251,14 +276,24 @@ jobs:
       # a half of setup - cache restore, client jar - and that setup is identical for both. As
       # separate jobs it was paid twice per version, for eighteen versions.
       - name: Smoke test, Fabric
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
         timeout-minutes: 20
-        run: xvfb-run -a ./gradlew smokeTest -Pminecraft_version=${{ matrix.mc }}
+        run: xvfb-run -a -s "-screen 0 1920x1080x24 +extension GLX +extension RENDER" ./gradlew smokeTest -Pminecraft_version=${{ matrix.mc }}
 
       # The SAME jar under Quilt Loader. Quilt needs no jar of its own, and this is the test behind
       # the Modrinth listing claiming Quilt on the Fabric file.
       - name: Smoke test, Quilt Loader
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
         timeout-minutes: 20
-        run: xvfb-run -a ./gradlew quiltSmokeTest -Pminecraft_version=${{ matrix.mc }}
+        run: xvfb-run -a -s "-screen 0 1920x1080x24 +extension GLX +extension RENDER" ./gradlew quiltSmokeTest -Pminecraft_version=${{ matrix.mc }}
 
       - name: Upload the run log on failure
         if: failure()
@@ -310,17 +345,27 @@ jobs:
           cache-read-only: true
 
       - name: Install xvfb
-        run: sudo apt-get update && sudo apt-get install -y xvfb
+        run: |
+          sudo apt-get update
+          # 26.3's new render backend asks for a GLX visual bare Xvfb does not offer
+          # and a Vulkan surface the runner has no driver for; mesa's software
+          # rasteriser answers both, and lavapipe is its Vulkan half.
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 mesa-vulkan-drivers
 
       # ONE RETRY, for that same host. A dependency-resolution failure costs seconds, so a second
       # attempt is cheap; a real failure costs one extra run of a two-minute test, which is a price
       # worth paying to stop an unrelated maven hiccup turning the matrix red. It does NOT paper
       # over flaky code: the mod's own failures fail both attempts.
       - name: Smoke test
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          GALLIUM_DRIVER: llvmpipe
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
         timeout-minutes: 25
         run: |
           for attempt in 1 2; do
-            if xvfb-run -a ./gradlew smokeTest -Ploader=neoforge -Pminecraft_version=${{ matrix.mc }}; then
+            if xvfb-run -a -s "-screen 0 1920x1080x24 +extension GLX +extension RENDER" ./gradlew smokeTest -Ploader=neoforge -Pminecraft_version=${{ matrix.mc }}; then
               exit 0
             fi
             echo "attempt $attempt failed"
