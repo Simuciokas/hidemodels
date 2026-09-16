@@ -527,6 +527,23 @@ if (loader == 'neoforge') {
             delete new File(neoRunDir, 'smoketest-result.txt')
             neoRunDir.mkdirs()
             writeTestClientOptions(new File(neoRunDir, 'options.txt'))
+
+            // NO EARLY PROGRESS WINDOW. NeoForge opens a GL window of its own before the game's, to
+            // show a loading bar nobody is watching here, and gives itself a fixed deadline to do
+            // it - "Timed out trying to setup the Game Window" then fails the launch outright.
+            // Software GL brings a window up slower than a real driver, which makes that deadline
+            // marginal on a runner: the same job passed one run and failed the next with nothing
+            // changed between them.
+            //
+            // Set through FML's own config rather than a system property, because that is where
+            // FML reads it - -Dfml.earlyprogresswindow=false is widely repeated and had no effect
+            // on any version here, which the log makes obvious by announcing the window anyway.
+            def fml = new File(neoRunDir, 'config/fml.toml')
+            fml.parentFile.mkdirs()
+            def cfg = fml.isFile() ? fml.text : ''
+            fml.text = cfg.contains('earlyWindowControl')
+                    ? cfg.replaceAll(/earlyWindowControl\s*=\s*true/, 'earlyWindowControl = false')
+                    : cfg + System.lineSeparator() + 'earlyWindowControl = false' + System.lineSeparator()
         }
     }
     tasks.register('smokeTest') {
