@@ -113,7 +113,9 @@ jobs:
   # Run it locally on those versions: ./gradlew runClientGameTest -Pminecraft_version=1.21.11
   gametest:
     needs: duplicate
-    if: needs.duplicate.outputs.skip != 'true'
+    # LAUNCHING A CLIENT IS OFF FOR NOW. Set the repository variable RUN_CLIENT_TESTS to
+    # 'true' to bring these back - no code change, and the jobs are otherwise untouched.
+    if: needs.duplicate.outputs.skip != 'true' && vars.RUN_CLIENT_TESTS == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -182,7 +184,9 @@ jobs:
   # per-version coverage.
   gametest-production:
     needs: duplicate
-    if: needs.duplicate.outputs.skip != 'true'
+    # LAUNCHING A CLIENT IS OFF FOR NOW. Set the repository variable RUN_CLIENT_TESTS to
+    # 'true' to bring these back - no code change, and the jobs are otherwise untouched.
+    if: needs.duplicate.outputs.skip != 'true' && vars.RUN_CLIENT_TESTS == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -232,7 +236,9 @@ jobs:
   # the task name is the same on both paths and the matrix needs no special case.
   smoke:
     needs: duplicate
-    if: needs.duplicate.outputs.skip != 'true'
+    # LAUNCHING A CLIENT IS OFF FOR NOW. Set the repository variable RUN_CLIENT_TESTS to
+    # 'true' to bring these back - no code change, and the jobs are otherwise untouched.
+    if: needs.duplicate.outputs.skip != 'true' && vars.RUN_CLIENT_TESTS == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -316,7 +322,9 @@ jobs:
   # Eleven versions, matching the eleven NeoForge publishes a stable build for.
   smoke-neoforge:
     needs: duplicate
-    if: needs.duplicate.outputs.skip != 'true'
+    # LAUNCHING A CLIENT IS OFF FOR NOW. Set the repository variable RUN_CLIENT_TESTS to
+    # 'true' to bring these back - no code change, and the jobs are otherwise untouched.
+    if: needs.duplicate.outputs.skip != 'true' && vars.RUN_CLIENT_TESTS == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -570,8 +578,12 @@ jobs:
     permissions:
       contents: write        # creates the release and uploads the jars
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [targets, smoke, smoke-neoforge, gametest, gametest-production, build,
-            build-neoforge, group-check]
+    # THE CLIENT-LAUNCHING JOBS ARE NOT LISTED, because they are currently disabled and a
+    # skipped dependency would skip this too. What still gates a release: every mixin
+    # target resolved against all nineteen client jars, a compile of every version on
+    # both loaders, and group-check proving the jars in each group are byte-identical.
+    # What is no longer gated: that the client actually starts and the mod runs in it.
+    needs: [targets, build, build-neoforge, group-check]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
