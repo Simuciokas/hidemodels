@@ -1,6 +1,6 @@
 # Hide Models
 
-A client-side Fabric mod for **Minecraft 1.20.5 – 26.2** that stops chosen server-side model pieces
+A client-side Fabric mod for **Minecraft 1.20.5 – 26.3** that stops chosen server-side model pieces
 from rendering — a mount's head that blocks your view, a pet that follows you around, a visual
 effect you'd rather not see — chosen by their `item_model` id.
 
@@ -20,7 +20,7 @@ asserts each one resolves to its id and is hidden by the config.
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer, or NeoForge.
 2. Drop the jar **covering your Minecraft version** into `mods/`. Each jar names the range it
-   covers — `hidemodels-1.7.0+mc26.1-26.2-fabric.jar`, `hidemodels-1.7.0+mc1.21.5-1.21.11-fabric.jar`
+   covers — `hidemodels-1.7.0+mc26.1-26.3-fabric.jar`, `hidemodels-1.7.0+mc1.21.5-1.21.11-fabric.jar`
    — and declares that range, so Loader refuses the wrong one rather than failing later.
 
 **Why a range rather than one jar per version.** Across each range the compiled mod is
@@ -50,14 +50,14 @@ outside it.
 
 ## Which versions it can target
 
-**1.20.5 through 26.2** — eighteen releases — from one source tree with no preprocessor, and with
+**1.20.5 through 26.3** — nineteen releases — from one source tree with no preprocessor, and with
 exactly three small files that differ per version —
 every mixin target and every vanilla type the mod names resolves on all of them, checked against
 each version's own client jar rather than assumed. CI runs that matrix on every push.
 
 | Minecraft | source | notes |
 |---|---|---|
-| 26.2, 26.1.2, 26.1.1, 26.1 | resolves | the advertised range |
+| 26.3, 26.2, 26.1.2, 26.1.1, 26.1 | resolves | the advertised range |
 | 1.21.11 … 1.21.2 | resolves | the advertised range |
 | 1.21.1, 1.21 | resolves | but `item_model` does not exist yet, so the mod falls back to `custom_model_data` — it works, and the ids you write are those values instead |
 | 1.20.6, 1.20.5 | resolves | same `custom_model_data` fallback |
@@ -81,7 +81,7 @@ silently inert for the session.
 Reproduce the table with:
 
 ```sh
-python tools/verify_targets.py 26.2 1.21.8 1.20.6
+python tools/verify_targets.py 26.3 1.21.8 1.20.6
 ```
 
 The tool reads the targets out of the mixin sources, fetches each client jar from Mojang, and — for
@@ -98,7 +98,7 @@ part of the range:
 
 | Minecraft | targets check | builds a jar | smoke test (real client) | client gametest |
 |---|---|---|---|---|
-| 26.2, 26.1.2, 26.1.1, 26.1 | yes | yes | **yes** | **yes** |
+| 26.3, 26.2, 26.1.2, 26.1.1, 26.1 | yes | yes | **yes** | **yes** |
 | 1.21.11 … 1.21.9 | yes | yes | **yes** | locally only — see below |
 | 1.21.8 … 1.21.4 | yes | yes | **yes** | **yes** — all five |
 | 1.21.3 … 1.20.5 | yes | yes | **yes** | **no** — the gametest API does not exist yet |
@@ -124,7 +124,7 @@ needed Loom — only a launcher, which that file already was. The limit below 1.
 Fabric publishes no client gametest module there at all, checked against each version's own
 `fabric-api` POM.
 
-CI runs the smoke test on all eighteen versions and the gametest on nine of them — all four 26.x
+CI runs the smoke test on all nineteen versions and the gametest on ten of them — all five 26.x
 releases and 1.21.4 through 1.21.8 — under xvfb.
 What the smoke test cannot cover is anything needing a world: the render hook, the registered
 command and `ChatOut` are only exercised where the gametest runs.

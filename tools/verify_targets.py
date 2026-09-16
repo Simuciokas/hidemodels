@@ -118,11 +118,16 @@ def parse_mixins(version=None):
             # today - the hook that did, on ClientPacketListener.sendUnattendedCommand, became a
             # registered command - but the next hook whose target arrives mid-range will.
             for inject in re.findall(r'@Inject\s*\(((?:[^()]|\([^()]*\))*)\)', src, re.S):
-                meth = re.search(r'method\s*=\s*"([^"]+)"', inject)
+                # JOINED, because a full descriptor does not fit on one line and Java says so with
+                # "a" + "b". Reading only the first literal silently truncated the descriptor and
+                # every version then failed to match it - a checker that cries wolf gets ignored,
+                # which is worse than one that says nothing.
+                meth = re.search(r'method\s*=\s*((?:"[^"]*"\s*\+\s*)*"[^"]*")', inject, re.S)
                 if not meth:
                     continue
+                target_name = "".join(re.findall(r'"([^"]*)"', meth.group(1)))
                 optional = re.search(r'require\s*=\s*0\b', inject) is not None
-                members.append(("optional method" if optional else "method", meth.group(1)))
+                members.append(("optional method" if optional else "method", target_name))
             for inv in re.findall(r'@Invoker\("([^"]+)"\)', src):
                 members.append(("invoker", inv))
             for acc in re.findall(r'@Accessor\("([^"]+)"\)', src):
@@ -344,7 +349,16 @@ def check_version(version, mixins):
                 obf_name = methods.get((mx["class"], want_name), want_name)
                 if obf_name + want_desc in sigs:
                     continue
-                if obf_name not in names:
+                # OPTIONAL APPLIES TO DESCRIPTORS TOO, and that used to be missed: require = 0 was
+                # only honoured for a bare name, so the pair of injectors covering one hook whose
+                # SIGNATURE changed - 26.3 gave shouldRender a partial tick - reported the version
+                # that does not match as a failure on every version. Exactly one of a pair is
+                # supposed to miss.
+                if kind == "optional method":
+                    notes.append("%s.%s not on this version with %s (optional target)"
+                                 % (mx["class"].rsplit(".", 1)[-1], want_name,
+                                    member[len(want_name):]))
+                elif obf_name not in names:
                     problems.append("%s: %s.%s is absent" % (mx["file"], mx["class"], want_name))
                 else:
                     problems.append("%s: %s.%s exists but NOT with the declared descriptor %s"

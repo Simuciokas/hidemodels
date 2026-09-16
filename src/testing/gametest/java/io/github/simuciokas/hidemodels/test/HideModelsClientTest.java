@@ -90,6 +90,30 @@ public final class HideModelsClientTest implements FabricClientGameTest {
         return true;
     }
 
+    /**
+     * The render hook itself: {@code shouldRender}, whichever shape this version declares.
+     *
+     * <p>BY SHAPE, NOT BY NAME, for the same reason as the clicked-command lookup below - the
+     * standalone launcher runs against intermediary names. Entity first, two or three doubles, and
+     * on 26.3 a trailing float; nothing else on the dispatcher looks like that.
+     */
+    private static Method findShouldRender(Class<?> type) {
+        for (Method m : type.getMethods()) {
+            if (m.getReturnType() != boolean.class) {
+                continue;
+            }
+            final Class<?>[] p = m.getParameterTypes();
+            final boolean shape = (p.length == 5) || (p.length == 6 && p[5] == float.class);
+            if (!shape || !Entity.class.isAssignableFrom(p[0])) {
+                continue;
+            }
+            if (p[2] == double.class && p[3] == double.class && p[4] == double.class) {
+                return m;
+            }
+        }
+        return null;
+    }
+
     @Override
     public void runTest(ClientGameTestContext context) {
         // Before the world, so the very first hidden() call already sees an empty list.
@@ -312,6 +336,50 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             writeConfig(standModel);
             context.waitFor(client -> HideModels.hidden(standModel));
             System.out.println("[hidemodels-gametest] armor stand shape hidden");
+
+            // 8. THE RENDER HOOK IS ACTUALLY APPLIED. Everything above tests the matcher - whether
+            //    the mod would say yes about an id - and none of it touches the mixin that acts on
+            //    the answer. That was survivable while the injector was required, because a hook
+            //    that stopped matching failed at launch; the 26.3 signature change forced both
+            //    injectors to become optional, and an optional injector that matches nothing is
+            //    silent. This is the replacement: call shouldRender and see the answer.
+            //
+            //    A NULL FRUSTUM IS THE POINT. The hook cancels at HEAD, before anything reads it,
+            //    so a working mod returns false without touching it - and a mod whose hook never
+            //    applied falls through to vanilla, which dereferences it and throws. Either failure
+            //    is loud, which is exactly what the required injector used to give us.
+            context.runOnClient(client -> {
+                final Object dispatcher = client.getEntityRenderDispatcher();
+                final Method shouldRender = findShouldRender(dispatcher.getClass());
+                if (shouldRender == null) {
+                    throw new AssertionError("no shouldRender on the entity render dispatcher - "
+                            + "the mixin's target has moved and this test cannot see it");
+                }
+                Entity hiddenOne = null;
+                for (Entity entity : client.level.entitiesForRendering()) {
+                    if (standModel.equals(HideModels.modelIdOfEntity(entity))) {
+                        hiddenOne = entity;
+                    }
+                }
+                if (hiddenOne == null) {
+                    throw new AssertionError("the armor stand went missing before the render check");
+                }
+                final Object[] args = shouldRender.getParameterCount() == 5
+                        ? new Object[] {hiddenOne, null, 0.0, 0.0, 0.0}
+                        : new Object[] {hiddenOne, null, 0.0, 0.0, 0.0, 0.0f};
+                try {
+                    final Object answer = shouldRender.invoke(dispatcher, args);
+                    if (!Boolean.FALSE.equals(answer)) {
+                        throw new AssertionError("shouldRender said " + answer + " for a listed "
+                                + "model - the render hook is not applied on this version");
+                    }
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("shouldRender threw for a listed model, which means "
+                            + "the hook did not cancel and vanilla ran instead", e);
+                }
+                System.out.println("[hidemodels-gametest] render hook cancels ("
+                        + shouldRender.getParameterCount() + "-arg shouldRender)");
+            });
 
             // Kept for a human to look at when a run fails; asserts nothing by itself, because a
             // screenshot comparison would fail on every unrelated resource-pack or lighting change.

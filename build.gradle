@@ -37,6 +37,9 @@ ext.loader = loader
 // a toolchain its own authors have not called finished.
 // From https://maven.neoforged.net/releases/net/neoforged/neoforge
 def NEOFORGE = [
+        // 26.3 IS A BETA, the one exception to the stable-only rule above. Asked for
+        // deliberately; drop this row and 26.3 from the neoforge groups to go back to the rule.
+        '26.3'   : '26.3.0.1-beta',
         '26.2'   : '26.2.0.87',
         '26.1.2' : '26.1.2.109',
         '1.21.11': '21.11.45',
@@ -68,7 +71,7 @@ ext.neoForgeVersion = NEOFORGE[project.minecraft_version]
 // installs happily and misbehaves quietly.
 def GROUPS = [
         fabric  : [
-                ['26.2', '26.1.2', '26.1.1', '26.1'],
+                ['26.3', '26.2', '26.1.2', '26.1.1', '26.1'],
                 ['1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7', '1.21.6', '1.21.5'],
                 ['1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5'],
         ],
@@ -80,7 +83,7 @@ def GROUPS = [
         //
         // Only versions NeoForge has a stable build for appear here.
         neoforge: [
-                ['26.2', '26.1.2'],
+                ['26.3', '26.2', '26.1.2'],
                 ['1.21.11'],
                 ['1.21.10', '1.21.8', '1.21.5'],
                 ['1.21.4', '1.21.3', '1.21.1', '1.21', '1.20.6'],
@@ -125,6 +128,7 @@ ext.isLegacy = legacy   // read by gradle/runclient.gradle, which cannot see a l
 // rather than resolved from the network so a build stays reproducible and offline-capable; add a
 // row when adding a version to the matrix.
 def FABRIC_API = [
+        '26.3'   : '0.160.6+26.3',
         '26.2'   : '0.160.0+26.2',
         '26.1.2' : '0.155.3+26.1.2',
         '26.1.1' : '0.155.3+26.1.2',
@@ -150,6 +154,7 @@ def FABRIC_API = [
 // new entry in that POM:
 //   https://maven.fabricmc.net/net/fabricmc/fabric-api/fabric-api/<api version>/<...>.pom
 def GAMETEST_MODULE = [
+        '26.3'   : '6.0.7+4be74c3f5d',
         '26.2'   : '6.0.2+0f4f1dca9e',
         // The 1.21.x rows are for the STANDALONE launcher only. Loom resolves the module itself
         // from fabric-api's POM, so the Loom path never reads them; the hand-rolled launch has no

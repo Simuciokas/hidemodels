@@ -79,7 +79,7 @@ jobs:
           key: mcjars-${{ hashFiles('tools/verify_targets.py') }}
       - name: Verify mixin targets across the supported range
         run: |
-          python tools/verify_targets.py             26.2 26.1.2 26.1.1 26.1 1.21.11 1.21.10 1.21.9 1.21.8 1.21.7 1.21.6 1.21.5 1.21.4 1.21.3 1.21.2 1.21.1 1.21 1.20.6 1.20.5
+          python tools/verify_targets.py             26.3 26.2 26.1.2 26.1.1 26.1 1.21.11 1.21.10 1.21.9 1.21.8 1.21.7 1.21.6 1.21.5 1.21.4 1.21.3 1.21.2 1.21.1 1.21 1.20.6 1.20.5
 
   # Drives a REAL client: builds a world, summons an item_display carrying item_model, and checks
   # the mod reads it, intercepts its command and honours its config. This is the only coverage that
@@ -118,7 +118,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ['26.2', '26.1.2', '26.1.1', '26.1',
+        mc: ['26.3', '26.2', '26.1.2', '26.1.1', '26.1',
              '1.21.4', '1.21.5', '1.21.6', '1.21.7', '1.21.8']
     steps:
       - uses: actions/checkout@v5
@@ -217,7 +217,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ['26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
+        mc: ['26.3', '26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
              '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5']
     steps:
       - uses: actions/checkout@v5
@@ -291,7 +291,7 @@ jobs:
       # for both. Four at a time asks less of it.
       max-parallel: 4
       matrix:
-        mc: ['26.2', '26.1.2', '1.21.11', '1.21.10', '1.21.8', '1.21.5', '1.21.4', '1.21.3',
+        mc: ['26.3', '26.2', '26.1.2', '1.21.11', '1.21.10', '1.21.8', '1.21.5', '1.21.4', '1.21.3',
              '1.21.1', '1.21', '1.20.6']
     steps:
       - uses: actions/checkout@v5
@@ -350,7 +350,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mc: ['26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
+        mc: ['26.3', '26.2', '26.1.2', '26.1.1', '26.1', '1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7',
              '1.21.6', '1.21.5', '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5']
         loader: ['fabric']
     steps:
@@ -422,7 +422,7 @@ jobs:
       fail-fast: false
       max-parallel: 4
       matrix:
-        mc: ['26.2', '26.1.2', '1.21.11', '1.21.10', '1.21.8', '1.21.5', '1.21.4', '1.21.3',
+        mc: ['26.3', '26.2', '26.1.2', '1.21.11', '1.21.10', '1.21.8', '1.21.5', '1.21.4', '1.21.3',
              '1.21.1', '1.21', '1.20.6']
     steps:
       - uses: actions/checkout@v5
@@ -538,7 +538,7 @@ jobs:
       # eighteen would be collecting the same four files over and over.
       - uses: actions/download-artifact@v8
         with:
-          pattern: hidemodels-{26.2,1.21.11,1.21.10,1.21.4}-*
+          pattern: hidemodels-{26.3,1.21.11,1.21.10,1.21.4}-*
           path: dist
           merge-multiple: true
 
@@ -606,9 +606,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - rep: '26.2'
-            id: '26.1-26.2'
+          - rep: '26.3'
+            id: '26.1-26.3'
             versions: |
+              26.3
               26.2
               26.1.2
               26.1.1
@@ -667,7 +668,7 @@ jobs:
           dependencies: |
             fabric-api(required)
           changelog-file: docs/releases/${{ github.ref_name }}.md
-          modrinth-featured: ${{ matrix.rep == '26.2' }}
+          modrinth-featured: ${{ matrix.rep == '26.3' }}
           # Re-running a tag must not fail on versions that already published.
           modrinth-fail-mode: warn
 
@@ -683,9 +684,10 @@ jobs:
         # FIVE, not four: 1.21.10 and 1.21.11 share a Fabric jar but not a NeoForge one, because
         # NeoForge runs on official names where a Minecraft rename between them is visible.
         include:
-          - rep: '26.2'
-            id: '26.1.2-26.2'
+          - rep: '26.3'
+            id: '26.1.2-26.3'
             versions: |
+              26.3
               26.2
               26.1.2
           - rep: '1.21.11'
