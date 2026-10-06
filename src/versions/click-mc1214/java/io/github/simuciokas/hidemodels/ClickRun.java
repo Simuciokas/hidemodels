@@ -21,11 +21,8 @@ import net.minecraft.network.chat.Style;
 /**
  * Click-to-run styling for 1.20.5 through 1.21.4. See ../click-mc1215 for the other copy.
  *
- * <p>THE SECOND FILE THAT DIFFERS BETWEEN VERSIONS, on a different boundary from {@link ChatOut}.
- * ClickEvent was a plain class with a constructor up to 1.21.4 and became a sealed interface whose
- * cases are records in 1.21.5 - so {@code new ClickEvent(Action.RUN_COMMAND, cmd)} does not compile
- * after, and {@code new ClickEvent.RunCommand(cmd)} does not compile before. Two three-line files
- * beat a preprocessor, and beat giving up clickable output on either half of the range.
+ * <p>ClickEvent is a plain class with a constructor here and a sealed interface of records from
+ * 1.21.5, so neither spelling compiles against the other half of the range.
  */
 public final class ClickRun {
 
