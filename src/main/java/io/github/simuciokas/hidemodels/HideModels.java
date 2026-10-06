@@ -135,8 +135,7 @@ public final class HideModels {
         if (entity instanceof Display.ItemDisplay display) {
             return modelIdOf(((ItemDisplayAccessor) display).hidemodels$getItemStack());
         }
-        // HEAD ONLY. That is where a worn model renders, and the other slots hold what an armor
-        // stand is actually wearing - taking them would hide stands for their boots.
+        // Head only: the other slots hold what a stand is actually wearing.
         if (entity instanceof ArmorStand stand) {
             return modelIdOf(stand.getItemBySlot(EquipmentSlot.HEAD));
         }
@@ -246,9 +245,7 @@ public final class HideModels {
                     .withStyle(ChatFormatting.RED));
             return;
         }
-        // Already covered is not the same as already present: a broader fragment may cover this id
-        // without being equal to it, and adding the narrower one would be a no-op the user cannot
-        // see. Say which line is doing the work instead.
+        // A broader fragment may already cover this id without being equal to it.
         final String covering = coveringPattern(pattern);
         if (covering != null) {
             NearbyModels.say(Component.literal("hidemodels: already hidden by '" + covering + "'")
@@ -525,7 +522,7 @@ public final class HideModels {
                 on = false;
                 continue;
             }
-            // Directives are matched before patterns so they can never be read as an id fragment.
+            // Before the pattern branch, so a directive is never read as an id fragment.
             if (line.equalsIgnoreCase("first-person-only") || line.equalsIgnoreCase("firstperson")
                     || line.equalsIgnoreCase("first-person")) {
                 fp = true;
