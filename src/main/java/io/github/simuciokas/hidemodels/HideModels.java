@@ -36,22 +36,14 @@ import net.minecraft.world.entity.decoration.ArmorStand;
 /**
  * Hides chosen ModelEngine model pieces client-side, by their {@code item_model} id.
  *
- * <p>Every piece of a ModelEngine model is an {@code item_display} entity whose item carries an
- * {@code item_model} component, e.g. {@code modelengine:some_mount/head}. Listing those ids lets a
- * single bone be hidden ({@code some_mount/head}) or a whole model ({@code some_mount/}), and
- * leaves everything else alone - which matters, because scenery and interactive props are
- * item_displays too, and a blanket "remove nearby item_displays" approach eats them as well.
+ * <p>A piece is an {@code item_display} or an armor stand whose item carries an
+ * {@code item_model} component, e.g. {@code modelengine:some_mount/head}. A trailing slash hides a
+ * whole model, no slash hides one bone.
  *
- * <p>This mod does NOT remove entities. It cancels their rendering, so hitboxes, interactions and
- * the server's view of the world are untouched.
+ * <p>Entities are never removed - only their rendering is cancelled, so hitboxes, interactions and
+ * the server's view are untouched.
  *
- * <p>Config: {@code config/hidemodels.txt}, one id fragment per line, {@code #} for comments,
- * plus the directives {@code off}, {@code first-person-only} and {@code list-radius}. Re-read
- * automatically at most once a second when the file's timestamp changes, so edits apply without a
- * restart and without a keybind.
- *
- * <p>{@code /hidemodels list [radius]} reports the ids around you, which is how the config gets
- * filled in without unzipping a resource pack.
+ * <p>Config: {@code config/hidemodels.txt}, re-read within a second of a change.
  */
 public final class HideModels {
 
@@ -89,17 +81,15 @@ public final class HideModels {
     /**
      * The component type this reads, resolved on FIRST USE and then cached.
      *
-     * LOOKED UP BY ID RATHER THAN NAMED, because DataComponents.ITEM_MODEL only exists from 1.21.2
-     * while the registry has held component types since 1.20.5 - and asking for an id a version
-     * lacks simply returns null, which is why custom_model_data sits beside item_model here.
+     * Looked up by id, not named: DataComponents.ITEM_MODEL exists only from 1.21.2, while the
+     * registry has held component types since 1.20.5 and returns null for an id a version lacks -
+     * which is why custom_model_data sits beside item_model.
      *
-     * ITERATED rather than queried by key: a key is an Identifier, the one type whose name changed
-     * mid-range, and constructing one would reintroduce the coupling this avoids.
+     * Iterated rather than queried by key, because a key is an Identifier, whose class name
+     * differs across the range.
      *
-     * LAZY ON PURPOSE. A static initialiser runs whenever the class happens to load, and a client
-     * mixin can load during bootstrap while the registries are still filling: the lookup would find
-     * nothing, cache the null forever, and the mod would silently do nothing all session with no
-     * error to show for it.
+     * Lazy, because a client mixin can load during bootstrap while the registries are still
+     * filling; resolving then would cache a null for the whole session.
      */
     private static DataComponentType<?> modelComponent;
     private static boolean modelComponentResolved;
@@ -123,12 +113,7 @@ public final class HideModels {
         return null;
     }
 
-    /**
-     * The model id on an item, or null when it carries none.
-     *
-     * <p>Both callers want the same thing and each used to read the component itself; one place now
-     * owns which component that is, so the version handling lives in exactly one spot.
-     */
+    /** The model id on an item, or null when it carries none. */
     public static String modelIdOf(net.minecraft.world.item.ItemStack stack) {
         final DataComponentType<?> type = modelComponent();
         if (type == null || stack == null || stack.isEmpty()) {
@@ -141,14 +126,11 @@ public final class HideModels {
     /**
      * The model id an entity is showing, or null when it is not showing one.
      *
-     * <p>TWO SHAPES, BECAUSE THE PLUGINS USE TWO. A model piece is normally an item_display, which
-     * is how ModelEngine, BetterModel, Nexo and Oraxen's display furniture all render since the
-     * entity existed; before that - and still, in those plugins' legacy modes - a piece is an
-     * armor stand wearing the item on its head. Both put the same component on the same kind of
-     * ItemStack, so both answer to the same config line, and the caller never learns which it was.
+     * <p>Two shapes carry a model: an item_display, and an armor stand wearing the piece on its
+     * head. Both put the same component on the same kind of ItemStack.
      *
-     * <p>Named rather than overloading modelIdOf: a null literal would pick between an ItemStack
-     * and an Entity by guesswork, and one caller passes exactly that.
+     * <p>Named rather than overloading modelIdOf, because a null literal would pick between
+     * ItemStack and Entity by guesswork and one caller passes exactly that.
      */
     public static String modelIdOfEntity(Entity entity) {
         if (entity instanceof Display.ItemDisplay display) {
@@ -163,28 +145,8 @@ public final class HideModels {
     }
 
     /**
-     * THE HOT PATH: the render hook's whole question, asked once per entity per frame.
-     *
-     * <p>ORDERED BY COST, cheapest first, because this runs for every entity the client draws -
-     * mobs, items, players, the lot - and all but a handful of them are not model pieces at all:
-     *
-     * <ol>
-     *   <li>an instanceof pair, which rejects almost everything for nothing
-     *   <li>{@link #couldHideAnything()}, a few field reads
-     *   <li>reading the component and turning it into a String - the only step that allocates
-     *   <li>the substring scan
-     * </ol>
-     *
-     * <p>Step 3 used to run BEFORE step 2, so a client with the shipped config - which lists
-     * nothing - read the component and built a String for every model piece in view before finding
-     * out that nothing could match.
-     *
-     * <p>MEASURED, AND SMALLER THAN IT LOOKS: 40.7ns per model entity before, 38.9ns after, timed
-     * in a running client over 400k calls. At a couple of hundred pieces in view that is single
-     * -digit microseconds a frame either way, so this ordering is worth having because it is also
-     * the clearer way to write it - not because the old one was costing anyone a frame. Anything
-     * fancier here - caching ids per entity, keeping the decision on a mixin field - would buy a
-     * fraction of that and cost real complexity.
+     * Asked once per entity per frame, so the checks run cheapest first: a type test that rejects
+     * almost everything, then the config, then the component read that allocates, then the scan.
      */
     public static boolean shouldHide(Entity entity) {
         if (!(entity instanceof Display.ItemDisplay) && !(entity instanceof ArmorStand)) {
@@ -197,12 +159,7 @@ public final class HideModels {
         return id != null && matches(id);
     }
 
-    /**
-     * Is there any way the answer could be yes? Nothing here looks at the entity.
-     *
-     * <p>An empty list is the case worth catching: it is what the mod ships with, so every install
-     * that has not been configured yet takes this exit.
-     */
+    /** Could anything be hidden at all? Nothing here looks at the entity. */
     private static boolean couldHideAnything() {
         if (serverDisabled) {
             return false;                 // checked first: the server's word beats the config
@@ -213,16 +170,7 @@ public final class HideModels {
         return !firstPersonOnly || inFirstPerson();
     }
 
-    /**
-     * The config poll, driven once per client tick by each loader's entrypoint.
-     *
-     * <p>IT USED TO HANG OFF THE RENDER QUERY, which meant asking the clock whether a second had
-     * passed once per model piece per frame - up to some twelve thousand times a second to answer a
-     * question that can only change twenty times a second. System.currentTimeMillis measured at
-     * 7.4ns, about a fifth of the whole hot path.
-     *
-     * <p>A poll belongs on a timer. That is the reason for this; the nanoseconds are a bonus.
-     */
+    /** The config poll, driven once per client tick by each loader's entrypoint. */
     public static void tick() {
         maybeReload();
     }
@@ -239,19 +187,14 @@ public final class HideModels {
         return false;
     }
 
-    /**
-     * Would this id be hidden right now? The same question {@link #shouldHide} asks, by id rather
-     * than by entity - which is what the tests assert against, since they have an id in hand and no
-     * wish to build an entity to ask about it.
-     */
+    /** Would this id be hidden right now? {@link #shouldHide} asks the same by entity. */
     public static boolean hidden(String itemModelId) {
         return itemModelId != null && couldHideAnything() && matches(itemModelId);
     }
 
     /**
-     * Does the hide list cover this id? Unlike {@link #hidden(String)} this ignores the camera, the
-     * server opt-out and the off switch - it answers "is this in my list", which is what the
-     * command's report needs in order to mark entries.
+     * Is this id in the list? Unlike {@link #hidden(String)} this ignores the camera, the server
+     * opt-out and the off switch, so the report can mark entries whatever the current state.
      */
     public static boolean listed(String itemModelId) {
         if (itemModelId == null) {
@@ -260,12 +203,7 @@ public final class HideModels {
         return matches(itemModelId);
     }
 
-    /**
-     * The status line and the usage lines, printed by {@code /hidemodels} with no arguments.
-     *
-     * <p>Public because the command tree lives in the loader-specific source set now: Fabric
-     * registers it through Fabric API and NeoForge through its own event, and both call into this.
-     */
+    /** The status and usage lines, printed by {@code /hidemodels} with no arguments. */
     public static void status() {
         NearbyModels.say(Component.literal("hidemodels " + version() + "- " + patterns.length
                 + " pattern(s), " + (enabled ? "on" : "off")
@@ -305,9 +243,8 @@ public final class HideModels {
     /**
      * Adds a pattern and applies it immediately.
      *
-     * <p>Appends to the config rather than rewriting it: the file is hand-edited and full of
-     * comments and directives explaining itself, and a round-trip through this class would flatten
-     * all of that. A line is added at the end, where a person would have put it.
+     * <p>Appends rather than rewriting the file, which is hand-edited and full of comments that
+     * a round-trip through this class would flatten.
      */
     public static void add(String raw) {
         final String pattern = raw.trim().toLowerCase(Locale.ROOT);
@@ -397,13 +334,8 @@ public final class HideModels {
     /**
      * The three directives, as commands.
      *
-     * <p>Each one edits the config the same way add and remove do - the file stays the thing that
-     * is true, so a setting changed in game and a setting typed into the file cannot disagree, and
-     * a command is never a second place state might live.
-     *
-     * <p>Written in the CANONICAL spelling even when the file used an alias: the parser accepts
-     * "firstperson" and "first-person" as well, but a file this mod has written should read the way
-     * the documentation does.
+     * <p>Each edits the config, so a setting changed in game and one typed into the file cannot
+     * disagree. Written in the canonical spelling even where the parser also accepts an alias.
      */
     public static void setEnabled(boolean on) {
         directive(on ? null : "off", "off", "disabled");
@@ -487,12 +419,7 @@ public final class HideModels {
         return null;
     }
 
-    /**
-     * Re-reads the config at once, rather than waiting up to a second for the poll.
-     *
-     * <p>A command that edits the file should be believed immediately: the confirmation message
-     * reports the new pattern count, and the next frame should already hide the thing.
-     */
+    /** Re-reads the config at once, so a command that edits it takes effect before it replies. */
     private static void reloadNow() {
         try {
             lastModified = Files.isRegularFile(CONFIG)
@@ -518,11 +445,8 @@ public final class HideModels {
     }
 
     /**
-     * Version straight from the jar metadata, so the help line cannot drift from the build.
-     *
-     * <p>Asked of the loader through LoaderInfo, which has a copy per loader: this class knows
-     * about Minecraft and nothing else, which is what lets the same file build for Fabric and for
-     * NeoForge without a single conditional.
+     * Version straight from the jar metadata, so the help line cannot drift from the build. Asked
+     * through LoaderInfo, which has a copy per loader, keeping this class free of loader types.
      */
     private static String version() {
         return LoaderInfo.modVersion();
@@ -531,10 +455,8 @@ public final class HideModels {
     /**
      * Whether the camera is in first person right now.
      *
-     * <p>Read live rather than cached: the perspective key changes it between frames, and this is
-     * already being called from the render thread, so there is nothing to synchronise against.
-     * Defaults to true if the client is not far enough along to have options, so a model listed
-     * for hiding never flashes into view during startup.
+     * <p>Read live rather than cached - the perspective key changes it between frames. Defaults
+     * to true before the client has options, so a listed model never flashes into view at startup.
      */
     private static boolean inFirstPerson() {
         final Minecraft mc = Minecraft.getInstance();

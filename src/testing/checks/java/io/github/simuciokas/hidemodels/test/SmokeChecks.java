@@ -25,11 +25,9 @@ import net.minecraft.client.Minecraft;
 /**
  * The startup checks, shared by both loaders' harnesses.
  *
- * <p>WHY THIS EXISTS ALONGSIDE THE GAMETEST. Fabric's client gametest API was only added in
- * 1.21.4 - so on 1.21.3 and earlier, six of the eighteen supported versions, there is no harness
- * to run and this is the only automated proof that a line of the mod runs. It also carries the
- * three versions that have a harness but cannot load a world on a CI runner, and the NeoForge jar,
- * which has no Fabric harness by definition.
+ * <p>Fabric's client gametest API exists only from 1.21.4, so on 1.21.3 and earlier this is the
+ * only automated proof that a line of the mod runs. It also covers the NeoForge jar, which has no
+ * Fabric harness.
  *
  * <p>IT NAMES NO LOADER. Everything here is Minecraft and the mod's own code, which is what lets
  * one copy serve a ClientModInitializer on Fabric and a @Mod constructor on NeoForge. It drives
@@ -83,15 +81,12 @@ public final class SmokeChecks {
     /**
      * Up and rendering, which is when the registries are populated and frozen.
      *
-     * <p>Judged by the frame counter rather than by what is on screen, because this one class has
-     * to compile on every supported version and the screen is exactly what moved: 1.21.x reads
-     * {@code mc.screen} and 26.x reads {@code mc.gui.screen()}. isRunning() and getFps() are on
-     * Minecraft itself across the whole range, and a non-zero fps says more than a field would
-     * anyway - it means the client survived startup and is actually drawing frames.
+     * <p>Judged by the frame counter, not by what is on screen: the screen accessor differs
+     * across the range ({@code mc.screen} on 1.21.x, {@code mc.gui.screen()} on 26.x) while
+     * isRunning() and getFps() do not.
      *
-     * <p>It does mean the check can pass during the loading overlay rather than at the title
-     * screen. That costs nothing here: neither assertion below touches the game's state, and a
-     * client that dies mid-reload still fails the build, because the verdict file never appears.
+     * <p>It can therefore pass during the loading overlay rather than at the title screen, which
+     * costs nothing - no assertion below touches game state.
      */
     private static void waitForClient() throws InterruptedException {
         final long deadline = System.currentTimeMillis() + TIMEOUT_MS;
@@ -138,12 +133,9 @@ public final class SmokeChecks {
     /**
      * The add and remove commands, which are the only part of them that works without a world.
      *
-     * <p>Calls the mod's own add/remove directly rather than through the command, because there is
-     * no server to have a connection to and a client command needs one. That skips the registration
-     * - the gametest covers the command itself where it can run - but it does cover what the
-     * commands actually do: writing the config and forcing the reload. Below 1.21.4, where no
-     * harness exists, this is the only automated proof that they do anything at all, and the
-     * file-writing half is the half most likely to break on a version nobody tried.
+     * <p>Calls add/remove directly rather than through the command, because a client command
+     * needs a connection and there is no server here. What it covers is what they do: writing the
+     * config and forcing the reload.
      */
     private static void checkCommandsEditTheList() throws IOException, InterruptedException {
         final String id = "hidemodels:smoke_command";
@@ -224,14 +216,10 @@ public final class SmokeChecks {
     /**
      * Report through a FILE, not an exit code, and then stop caring how the process dies.
      *
-     * <p>Both obvious exits are wrong here. halt() from this thread while the render thread is in a
-     * GL call makes Windows fast-fail the JVM with 0xC0000409, and System.exit() trips the same
-     * thing through Minecraft's GLFW shutdown hooks. Either way Gradle sees a crashed process and
-     * reports FAILED however well the test went.
-     *
-     * <p>So the verdict goes where the process cannot corrupt it on the way out, and how the JVM
-     * ends stops mattering - the only way to make this reliable across eighteen versions of a
-     * program that was never built to be scripted.
+     * <p>Both obvious exits are wrong: halt() from this thread while the render thread is in a GL
+     * call makes Windows fast-fail the JVM with 0xC0000409, and System.exit() trips the same
+     * through Minecraft's GLFW shutdown hooks. Either way Gradle sees a crashed process and reports
+     * FAILED however well the test went, so the verdict goes where the exit cannot corrupt it.
      */
     private static void report(String verdict) {
         try {

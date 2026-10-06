@@ -21,15 +21,13 @@ import net.minecraft.network.chat.Component;
 /**
  * Client-side chat for 26.x. See the copy in ../chat-mc121 for why there are two.
  *
- * <p>ONE OF THREE FILES WITH A PER-VERSION COPY - this, ClickRun and Cmd; everything else compiles
- * unchanged across 1.20.5 to 26.2. This method does not, because the client-facing chat call was
- * renamed: {@code LocalPlayer.sendSystemMessage} here, {@code displayClientMessage} before.
- * Reflection cannot paper over it - a 1.21.x build is remapped to intermediary, so the runtime
- * method is called something like {@code method_7353} and no name-based lookup would find it.
+ * <p>The chat call is named {@code sendSystemMessage} here and {@code displayClientMessage}
+ * before 26.x. Reflection cannot bridge it: a 1.21.x build runs against intermediary, where the
+ * method answers to something like {@code method_7353}.
  *
- * <p>Picking the one LocalPlayer itself declares matters: CommandSource declares
+ * <p>It must be the one LocalPlayer itself declares. CommandSource declares
  * {@code sendSystemMessage} on every version, but on 1.21.x the player does not override it and
- * the inherited implementation is the server's, which would print nothing at all.
+ * the inherited implementation is the server's, which prints nothing.
  */
 public final class ChatOut {
 
