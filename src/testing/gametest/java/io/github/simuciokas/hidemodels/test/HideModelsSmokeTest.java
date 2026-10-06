@@ -20,9 +20,7 @@ import net.fabricmc.api.ClientModInitializer;
 /**
  * The Fabric end of the smoke test: an entrypoint, and nothing else.
  *
- * <p>The checks themselves are in {@link SmokeChecks}, shared with the NeoForge harness, because
- * what they assert - that the component resolves from the registry and that the config drives the
- * matcher - is the mod's behaviour rather than any loader's.
+ * <p>The checks are in {@link SmokeChecks}, shared with the NeoForge harness.
  */
 public final class HideModelsSmokeTest implements ClientModInitializer {
 
