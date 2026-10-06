@@ -113,7 +113,6 @@ public final class HideModels {
         return null;
     }
 
-    /** The model id on an item, or null when it carries none. */
     public static String modelIdOf(net.minecraft.world.item.ItemStack stack) {
         final DataComponentType<?> type = modelComponent();
         if (type == null || stack == null || stack.isEmpty()) {
@@ -159,7 +158,6 @@ public final class HideModels {
         return id != null && matches(id);
     }
 
-    /** Could anything be hidden at all? Nothing here looks at the entity. */
     private static boolean couldHideAnything() {
         if (serverDisabled) {
             return false;                 // checked first: the server's word beats the config
@@ -170,12 +168,11 @@ public final class HideModels {
         return !firstPersonOnly || inFirstPerson();
     }
 
-    /** The config poll, driven once per client tick by each loader's entrypoint. */
+    /** Must be called once per client tick; each loader's entrypoint does it. */
     public static void tick() {
         maybeReload();
     }
 
-    /** The substring test itself, shared by everything that asks about an id. */
     private static boolean matches(String itemModelId) {
         final String id = itemModelId.toLowerCase(Locale.ROOT);
         final String[] pats = patterns;
@@ -187,7 +184,6 @@ public final class HideModels {
         return false;
     }
 
-    /** Would this id be hidden right now? {@link #shouldHide} asks the same by entity. */
     public static boolean hidden(String itemModelId) {
         return itemModelId != null && couldHideAnything() && matches(itemModelId);
     }
@@ -203,7 +199,6 @@ public final class HideModels {
         return matches(itemModelId);
     }
 
-    /** The status and usage lines, printed by {@code /hidemodels} with no arguments. */
     public static void status() {
         NearbyModels.say(Component.literal("hidemodels " + version() + "- " + patterns.length
                 + " pattern(s), " + (enabled ? "on" : "off")
@@ -228,13 +223,11 @@ public final class HideModels {
                 .withStyle(ChatFormatting.DARK_GRAY));
     }
 
-    /** The configured default radius for {@code /hidemodels list}, in blocks. */
     public static double listRadius() {
         maybeReload();
         return listRadius;
     }
 
-    /** The patterns currently loaded, for the remove command's suggestions. */
     public static String[] patterns() {
         maybeReload();
         return patterns.clone();
@@ -408,7 +401,6 @@ public final class HideModels {
                 .withStyle(good ? ChatFormatting.GREEN : ChatFormatting.YELLOW));
     }
 
-    /** The loaded pattern that already covers this id, or null. */
     private static String coveringPattern(String id) {
         final String[] pats = patterns;
         for (int i = 0; i < pats.length; i++) {
@@ -485,12 +477,10 @@ public final class HideModels {
         }
     }
 
-    /** Called on disconnect: an opt-out lasts for one connection only. */
     public static void clearServerOverride() {
         serverDisabled = false;
     }
 
-    /** Whether the current server has opted out. */
     public static boolean isServerDisabled() {
         return serverDisabled;
     }
