@@ -1,0 +1,33 @@
+name: sync changelogs
+
+# Modrinth reads a version's changelog once, at publish time. Editing docs/releases/<tag>.md
+# afterwards changes nothing anyone sees until this pushes it, which is why this exists and why it
+# is run by hand rather than on a push: rewording a note is not a release.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Write the changes (unchecked = dry run)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  modrinth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: vars.MODRINTH_PROJECT_ID != ''
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - name: Sync every version's changelog from docs/releases
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+          APPLY: ${{ inputs.apply && '1' || '0' }}
+        run: python tools/sync_modrinth_changelogs.py "${{ vars.MODRINTH_PROJECT_ID }}"
