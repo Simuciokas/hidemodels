@@ -101,8 +101,8 @@ public final class NearbyModels {
             final Group g = row.getValue();
             final boolean listed = HideModels.listed(row.getKey());
 
-            // Only ids not already hidden are clickable, and removal is never wired to a click:
-            // undoing by clicking where you just clicked is how people hide things by accident.
+            // Removal is deliberately not wired to a click: undoing by clicking where you just
+            // clicked is how people hide things by accident.
             final Component id = listed
                     ? Component.literal(row.getKey()).withStyle(ChatFormatting.GREEN)
                     : Component.literal(row.getKey()).withStyle(
@@ -110,10 +110,8 @@ public final class NearbyModels {
                                     .withColor(ChatFormatting.WHITE)
                                     .withUnderlined(true));
 
-            // CLICK THE COUNT TO OPEN THE MODEL UP, listing just this model's bones so one can be
-            // hidden on its own. Only where there is something to open: in bones mode the row IS a
-            // piece and a slashless id has nothing underneath, so both stay plain text rather than
-            // offering a click that would reprint the line it was on.
+            // The count opens the model up. Not in bones mode, where the row already IS a piece,
+            // and not on a slashless id, which has nothing underneath it.
             final boolean drillable = !bones && row.getKey().endsWith("/");
             final Style countStyle = drillable
                     ? ClickRun.style("/" + HideModels.MOD_ID + " list bones " + fmt(radius)
@@ -158,8 +156,6 @@ public final class NearbyModels {
         }
         final double r2 = radius * radius;
         for (Entity e : level.entitiesForRendering()) {
-            // Asked of HideModels so the report and the render hook agree on what counts as a
-            // model piece.
             final String id = HideModels.modelIdOfEntity(e);
             if (id == null) {
                 continue;
@@ -171,15 +167,12 @@ public final class NearbyModels {
             if (dSq > r2) {
                 continue;
             }
-            // MATCHED FROM THE START, not as a substring the way the hide list matches: the filter
-            // is a model prefix the report itself produced, and "under this model" means exactly
-            // that. Substring matching here would pull in another model that happened to contain
-            // the same word, which is the one thing a drill-down must not do.
+            // From the start, not as a substring the way the hide list matches: a substring would
+            // pull in another model that merely contains the same word.
             if (prefix != null && !id.toLowerCase(Locale.ROOT).startsWith(prefix)) {
                 continue;
             }
-            // Group by the model, i.e. everything up to and including the last '/', which is
-            // exactly the fragment the config wants. Ids with no slash stand alone.
+            // Everything up to the last '/' is the fragment the config wants.
             final int cut = id.lastIndexOf('/');
             final String key = (bones || cut < 0) ? id : id.substring(0, cut + 1);
             final Group g = found.computeIfAbsent(key, k -> new Group());
