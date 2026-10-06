@@ -29,7 +29,7 @@ public final class ClickRun {
     private ClickRun() {
     }
 
-    /** A style that runs {@code command} (leading slash included) when the text is clicked. */
+    /** {@code command} carries its leading slash; the game trims it before sending. */
     public static Style style(String command) {
         return Style.EMPTY.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, command));
     }
