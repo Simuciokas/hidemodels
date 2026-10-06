@@ -71,13 +71,10 @@ public final class HideModelsClientTest implements FabricClientGameTest {
     /**
      * Is this the method a clicked run_command ends up calling?
      *
-     * <p>BY SIGNATURE, NOT BY NAME, because this test runs in two worlds: under Loom the runtime
-     * keeps official names, while the standalone launcher runs intermediary-named mods against the
-     * obfuscated jar, where the same method answers to something like {@code method_54650}. A name
-     * check silently found nothing there and reported the path as absent on a version that has it.
+     * <p>By signature, not by name: the standalone launcher runs intermediary-named mods against
+     * the obfuscated jar, where this answers to something like {@code method_54650}.
      *
      * <p>{@code void (String, Screen)} is the only such method on the connection across this range.
-     * A future version adding a second would force the intermediary name per version instead.
      */
     private static boolean isUnattendedCommandSend(Method m) {
         if (m.getParameterCount() != 2 || m.getReturnType() != void.class) {
@@ -93,9 +90,8 @@ public final class HideModelsClientTest implements FabricClientGameTest {
     /**
      * The render hook itself: {@code shouldRender}, whichever shape this version declares.
      *
-     * <p>BY SHAPE, NOT BY NAME, for the same reason as the clicked-command lookup below - the
-     * standalone launcher runs against intermediary names. Entity first, two or three doubles, and
-     * on 26.3 a trailing float; nothing else on the dispatcher looks like that.
+     * <p>By shape, not by name, for the same reason as the clicked-command lookup below. Entity
+     * first, three doubles, and on 26.3 a trailing float; nothing else on the dispatcher matches.
      */
     private static Method findShouldRender(Class<?> type) {
         for (Method m : type.getMethods()) {
@@ -257,16 +253,12 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                     client.getConnection().sendCommand(HideModels.MOD_ID + " remove " + byCommand));
             context.waitFor(client -> !HideModels.hidden(byCommand));
 
-            // 6. THE CLICKED PATH, on the versions that have one. Clicking a run_command component
-            //    calls sendUnattendedCommand rather than sendCommand from 1.21.6 on, which is a
-            //    SECOND injection point - and one that is easy to lose silently, because losing it
-            //    means the command goes to the server instead, where it looks like a typo rather
-            //    than a bug in this mod.
+            // 6. THE CLICKED PATH, on the versions that have one: from 1.21.6 a clicked
+            //    run_command calls sendUnattendedCommand rather than sendCommand. Losing it sends
+            //    the command to the server, where it reads as a typo rather than a bug here.
             //
-            //    Reached by reflection because this one test source compiles for 1.21.4 too, where
-            //    the method does not exist. Safe here and only here: a development runtime keeps
-            //    the official names, while a released jar runs against intermediary and would need
-            //    the remapped name - which is exactly why the mod itself uses a mixin and not this.
+            //    Reflection because this source also compiles for 1.21.4, where the method does
+            //    not exist.
             final String byClick = "hidemodels:added_by_click";
             final boolean[] clickable = {false};
             context.runOnClient(client -> {
@@ -285,9 +277,8 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                     break;
                 }
             });
-            // Printed rather than inferred: without it, "the test passed" reads the same whether the
-            // clicked path was exercised or quietly skipped, and skipping is the failure this
-            // section exists to catch.
+            // Printed, because "the test passed" otherwise reads the same whether the clicked
+            // path ran or was skipped.
             System.out.println("[hidemodels-gametest] clicked-command path "
                     + (clickable[0] ? "exercised" : "absent on this version (pre-1.21.6)"));
             if (clickable[0]) {
@@ -297,17 +288,13 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 context.waitFor(client -> !HideModels.hidden(byClick));
             }
 
-            // 7. THE OTHER SHAPE A MODEL ARRIVES IN. Everything above rides on an item_display,
-            //    which is how ModelEngine, BetterModel, Nexo and Oraxen's display furniture all
-            //    render - but the same plugins have a legacy mode, and older ones only ever had
-            //    one: an armor stand wearing the model on its head. Same component, same config
-            //    line, different entity class, and that last part is the whole risk - a type check
-            //    that only names Display.ItemDisplay silently ignores half the ecosystem.
+            // 7. THE OTHER SHAPE A MODEL ARRIVES IN: an armor stand wearing the piece on its
+            //    head, which is what the older plugins and the legacy modes of the newer ones
+            //    produce. Same component, same config line, different entity class - and a type
+            //    check naming only Display.ItemDisplay would silently ignore all of it.
             //
-            //    THIS IS A SHAPE TEST, NOT A PLUGIN TEST. No ModelEngine is installed and none is
-            //    needed: what is asserted is that an entity built the way those plugins build one
-            //    resolves to its model id and gets hidden by the config. Whether a given plugin
-            //    still emits this shape is that plugin's business and can change without telling us.
+            //    A SHAPE TEST, NOT A PLUGIN TEST: no ModelEngine is installed or needed. Whether a
+            //    given plugin still emits this shape is that plugin's business.
             //
             //    Equipped by /item replace rather than summon NBT on purpose: the entity's own
             //    equipment tag was ArmorItems before 1.21.5 and equipment after, while this command
@@ -337,17 +324,13 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.waitFor(client -> HideModels.hidden(standModel));
             System.out.println("[hidemodels-gametest] armor stand shape hidden");
 
-            // 8. THE RENDER HOOK IS ACTUALLY APPLIED. Everything above tests the matcher - whether
-            //    the mod would say yes about an id - and none of it touches the mixin that acts on
-            //    the answer. That was survivable while the injector was required, because a hook
-            //    that stopped matching failed at launch; the 26.3 signature change forced both
-            //    injectors to become optional, and an optional injector that matches nothing is
-            //    silent. This is the replacement: call shouldRender and see the answer.
+            // 8. THE RENDER HOOK IS ACTUALLY APPLIED. Everything above tests the matcher, not
+            //    the mixin that acts on it - which only became worth checking when 26.3 forced
+            //    both injectors to require = 0, where matching nothing is silent.
             //
-            //    A NULL FRUSTUM IS THE POINT. The hook cancels at HEAD, before anything reads it,
-            //    so a working mod returns false without touching it - and a mod whose hook never
-            //    applied falls through to vanilla, which dereferences it and throws. Either failure
-            //    is loud, which is exactly what the required injector used to give us.
+            //    A NULL FRUSTUM IS THE POINT: the hook cancels at HEAD before anything reads it,
+            //    so a working mod returns false, and one whose hook never applied falls through to
+            //    vanilla and throws. Both failures are loud.
             context.runOnClient(client -> {
                 final Object dispatcher = client.getEntityRenderDispatcher();
                 final Method shouldRender = findShouldRender(dispatcher.getClass());

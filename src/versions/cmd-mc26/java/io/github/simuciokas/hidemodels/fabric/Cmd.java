@@ -26,10 +26,8 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 /**
  * The two builder methods Fabric's client command API exposes, for 26.x. See ../cmd-mc121.
  *
- * <p>FABRIC API'S OWN RENAME, not Minecraft's: the class holding these was ClientCommandManager
- * through 1.21.11 and is ClientCommands from 26.1. The methods and the FabricClientCommandSource
- * are identical, so the whole difference is which name to type - and it splits on the same 1.21.x
- * against 26.x boundary as ChatOut, which is why it lives beside it.
+ * <p>Fabric API's rename, not Minecraft's: ClientCommandManager through 1.21.11, ClientCommands
+ * from 26.1. The methods and the source type are identical; only the class name differs.
  */
 public final class Cmd implements CommandTree.Builders<FabricClientCommandSource> {
 
@@ -49,11 +47,7 @@ public final class Cmd implements CommandTree.Builders<FabricClientCommandSource
         return ClientCommands.argument(name, type);
     }
 
-    /**
-     * The live client-command dispatcher, for the gametest's tab-completion check.
-     *
-     * <p>Here rather than in the test because it is the same class that moved between versions.
-     */
+    /** The live client-command dispatcher, for the gametest's tab-completion check. */
     public static CommandDispatcher<FabricClientCommandSource> dispatcher() {
         return ClientCommands.getActiveDispatcher();
     }

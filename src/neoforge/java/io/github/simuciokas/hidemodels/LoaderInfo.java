@@ -19,7 +19,9 @@ import net.neoforged.fml.ModList;
 
 /**
  * The mod's own version, read from the jar metadata - the NeoForge copy. See src/fabric for the
- * other one and for why this is the only thing src/main asks the loader for.
+ * other one.
+ *
+ * <p>Behind one method so the rest of src/main compiles against nothing but Minecraft.
  */
 public final class LoaderInfo {
 

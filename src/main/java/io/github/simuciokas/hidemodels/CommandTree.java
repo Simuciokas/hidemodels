@@ -31,9 +31,8 @@ import java.util.Locale;
  * the tree is identical, so the loader hands in a {@link Builders} of two methods and gets a
  * finished tree back - duplicating it per loader would duplicate the part that actually changes.
  *
- * <p>Brigadier rather than the string splitting this replaced, for completion: the arguments worth
- * completing all come from the mod's own state, so the client offers them without asking the
- * server anything.
+ * <p>Brigadier is here for completion: every argument worth completing comes from the mod's own
+ * state, so the client offers them without asking the server anything.
  */
 public final class CommandTree {
 
@@ -83,11 +82,9 @@ public final class CommandTree {
                                 .executes(ctx -> list(HideModels.listRadius(), true))
                                 .then(b.argument("radius", DoubleArgumentType.doubleArg(1.0, 256.0))
                                         .executes(ctx -> list(DoubleArgumentType.getDouble(ctx, "radius"), true))
-                                        // The drill-down, and the reason radius comes first rather
-                                        // than being optional here: brigadier reads arguments in
-                                        // order, so a model name could not sit in front of a
-                                        // number that may or may not follow it. The clickable
-                                        // piece count always sends both.
+                                        // Radius comes first because brigadier reads arguments in
+                                        // order: a model name cannot sit in front of a number that
+                                        // may or may not follow it.
                                         .then(b.argument("model", StringArgumentType.greedyString())
                                                 .suggests(nearby)
                                                 .executes(ctx -> list(
