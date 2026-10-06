@@ -2,6 +2,11 @@
 # version and Minecraft range are templated by the build exactly as they are on the Fabric side.
 modLoader = "javafml"
 loaderVersion = "[1,)"
+
+# NO RED X AGAINST EVERY SERVER. displayTest defaults to MATCH_VERSION, which marks a server as
+# incompatible when it does not have this mod - and no server ever will, because this is a client
+# mod. IGNORE_ALL_VERSION is NeoForge's own answer for a mod with no server component.
+displayTest = "IGNORE_ALL_VERSION"
 license = "LGPL-3.0-only"
 issueTrackerURL = "https://github.com/Simuciokas/hidemodels/issues"
 
