@@ -154,11 +154,9 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
             });
 
-            // 1b. THE GROUPING THE DRILL-DOWN RESTS ON. A piece count only becomes clickable on
-            //     rows whose key ends in a slash, so if grouping ever stopped trimming at the last
-            //     slash the link would quietly vanish from every row rather than break loudly.
-            //     Summoned as two bones of one model, which is the shape ModelEngine actually
-            //     produces and the shape the filter has to collapse back to one row.
+            // 1b. THE GROUPING THE DRILL-DOWN RESTS ON: a piece count is only clickable on rows
+            //     whose key ends in a slash, so grouping that stopped trimming there would make
+            //     the link vanish rather than break.
             singleplayer.getServer().runCommand(
                     "summon item_display ~ ~1 ~ {item:{id:\"stone\",components:"
                             + "{\"minecraft:item_model\":\"hidemodels:rig/head\"}}}");
@@ -241,9 +239,8 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
             });
 
-            // 5. THE COMMANDS THAT EDIT THE LIST. add/remove write the config themselves and force
-            //    a reload, so the assertion is the same one a user makes: type it, and the thing is
-            //    hidden without touching a file or waiting.
+            // 5. THE COMMANDS THAT EDIT THE LIST, asserted the way a user would: type it, and the
+            //    thing is hidden without touching a file or waiting.
             final String byCommand = "hidemodels:added_by_command";
             context.runOnClient(client ->
                     client.getConnection().sendCommand(HideModels.MOD_ID + " add " + byCommand));
