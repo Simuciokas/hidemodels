@@ -101,10 +101,8 @@ public final class NearbyModels {
             final Group g = row.getValue();
             final boolean listed = HideModels.listed(row.getKey());
 
-            // CLICK THE ID TO HIDE IT. Only ids not already hidden are clickable - a click that
-            // silently did nothing would be worse than none - and removal is deliberately never
-            // wired to a click, since undoing by clicking where you just clicked is how people
-            // hide things by accident.
+            // Only ids not already hidden are clickable, and removal is never wired to a click:
+            // undoing by clicking where you just clicked is how people hide things by accident.
             final Component id = listed
                     ? Component.literal(row.getKey()).withStyle(ChatFormatting.GREEN)
                     : Component.literal(row.getKey()).withStyle(
@@ -160,17 +158,15 @@ public final class NearbyModels {
         }
         final double r2 = radius * radius;
         for (Entity e : level.entitiesForRendering()) {
-            // Asked of HideModels so the report and the render hook can never disagree about what
-            // counts as a model piece - an id the list does not show but hiding still catches, or
-            // the reverse, is a small and infuriating bug.
+            // Asked of HideModels so the report and the render hook agree on what counts as a
+            // model piece.
             final String id = HideModels.modelIdOfEntity(e);
             if (id == null) {
                 continue;
             }
-            // MEASURED AGAINST THE PLAYER ENTITY, not its position vector, and not as a style
-            // choice: position()'s intermediary name changed mid-range - method_19538 through
-            // 1.21.8, method_73189 after - which split an otherwise identical jar in two. The
-            // entity overload keeps 1.21.5 through 1.21.11 compiling to the same bytes.
+            // Against the player ENTITY, not its position vector: position() has two different
+            // intermediary names across 1.21.5-1.21.11, and this overload has one, so the whole
+            // range compiles to the same bytes.
             final double dSq = e.distanceToSqr(mc.player);
             if (dSq > r2) {
                 continue;

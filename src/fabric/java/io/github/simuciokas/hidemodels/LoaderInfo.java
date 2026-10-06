@@ -21,10 +21,7 @@ import net.fabricmc.loader.api.FabricLoader;
  * The mod's own version, read from the jar metadata - the Fabric copy. See src/neoforge for the
  * other one.
  *
- * <p>A SMALL THING THAT CANNOT BE SHARED. Every loader knows what version it loaded, and every
- * loader has its own way of being asked. This is the whole of what src/main needed from the loader
- * once the command and the disconnect event moved out, and keeping it behind one method is what
- * lets the rest of src/main compile against nothing but Minecraft.
+ * <p>Behind one method so the rest of src/main compiles against nothing but Minecraft.
  */
 public final class LoaderInfo {
 

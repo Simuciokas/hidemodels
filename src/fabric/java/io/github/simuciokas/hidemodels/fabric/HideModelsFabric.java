@@ -25,12 +25,8 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 /**
  * What the mod needs from the loader, on Fabric.
  *
- * <p>THIS CLASS REPLACED THREE MIXINS, which is the point of depending on Fabric API at all. The
- * command needed two injection points - a clicked command takes a different path from a typed one
- * from 1.21.6, and the second does not exist before that - while a registered command needs
- * neither and gets tab completion free. The disconnect hook needed a per-version copy, because its
- * target's parameter changed and a Mixin handler must mirror its target exactly; the event does
- * not care.
+ * <p>A registered command rather than an intercepted one: it gets tab completion, and it needs no
+ * injection point for the clicked-command path that only exists from 1.21.6.
  *
  * <p>What stays a mixin is what has no event behind it: the render hook and the stack accessor.
  */

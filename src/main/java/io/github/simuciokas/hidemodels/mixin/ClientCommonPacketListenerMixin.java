@@ -26,18 +26,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Lets a server switch this mod off for its own players - the server-side opt-out.
  *
- * <p>The protocol is deliberately just a channel name with no body, because an unknown plugin
- * channel reaches the client as a {@code DiscardedPayload}, which in 26.2 is a record holding
- * only the {@code Identifier}: the bytes are thrown away before any mod can see them. So the
- * channel IS the message.
- *
- * <p>A server sends an empty custom payload on {@code hidemodels:disable} to turn hiding off for
- * the rest of the session, or {@code hidemodels:enable} to allow it again. Sending it is safe
- * unconditionally - a client without this mod discards unknown channels silently - so a server
- * can simply fire it at every player on join.
- *
- * <p>The override is per-connection: each loader's entrypoint clears it on disconnect, so a server
- * cannot leave a client permanently altered and reconnecting starts from the user's own config.
+ * <p>The channel IS the message, with no body: an unknown plugin channel reaches the client as a
+ * DiscardedPayload holding only the id, so the bytes are gone before any mod can read them.
+ * {@code hidemodels:disable} turns hiding off for the session, {@code hidemodels:enable} allows it
+ * again, and each loader's entrypoint clears the override on disconnect.
  */
 @Mixin(ClientCommonPacketListenerImpl.class)
 public abstract class ClientCommonPacketListenerMixin {
