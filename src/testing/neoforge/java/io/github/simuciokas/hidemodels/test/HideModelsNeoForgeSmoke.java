@@ -22,13 +22,8 @@ import net.neoforged.fml.common.Mod;
 /**
  * The NeoForge end of the smoke test: an entrypoint, and nothing else.
  *
- * <p>Its Fabric twin is HideModelsSmokeTest, and the checks they both run are in
- * {@link SmokeChecks}. Keeping each entrypoint down to a constructor is the point - what is being
- * tested is the mod, and the mod does not change between loaders.
- *
- * <p>This is what gives the NeoForge jar any runtime coverage at all: the gametest harness is
- * Fabric's and does not exist here, so without this the NeoForge side would be proven only by the
- * fact that it compiles.
+ * <p>Its Fabric twin is HideModelsSmokeTest; the checks are in {@link SmokeChecks}. This is the
+ * NeoForge jar's only runtime coverage - the gametest harness is Fabric's.
  */
 @Mod(value = "hidemodels_test", dist = Dist.CLIENT)
 public final class HideModelsNeoForgeSmoke {

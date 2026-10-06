@@ -714,9 +714,6 @@ jobs:
           name: Hide Models ${{ steps.version.outputs.number }} for Fabric/Quilt ${{ matrix.id }}
           version: mc${{ matrix.id }}-${{ steps.version.outputs.number }}-fabric
           version-type: release
-          # STATED, NOT INFERRED. Modrinth replaced client_side/server_side with one
-          # environment value, and a version published without it needs a moderator to
-          # correct it - which happened on the first public release.
           modrinth-environment: client
           game-versions: ${{ matrix.versions }}
           # Verbatim, no filtering - the default narrows a resolved set and has silently emptied it.
@@ -790,9 +787,6 @@ jobs:
           name: Hide Models ${{ steps.version.outputs.number }} for NeoForge ${{ matrix.id }}
           version: mc${{ matrix.id }}-${{ steps.version.outputs.number }}-neoforge
           version-type: release
-          # STATED, NOT INFERRED. Modrinth replaced client_side/server_side with one
-          # environment value, and a version published without it needs a moderator to
-          # correct it - which happened on the first public release.
           modrinth-environment: client
           game-versions: ${{ matrix.versions }}
           game-version-filter: none
