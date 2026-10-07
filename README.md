@@ -20,12 +20,12 @@ asserts each one resolves to its id and is hidden by the config.
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer, or NeoForge.
 2. Drop the jar **covering your Minecraft version** into `mods/`. Each jar names the range it
-   covers — `hidemodels-1.8.1+mc26.1-26.3-fabric.jar`, `hidemodels-1.8.1+mc1.21.5-1.21.11-fabric.jar`
+   covers — `hidemodels-1.8.1+mc26.1-26.3-fabric.jar`, `hidemodels-1.8.1+mc1.20.5-1.21.11-fabric.jar`
    — and declares that range, so Loader refuses the wrong one rather than failing later.
 
 **Why a range rather than one jar per version.** Across each range the compiled mod is
 byte-identical: the same classes, the same mixins, differing only in the metadata that names the
-range. Shipping seven files instead of twenty-nine is therefore not a compromise, it is the truth about
+range. Shipping four files instead of thirty-one is therefore not a compromise, it is the truth about
 what was built — and a CI job rebuilds every version on every push and fails if any of them stops
 matching the group whose jar it would ship under.
 
@@ -33,7 +33,7 @@ Requirements, all declared in `fabric.mod.json`:
 
 | | |
 |---|---|
-| Minecraft | the range the jar names, e.g. `>=1.21.5 <=1.21.11`. Bounded at both ends: it claims nothing it was not built against |
+| Minecraft | the range the jar names, e.g. `>=1.20.5 <=1.21.11`. Bounded at both ends: it claims nothing it was not built against |
 | Fabric Loader | `>=0.19.0` — or Quilt Loader, which runs the same jar |
 | Java | `>=25` on 26.x, `>=21` on 1.21.x — each version's own requirement |
 | Fabric API | **required** on Fabric and Quilt. Not on NeoForge, where its work is done by NeoForge's own events |
@@ -41,7 +41,7 @@ Requirements, all declared in `fabric.mod.json`:
 
 Client-only (`"environment": "client"`), so there is nothing to install server-side.
 
-**Why the range is bounded at both ends.** An open `>=1.21.5` would claim versions this jar has
+**Why the range is bounded at both ends.** An open `>=1.20.5` would claim versions this jar has
 never been built or tested against, and the failure that produces is the worst kind: a 1.21.x jar is
 remapped to one version's intermediary names, and a mixin whose target moved does not fail loudly —
 it simply never applies, so the mod hides nothing with nothing in the log to explain it. Every jar
@@ -114,9 +114,8 @@ stub asset index so no gigabyte is downloaded to reach a title screen).
 `./gradlew runClientGameTest -Pminecraft_version=1.21.8` goes further where Fabric's harness exists:
 it builds a world, summons an `item_display` carrying `minecraft:item_model`, and asserts the mod
 reads the component, honours its config, and that `/hidemodels`, its key and every tab of the screen
-do what they say. No
-ModelEngine and no server are needed, because the mod keys on a vanilla component on a vanilla
-entity, which is what makes it runnable anywhere.
+do what they say. No ModelEngine and no server are needed, because the mod keys on a vanilla
+component on a vanilla entity, which is what makes it runnable anywhere.
 
 **That includes 26.x, where there is no Loom.** The harness is published for 26.x like any other
 version, and it is just a mod: `gradle/runclient.gradle` puts it in the run directory beside the mod
@@ -125,12 +124,13 @@ needed Loom — only a launcher, which that file already was. The limit below 1.
 Fabric publishes no client gametest module there at all, checked against each version's own
 `fabric-api` POM.
 
-CI runs the smoke test on all nineteen versions and the gametest on ten of them — all five 26.x
-releases and 1.21.4 through 1.21.8 — under xvfb.
-What the smoke test cannot cover is anything needing a world: the render hook, the screen, the
+Both launch a real client, which makes them slow. CI has a job for each, under xvfb, but runs them
+only when the repository variable `RUN_CLIENT_TESTS` is `true`; otherwise they are run locally
+before each release, and CI keeps the targets check, the compile of every version and the group
+check. What the smoke test cannot cover is anything needing a world: the render hook, the screen, the
 command and `ChatOut` are only exercised where the gametest runs.
 
-**The gametest does not run in CI on 1.21.9 and later.** On a hosted runner their integrated server
+**Even when CI runs them, the gametest skips 1.21.9 and later.** On a hosted runner their integrated server
 freezes at `Preparing spawn area: 16%` until the harness gives up with `Timeout loading world`. It
 is not this mod, not the runner, and not Loom — each of those was tested rather than assumed:
 
@@ -274,12 +274,12 @@ permanently altered, and the player's own config applies again next time they co
 
 ```sh
 export JAVA_HOME=/path/to/jdk-25
-./gradlew build          # -> build/libs/hidemodels-1.8.1+mc26.1-26.2-fabric.jar
+./gradlew build          # -> build/libs/hidemodels-1.8.1+mc26.1-26.3-fabric.jar
 ```
 
 No local Minecraft install is needed: the compile classpath — client jar plus MC's own libraries —
 is fetched from Mojang's piston metadata and sha1-verified, then cached under
-`build/minecraft/26.2/`. See [BUILDING.md](BUILDING.md) for why there is no Fabric Loom here, and
+`build/minecraft/26.3/`. See [BUILDING.md](BUILDING.md) for why there is no Fabric Loom here, and
 for the two 26.2 API details that cost the most time.
 
 Prebuilt jars come from GitHub Actions: the artifact on every build, and a Release for every `v*`
