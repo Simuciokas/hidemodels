@@ -8,7 +8,8 @@
   "environment": "client",
   "entrypoints": {
     "client": [
-      "io.github.simuciokas.hidemodels.test.HideModelsSmokeTest"
+      "io.github.simuciokas.hidemodels.test.HideModelsSmokeTest",
+      "io.github.simuciokas.hidemodels.test.DemoModels"
     ]
   },
   "depends": {

@@ -329,6 +329,53 @@ if (!legacy) {
         ]
     }
 
+    /**
+     * A playable client with sample models in front of you, for trying the mod by hand. Not a test:
+     * nothing is checked, and the game stays open until you close it.
+     *
+     * <p>Its own run directory, so the world and config you make there survive the test runs, which
+     * empty their mods folder and rewrite their options on every launch. The models are placed by
+     * DemoModels in the test mod each time you join a single-player world.
+     */
+    tasks.register('runDemo', JavaExec) {
+        group = 'application'
+        description = "Starts ${mc} with the mod and sample models placed when you join a world."
+        dependsOn 'jar', 'testModJar', 'extractNatives', 'stubAssets', 'downloadMinecraft'
+        def demoDir = layout.buildDirectory.dir("demo${mc}").get().asFile
+
+        doFirst {
+            def mods = new File(demoDir, 'mods')
+            mods.mkdirs()
+            delete fileTree(mods)
+            copy {
+                from tasks.jar.archiveFile
+                from tasks.named('testModJar').get().archiveFile
+                from configurations.fabricApiRuntime
+                into mods
+            }
+        }
+
+        classpath = files(clientJar) + mcLibJars +
+                configurations.loaderRuntime + files(loaderLibraries)
+        mainClass = 'net.fabricmc.loader.impl.launch.knot.KnotClient'
+        workingDir = demoDir
+
+        jvmArgs = [
+                "-Djava.library.path=${nativesDir}".toString(),
+                "-Dorg.lwjgl.librarypath=${nativesDir}".toString(),
+                '-Dhidemodels.demo=true',
+        ]
+        args = [
+                '--gameDir', demoDir.absolutePath,
+                '--assetsDir', assetsDir.absolutePath,
+                '--assetIndex', 'stub',
+                '--accessToken', '0',
+                '--version', mc,
+                '--userType', 'legacy',
+                '--username', 'Demo',
+        ]
+    }
+
     tasks.register('smokeTest') {
         group = 'verification'
         description = 'Launches the client and checks the mod runs on this Minecraft version.'

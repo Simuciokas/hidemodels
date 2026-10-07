@@ -688,6 +688,35 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             hoverFirstRow(context);
             context.takeScreenshot("hover-detail");
 
+            // 15. THE DEMO SCENE that runDemo places, checked model by model: its summons fail
+            //     silently, and a broken one would only show as an empty world in the demo.
+            final double[] at = new double[4];
+            context.runOnClient(client -> {
+                at[0] = client.player.getX();
+                at[1] = client.player.getY();
+                at[2] = client.player.getZ();
+                at[3] = client.player.getYRot();
+            });
+            singleplayer.getServer().runOnServer(server ->
+                    DemoModels.place(server, at[0], at[1], at[2], (float) at[3]));
+            context.waitTicks(20);
+            context.runOnClient(client -> {
+                final java.util.Map<String, Integer> placed = new java.util.TreeMap<>();
+                for (NearbyModels.Nearby n : NearbyModels.nearby(16.0)) {
+                    if (n.id().startsWith("hidemodels_demo:")) {
+                        placed.put(n.id(), n.pieces());
+                    }
+                }
+                final java.util.Map<String, Integer> expected = new java.util.TreeMap<>(java.util.Map.of(
+                        "hidemodels_demo:dragon/", 5, "hidemodels_demo:golem/", 4,
+                        "hidemodels_demo:statue/", 1, "hidemodels_demo:lantern", 1));
+                if (!expected.equals(placed)) {
+                    throw new AssertionError("the demo scene placed " + placed + ", not " + expected);
+                }
+                System.out.println("[hidemodels-gametest] demo scene: " + placed);
+            });
+            context.takeScreenshot("demo-scene");
+
             // Kept for a human to look at when a run fails; asserts nothing by itself, because a
             // screenshot comparison would fail on every unrelated resource-pack or lighting change.
             context.takeScreenshot("hidemodels-after-hide");
