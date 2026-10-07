@@ -35,8 +35,13 @@ def groups_from_build(loader):
     section = re.search(r"\b" + re.escape(loader) + r"\s*:\s*\[(.*?)\n\s*\]", block.group(1), re.S)
     if not section:
         raise SystemExit("no %r section in the GROUPS map" % loader)
-    return [re.findall(r"'([^']+)'", line)
-            for line in section.group(1).splitlines() if "'" in line]
+    # BY BRACKET, NOT BY LINE. A group too long for one line is still one group, and reading it
+    # as two validates a partition the build does not use - every version in it would compare
+    # equal, so the check passes while describing something that is not there.
+    body = "\n".join(l for l in section.group(1).splitlines()
+                     if not l.strip().startswith("//"))
+    return [re.findall(r"'([^']+)'", inner)
+            for inner in re.findall(r"\[([^\[\]]*)\]", body, re.S)]
 
 
 def read_fingerprints(root):
