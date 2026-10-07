@@ -71,10 +71,11 @@ public final class SmokeChecks {
             checkConfigDrivesMatcher();
             checkAddAndRemove();
             checkSettings();
+            checkProfiles();
             checkKeyRegistered();
             checkScreenOpens();
-            report("PASS - component resolved, config drove the matcher, add/remove and settings "
-                    + "worked, key registered, screen opened");
+            report("PASS - component resolved, config drove the matcher, add/remove, settings and "
+                    + "profiles worked, key registered, screen opened");
         } catch (Throwable t) {
             t.printStackTrace(System.err);
             report("FAIL - " + t);
@@ -188,6 +189,57 @@ public final class SmokeChecks {
                   "a screen position of 1 0.5 did not stick");
         HideModels.setGuiPosition(0, 0);
         HideModels.remove(id);
+    }
+
+    /**
+     * Profiles, through the calls the screen makes: the unsaved lines saved as one, which then
+     * hides only while it is on; more added to it; renamed; deleted with its lines. A comment and
+     * a profile nobody touched must come through all of it as they were.
+     */
+    private static void checkProfiles() throws IOException, InterruptedException {
+        final String a = "hidemodels:profile_a";
+        final String b = "hidemodels:profile_b";
+        write("# kept by the smoke test" + System.lineSeparator()
+                + "[Untouched] off" + System.lineSeparator() + "hidemodels:untouched");
+        waitUntil(() -> HideModels.profiles().size() == 1, "a profile heading was not read");
+        if (HideModels.hidden("hidemodels:untouched")) {
+            throw new AssertionError("a profile that is off still hides its lines");
+        }
+
+        HideModels.add(a);
+        waitUntil(() -> HideModels.hidden(a), "an unsaved line did not hide");
+        final String name = HideModels.saveUnsavedAsProfile();
+        if (name == null || !HideModels.unsaved().isEmpty()) {
+            throw new AssertionError("saving left lines unsaved, or made no profile");
+        }
+        waitUntil(() -> name.equals(HideModels.hidingList(a)),
+                  "a line saved into a profile that is on does not hide through it");
+
+        HideModels.setProfileOn(name, false);
+        waitUntil(() -> !HideModels.hidden(a), "switching the profile off did not show its line");
+        HideModels.setProfileOn(name, true);
+        waitUntil(() -> HideModels.hidden(a), "switching it back on did not hide it again");
+
+        HideModels.add(b);
+        HideModels.addUnsavedToProfile(name);
+        waitUntil(() -> HideModels.unsaved().isEmpty() && name.equals(HideModels.hidingList(b)),
+                  "adding the unsaved lines to the profile did not move them into it");
+
+        if (!HideModels.renameProfile(name, "Smoke")) {
+            throw new AssertionError("renaming the profile was refused");
+        }
+        waitUntil(() -> "Smoke".equals(HideModels.hidingList(a)), "the rename did not stick");
+
+        HideModels.deleteProfile("Smoke");
+        waitUntil(() -> HideModels.profiles().size() == 1 && !HideModels.hidden(a)
+                        && !HideModels.hidden(b), "deleting the profile left it, or its lines");
+
+        final String file = Files.readString(CONFIG);
+        if (!file.contains("# kept by the smoke test") || !file.contains("[Untouched] off")
+                || !file.contains("hidemodels:untouched")) {
+            throw new AssertionError("editing profiles disturbed the rest of the file:"
+                    + System.lineSeparator() + file);
+        }
     }
 
     /**

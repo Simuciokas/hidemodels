@@ -59,8 +59,19 @@ public final class HideModels {
     public static final String CHANNEL_DISABLE = MOD_ID + ":disable";
     public static final String CHANNEL_ENABLE = MOD_ID + ":enable";
 
-    /** Lower-cased id fragments; an entity is hidden when its item_model contains any of them. */
+    /**
+     * Lower-cased id fragments; an entity is hidden when its item_model contains any of them. The
+     * unsaved lines and every profile that is on, flattened once at load, so the render path never
+     * sees profiles at all.
+     */
     private static volatile String[] patterns = new String[0];
+    /** The lines before the first profile heading, which always apply. */
+    private static volatile List<String> unsaved = List.of();
+    private static volatile List<Profile> profiles = List.of();
+
+    /** A saved list of lines, applied while it is on. */
+    public record Profile(String name, boolean on, List<String> patterns) {
+    }
     private static volatile boolean enabled = true;
 
     /** When set, hiding applies only while the camera is in first person. */
@@ -361,11 +372,45 @@ public final class HideModels {
         return patterns.clone();
     }
 
+    public static List<String> unsaved() {
+        maybeReload();
+        return unsaved;
+    }
+
+    public static List<Profile> profiles() {
+        maybeReload();
+        return profiles;
+    }
+
     /**
-     * Adds a pattern and applies it immediately.
-     *
-     * <p>Appends rather than rewriting the file, which is hand-edited and full of comments that
-     * a round-trip through this class would flatten.
+     * Which list hides this id: "" for the unsaved lines, else the name of a profile that is on;
+     * null when nothing does. The unsaved lines are asked first, being where a click edits.
+     */
+    public static String hidingList(String itemModelId) {
+        if (itemModelId == null) {
+            return null;
+        }
+        final String id = itemModelId.toLowerCase(Locale.ROOT);
+        for (String pattern : unsaved) {
+            if (id.contains(pattern)) {
+                return "";
+            }
+        }
+        for (Profile profile : profiles) {
+            if (profile.on()) {
+                for (String pattern : profile.patterns()) {
+                    if (id.contains(pattern)) {
+                        return profile.name();
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Adds a pattern to the unsaved lines and applies it immediately. Everything else in the file
+     * - comments, profiles, their order - is left as it was.
      */
     public static void add(String raw) {
         final String pattern = raw.trim().toLowerCase(Locale.ROOT);
@@ -381,20 +426,13 @@ public final class HideModels {
                     .withStyle(ChatFormatting.YELLOW));
             return;
         }
-        try {
-            if (!Files.isRegularFile(CONFIG)) {
-                writeDefaults();
-            }
-            final String existing = Files.readString(CONFIG);
-            final String sep = existing.isEmpty() || existing.endsWith("\n") ? "" : System.lineSeparator();
-            Files.writeString(CONFIG, existing + sep + pattern + System.lineSeparator());
-            reloadNow();
+        if (edit(text -> {
+            ConfigText.append(text.top(), pattern);
+            return true;
+        })) {
             NearbyModels.say(Component.literal("hidemodels: hiding '" + pattern + "' ("
                     + patterns.length + " pattern" + (patterns.length == 1 ? "" : "s") + ")")
                     .withStyle(ChatFormatting.GREEN));
-        } catch (IOException e) {
-            NearbyModels.say(Component.literal("hidemodels: could not write config/" + MOD_ID
-                    + ".txt - " + e).withStyle(ChatFormatting.RED));
         }
     }
 
@@ -419,49 +457,191 @@ public final class HideModels {
         remove(model, true);
     }
 
+    /** Only from the unsaved lines; a profile's lines change through the profile. */
     private static void remove(String raw, boolean withBones) {
         final String pattern = raw.trim().toLowerCase(Locale.ROOT);
         if (pattern.isEmpty()) {
             NearbyModels.say(Component.literal("hidemodels: remove what?").withStyle(ChatFormatting.RED));
             return;
         }
+        final int[] removed = {0};
+        if (!edit(text -> {
+            removed[0] = ConfigText.removeIf(text.top(),
+                    line -> line.equals(pattern) || (withBones && line.startsWith(pattern)));
+            return removed[0] > 0;
+        })) {
+            return;
+        }
+        if (removed[0] == 0) {
+            final String list = hidingList(pattern);
+            final String covering = coveringPattern(pattern);
+            if (list != null && !list.isEmpty()) {
+                NearbyModels.say(Component.literal("hidemodels: '" + pattern + "' is in the profile '"
+                        + list + "' - open it to change it").withStyle(ChatFormatting.YELLOW));
+            } else if (covering != null) {
+                NearbyModels.say(Component.literal("hidemodels: '" + pattern
+                        + "' is not a line of its own - it is covered by '" + covering
+                        + "', remove that instead").withStyle(ChatFormatting.YELLOW));
+            } else {
+                NearbyModels.say(Component.literal("hidemodels: '" + pattern
+                        + "' is not in the list").withStyle(ChatFormatting.YELLOW));
+            }
+            return;
+        }
+        NearbyModels.say(Component.literal("hidemodels: stopped hiding '" + pattern + "'"
+                + (withBones && removed[0] > 1 ? " and its bones" : "") + " ("
+                + patterns.length + " pattern" + (patterns.length == 1 ? "" : "s") + " left)")
+                .withStyle(ChatFormatting.GREEN));
+    }
+
+    /**
+     * Moves the unsaved lines into a new profile, switched on so nothing changes on screen.
+     *
+     * @return the name it was given, or null when there was nothing unsaved to move
+     */
+    public static String saveUnsavedAsProfile() {
+        final String name = freeProfileName();
+        final int moved = moveUnsaved(text -> text.addProfile(name));
+        if (moved == 0) {
+            return null;
+        }
+        say("saved " + moved + " line" + (moved == 1 ? "" : "s") + " as the profile '" + name + "'",
+                true);
+        return name;
+    }
+
+    public static void addUnsavedToProfile(String name) {
+        final int moved = moveUnsaved(text -> text.profile(name));
+        if (moved > 0) {
+            say("added " + moved + " line" + (moved == 1 ? "" : "s") + " to '" + name + "'", true);
+        }
+    }
+
+    public static void setProfileOn(String name, boolean on) {
+        final boolean[] changed = {false};
+        edit(text -> {
+            final ConfigText.Section s = text.profile(name);
+            if (s == null || s.on == on) {
+                return false;
+            }
+            s.on = on;
+            changed[0] = true;
+            return true;
+        });
+        if (changed[0]) {
+            say("profile '" + name + "' " + (on ? "on" : "off"), true);
+        }
+    }
+
+    /**
+     * Renames a profile. Refused when the new name is empty, would break the heading - it cannot
+     * hold a bracket - or belongs to another profile already.
+     */
+    public static boolean renameProfile(String from, String to) {
+        final String name = to == null ? "" : to.trim();
+        if (name.isEmpty() || name.contains("[") || name.contains("]")) {
+            return false;
+        }
+        final boolean[] done = {false};
+        edit(text -> {
+            final ConfigText.Section s = text.profile(from);
+            final ConfigText.Section clash = text.profile(name);
+            if (s == null || (clash != null && clash != s) || s.name.equals(name)) {
+                return false;
+            }
+            s.name = name;
+            done[0] = true;
+            return true;
+        });
+        return done[0];
+    }
+
+    /** The profile and every line in it. */
+    public static void deleteProfile(String name) {
+        final boolean[] gone = {false};
+        edit(text -> gone[0] = text.sections.remove(text.profile(name)));
+        if (gone[0]) {
+            say("deleted the profile '" + name + "'", true);
+        }
+    }
+
+    public static void addToProfile(String name, String pattern) {
+        final String line = pattern.trim().toLowerCase(Locale.ROOT);
+        edit(text -> {
+            final ConfigText.Section s = text.profile(name);
+            if (s == null || line.isEmpty()) {
+                return false;
+            }
+            ConfigText.append(s, line);
+            return true;
+        });
+    }
+
+    public static void removeFromProfile(String name, String pattern) {
+        final String line = pattern.trim().toLowerCase(Locale.ROOT);
+        edit(text -> {
+            final ConfigText.Section s = text.profile(name);
+            return s != null && ConfigText.removeIf(s, l -> l.equals(line)) > 0;
+        });
+    }
+
+    /** Moves every unsaved pattern line, leaving comments and directives where they are. */
+    private static int moveUnsaved(java.util.function.Function<ConfigText, ConfigText.Section> target) {
+        final int[] moved = {0};
+        edit(text -> {
+            final ConfigText.Section to = target.apply(text);
+            if (to == null) {
+                return false;
+            }
+            final List<String> keep = new ArrayList<>();
+            for (String raw : text.top().lines) {
+                if (isPattern(raw)) {
+                    ConfigText.append(to, raw.trim().toLowerCase(Locale.ROOT));
+                    moved[0]++;
+                } else {
+                    keep.add(raw);
+                }
+            }
+            text.top().lines.clear();
+            text.top().lines.addAll(keep);
+            return moved[0] > 0;
+        });
+        return moved[0];
+    }
+
+    /** Profile 1, Profile 2, ... the first that is free. */
+    private static String freeProfileName() {
+        for (int n = 1; ; n++) {
+            final String name = "Profile " + n;
+            boolean taken = false;
+            for (Profile p : profiles) {
+                taken |= p.name().equalsIgnoreCase(name);
+            }
+            if (!taken) {
+                return name;
+            }
+        }
+    }
+
+    /**
+     * Reads the config as sections, applies a change, and writes it back only if the change says
+     * it changed anything; then reloads, so the result shows on the next frame.
+     */
+    private static boolean edit(java.util.function.Predicate<ConfigText> change) {
         try {
             if (!Files.isRegularFile(CONFIG)) {
-                NearbyModels.say(Component.literal("hidemodels: nothing is hidden yet")
-                        .withStyle(ChatFormatting.YELLOW));
-                return;
+                writeDefaults();
             }
-            final List<String> kept = new ArrayList<>();
-            int removed = 0;
-            for (String line : Files.readAllLines(CONFIG)) {
-                final String trimmed = line.trim().toLowerCase(Locale.ROOT);
-                if (trimmed.equals(pattern) || (withBones && trimmed.startsWith(pattern))) {
-                    removed++;
-                    continue;
-                }
-                kept.add(line);
+            final ConfigText text = ConfigText.parse(Files.readAllLines(CONFIG));
+            if (change.test(text)) {
+                Files.write(CONFIG, text.render());
+                reloadNow();
             }
-            if (removed == 0) {
-                final String covering = coveringPattern(pattern);
-                if (covering != null) {
-                    NearbyModels.say(Component.literal("hidemodels: '" + pattern
-                            + "' is not a line of its own - it is covered by '" + covering
-                            + "', remove that instead").withStyle(ChatFormatting.YELLOW));
-                } else {
-                    NearbyModels.say(Component.literal("hidemodels: '" + pattern
-                            + "' is not in the list").withStyle(ChatFormatting.YELLOW));
-                }
-                return;
-            }
-            Files.write(CONFIG, kept);
-            reloadNow();
-            NearbyModels.say(Component.literal("hidemodels: stopped hiding '" + pattern + "'"
-                    + (withBones && removed > 1 ? " and its bones" : "") + " ("
-                    + patterns.length + " pattern" + (patterns.length == 1 ? "" : "s") + " left)")
-                    .withStyle(ChatFormatting.GREEN));
+            return true;
         } catch (IOException e) {
             NearbyModels.say(Component.literal("hidemodels: could not write config/" + MOD_ID
                     + ".txt - " + e).withStyle(ChatFormatting.RED));
+            return false;
         }
     }
 
@@ -522,37 +702,28 @@ public final class HideModels {
      * @param spellings every form the parser recognises, matched case-insensitively
      */
     private static void directive(String line, String... spellings) {
-        try {
-            if (!Files.isRegularFile(CONFIG)) {
-                writeDefaults();
-            }
-            final List<String> kept = new ArrayList<>();
-            for (String existing : Files.readAllLines(CONFIG)) {
-                final String trimmed = existing.trim().toLowerCase(Locale.ROOT);
-                boolean drop = false;
-                for (String spelling : spellings) {
-                    // A directive with a value ("list-radius 32") is a prefix match; "off" must
-                    // match the whole line, or a pattern containing the word would be eaten.
-                    final boolean takesValue = spelling.equals("list-radius")
-                            || spelling.equals("gui-position");
-                    if (takesValue ? trimmed.startsWith(spelling) : trimmed.equals(spelling)) {
-                        drop = true;
-                        break;
+        edit(text -> {
+            // Directives apply to everything, so every section is cleared of them, and the new one
+            // goes with the unsaved lines at the top.
+            for (ConfigText.Section s : text.sections) {
+                ConfigText.removeIf(s, trimmed -> {
+                    for (String spelling : spellings) {
+                        // A directive with a value ("list-radius 32") is a prefix match; "off"
+                        // must match the whole line, or a pattern containing the word would go.
+                        final boolean takesValue = spelling.equals("list-radius")
+                                || spelling.equals("gui-position");
+                        if (takesValue ? trimmed.startsWith(spelling) : trimmed.equals(spelling)) {
+                            return true;
+                        }
                     }
-                }
-                if (!drop) {
-                    kept.add(existing);
-                }
+                    return false;
+                });
             }
             if (line != null) {
-                kept.add(line);
+                ConfigText.append(text.top(), line);
             }
-            Files.write(CONFIG, kept);
-            reloadNow();
-        } catch (IOException e) {
-            NearbyModels.say(Component.literal("hidemodels: could not write config/" + MOD_ID
-                    + ".txt - " + e).withStyle(ChatFormatting.RED));
-        }
+            return true;
+        });
     }
 
     /** One decimal at most, so "32" does not print as "32.0" in a config line. */
@@ -669,52 +840,80 @@ public final class HideModels {
         }
     }
 
+    /** A line naming models: not blank, not a comment, not a directive. */
+    static boolean isPattern(String raw) {
+        final String line = raw.trim().toLowerCase(Locale.ROOT);
+        return !line.isEmpty() && !line.startsWith("#") && !line.equals("off")
+                && !line.equals("disabled") && !line.equals("first-person-only")
+                && !line.equals("firstperson") && !line.equals("first-person")
+                && !line.startsWith("list-radius") && !line.startsWith("gui-position");
+    }
+
     private static void load() throws IOException {
-        final List<String> pats = new ArrayList<>();
+        final ConfigText text = ConfigText.parse(Files.readAllLines(CONFIG));
+        final java.util.Set<String> effective = new java.util.LinkedHashSet<>();
+        final List<String> loose = new ArrayList<>();
+        final List<Profile> saved = new ArrayList<>();
         boolean on = true;
         boolean fp = false;
         double radius = DEFAULT_LIST_RADIUS;
         double gx = 0;
         double gy = 0;
-        for (String raw : Files.readAllLines(CONFIG)) {
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-            if (line.equalsIgnoreCase("off") || line.equalsIgnoreCase("disabled")) {
-                on = false;
-                continue;
-            }
-            // Before the pattern branch, so a directive is never read as an id fragment.
-            if (line.equalsIgnoreCase("first-person-only") || line.equalsIgnoreCase("firstperson")
-                    || line.equalsIgnoreCase("first-person")) {
-                fp = true;
-                continue;
-            }
-            if (line.toLowerCase(Locale.ROOT).startsWith("list-radius")) {
-                final double parsed = parseRadius(line.substring("list-radius".length()));
-                if (parsed > 0) {
-                    radius = parsed;
+        for (ConfigText.Section section : text.sections) {
+            final List<String> pats = new ArrayList<>();
+            for (String raw : section.lines) {
+                final String line = raw.trim();
+                if (line.isEmpty() || line.startsWith("#")) {
+                    continue;
                 }
-                continue;                   // a malformed value keeps the default, never a pattern
-            }
-            if (line.toLowerCase(Locale.ROOT).startsWith("gui-position")) {
-                final String[] xy = line.substring("gui-position".length()).trim().split("\\s+");
-                if (xy.length == 2) {
-                    gx = parseFraction(xy[0], gx);
-                    gy = parseFraction(xy[1], gy);
+                // Directives apply to everything, whichever section they are written in.
+                if (line.equalsIgnoreCase("off") || line.equalsIgnoreCase("disabled")) {
+                    on = false;
+                    continue;
                 }
-                continue;
+                // Before the pattern branch, so a directive is never read as an id fragment.
+                if (line.equalsIgnoreCase("first-person-only") || line.equalsIgnoreCase("firstperson")
+                        || line.equalsIgnoreCase("first-person")) {
+                    fp = true;
+                    continue;
+                }
+                if (line.toLowerCase(Locale.ROOT).startsWith("list-radius")) {
+                    final double parsed = parseRadius(line.substring("list-radius".length()));
+                    if (parsed > 0) {
+                        radius = parsed;
+                    }
+                    continue;                   // a malformed value keeps the default, never a pattern
+                }
+                if (line.toLowerCase(Locale.ROOT).startsWith("gui-position")) {
+                    final String[] xy = line.substring("gui-position".length()).trim().split("\\s+");
+                    if (xy.length == 2) {
+                        gx = parseFraction(xy[0], gx);
+                        gy = parseFraction(xy[1], gy);
+                    }
+                    continue;
+                }
+                pats.add(line.toLowerCase(Locale.ROOT));
             }
-            pats.add(line.toLowerCase(Locale.ROOT));
+            if (section.name == null) {
+                loose.addAll(pats);
+                effective.addAll(pats);
+            } else {
+                saved.add(new Profile(section.name, section.on, List.copyOf(pats)));
+                if (section.on) {
+                    effective.addAll(pats);
+                }
+            }
         }
-        patterns = pats.toArray(new String[0]);
+        patterns = effective.toArray(new String[0]);
+        unsaved = List.copyOf(loose);
+        profiles = List.copyOf(saved);
         enabled = on;
         firstPersonOnly = fp;
         listRadius = radius;
         guiX = gx;
         guiY = gy;
-        System.out.println("[" + MOD_ID + "] loaded " + patterns.length + " pattern(s), enabled=" + enabled
+        System.out.println("[" + MOD_ID + "] loaded " + patterns.length + " pattern(s), "
+                + profiles.size() + " profile(s), enabled=" + enabled
                 + ", firstPersonOnly=" + firstPersonOnly + ", listRadius=" + listRadius);
     }
 
@@ -757,10 +956,19 @@ public final class HideModels {
                 #     gui-position 1 0    where the screen sits, as fractions of the free space:
                 #                         0 0 top left, 1 0 top right, 1 1 bottom right
                 #
+                # PROFILES. A line in square brackets starts a profile: the lines under it, up to
+                # the next one, are a saved list that applies while it is on. "off" after the
+                # brackets keeps it saved but not applied. Lines above the first profile always
+                # apply - the screen calls them unsaved.
+                #     [Mounts]
+                #     modelengine:some_mount/
+                #     [PvP] off
+                #     modelengine:wings/
+                #
                 # IN GAME: /hidemodels, or a key you bind under Miscellaneous in Controls, opens a
                 # screen listing every model around you. Clicking one hides it, which adds its id
-                # to the end of this file, below whatever you have written here; the Hidden tab
-                # takes lines back out.
+                # to the unsaved lines; the Hidden tab takes lines back out, saves them as a
+                # profile, and switches profiles on and off.
                 #
                 # Saved changes apply within a second; no restart needed.
                 """;
