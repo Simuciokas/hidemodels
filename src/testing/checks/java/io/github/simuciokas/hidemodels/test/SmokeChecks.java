@@ -197,6 +197,13 @@ public final class SmokeChecks {
     private static void checkKeyRegistered() {
         for (net.minecraft.client.KeyMapping key : Minecraft.getInstance().options.keyMappings) {
             if (io.github.simuciokas.hidemodels.Keys.OPEN.equals(key.getName())) {
+                // A section of its own: a string up to 1.21.8, a Category after, both naming us.
+                if (!String.valueOf(key.getCategory()).contains(HideModels.MOD_ID)) {
+                    throw new AssertionError("the open key is in " + key.getCategory()
+                            + " rather than a section of its own");
+                }
+                // Controls sorts every key by category, which is where an unknown one can throw.
+                java.util.Arrays.sort(Minecraft.getInstance().options.keyMappings.clone());
                 return;
             }
         }

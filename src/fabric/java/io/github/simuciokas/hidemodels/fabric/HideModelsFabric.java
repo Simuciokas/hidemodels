@@ -38,7 +38,7 @@ public final class HideModelsFabric implements ClientModInitializer {
         ClientCommandRegistrationCallback.EVENT.register(
                 (dispatcher, registryAccess) -> dispatcher.register(CommandTree.build(Cmd.INSTANCE)));
 
-        final KeyMapping open = Keys.create();
+        final KeyMapping open = Keys.create(null);
         if (open != null) {
             KeyRegistration.register(open);
         }

@@ -618,8 +618,25 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 if (!(scr instanceof HiddenListScreen)) {
                     throw new AssertionError("the key opened " + scr + " rather than the screen");
                 }
+                if (!String.valueOf(openKey[0].getCategory()).contains(HideModels.MOD_ID)) {
+                    throw new AssertionError("the key is in " + openKey[0].getCategory()
+                            + " rather than a section of its own");
+                }
                 System.out.println("[hidemodels-gametest] key opens the screen");
             });
+            context.waitTicks(5);
+            //     Its section, seen the way a player finds it: Controls, scrolled to the bottom,
+            //     where sections from mods go.
+            context.runOnClient(client -> io.github.simuciokas.hidemodels.Screens.open(client,
+                    new net.minecraft.client.gui.screens.options.controls.KeyBindsScreen(
+                            null, client.options)));
+            context.waitTicks(5);
+            hoverFirstRow(context);
+            context.getInput().scroll(-400);
+            context.waitTicks(5);
+            context.takeScreenshot("controls-section");
+            context.runOnClient(client -> io.github.simuciokas.hidemodels.Screens.open(client,
+                    new HiddenListScreen(null)));
             context.waitTicks(5);
 
             // 11. WHAT THE HOVER BOX IS BUILT FROM: a model's piece count, the line that covers

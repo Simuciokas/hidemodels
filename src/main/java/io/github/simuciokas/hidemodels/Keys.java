@@ -17,19 +17,24 @@ package io.github.simuciokas.hidemodels;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.RecordComponent;
+import java.util.function.Consumer;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 
 /**
- * The key that opens the screen, under Miscellaneous in Controls. Unbound until the player picks
- * one, so it can never take a key another mod or the player already uses.
+ * The key that opens the screen, in a Hide Models section of its own in Controls. Unbound until the
+ * player picks one, so it can never take a key another mod or the player already uses.
  */
 public final class Keys {
 
     public static final String OPEN = "key.hidemodels.open";
+    /** The section up to 1.21.8, where a category is its own heading's translation key. */
+    private static final String CATEGORY = "key.categories." + HideModels.MOD_ID;
+    /** The section's id path from 1.21.9; its heading is then key.category.hidemodels.main. */
+    private static final String CATEGORY_PATH = "main";
 
     private static KeyMapping open;
 
@@ -43,14 +48,17 @@ public final class Keys {
      * from 1.21.9, both inside the range one jar covers. The (name, key, category) form also keeps
      * the input type out of this class, since 26.3 renamed KEYSYM to KEYBOARD. Null if no
      * constructor fits.
+     *
+     * @param registrar takes the new KeyMapping.Category on a loader that registers categories
+     *                  itself, as NeoForge does; null registers it with vanilla, as Fabric needs
      */
-    public static KeyMapping create() {
+    public static KeyMapping create(Consumer<Object> registrar) {
         for (Constructor<?> c : KeyMapping.class.getConstructors()) {
             final Class<?>[] p = c.getParameterTypes();
             if (p.length != 3 || p[0] != String.class || p[1] != int.class) {
                 continue;
             }
-            final Object category = p[2] == String.class ? "key.categories.misc" : misc(p[2]);
+            final Object category = p[2] == String.class ? CATEGORY : category(p[2], registrar);
             if (category == null) {
                 continue;
             }
@@ -65,24 +73,47 @@ public final class Keys {
     }
 
     /**
-     * KeyMapping.Category.MISC, matched by its id because production renames the field.
+     * Our KeyMapping.Category, its id and its factory found by shape: the id is a ResourceLocation
+     * up to 1.21.10 and an Identifier from 1.21.11, and production renames all of it.
      */
-    private static Object misc(Class<?> category) {
-        final RecordComponent[] parts = category.getRecordComponents();
+    private static Object category(Class<?> type, Consumer<Object> registrar) {
+        final RecordComponent[] parts = type.getRecordComponents();
         if (parts == null || parts.length != 1) {
             return null;
         }
-        for (Field f : category.getFields()) {
-            if (!Modifier.isStatic(f.getModifiers()) || f.getType() != category) {
-                continue;
+        final Class<?> idType = parts[0].getType();
+        try {
+            final Object id = id(idType);
+            if (id == null) {
+                return null;
             }
-            try {
-                final Object value = f.get(null);
-                if ("minecraft:misc".equals(String.valueOf(parts[0].getAccessor().invoke(value)))) {
-                    return value;
+            if (registrar != null) {
+                final Object category = type.getConstructor(idType).newInstance(id);
+                registrar.accept(category);
+                return category;
+            }
+            for (Method m : type.getMethods()) {
+                if (Modifier.isStatic(m.getModifiers()) && m.getReturnType() == type
+                        && m.getParameterCount() == 1 && m.getParameterTypes()[0] == idType) {
+                    return m.invoke(null, id);
                 }
-            } catch (ReflectiveOperationException | RuntimeException e) {
-                // not this one
+            }
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            // no category of our own can be made on this version
+        }
+        return null;
+    }
+
+    /** hidemodels:main, from whichever static (String, String) factory the id class has. */
+    private static Object id(Class<?> idType) throws ReflectiveOperationException {
+        for (Method m : idType.getMethods()) {
+            final Class<?>[] p = m.getParameterTypes();
+            if (Modifier.isStatic(m.getModifiers()) && m.getReturnType() == idType && p.length == 2
+                    && p[0] == String.class && p[1] == String.class) {
+                final Object id = m.invoke(null, HideModels.MOD_ID, CATEGORY_PATH);
+                if (id != null) {
+                    return id;
+                }
             }
         }
         return null;
