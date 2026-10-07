@@ -19,6 +19,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import io.github.simuciokas.hidemodels.CommandTree;
 import io.github.simuciokas.hidemodels.HideModels;
 import io.github.simuciokas.hidemodels.Keys;
+import java.lang.reflect.Method;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -45,7 +46,7 @@ public final class HideModelsNeoForge implements CommandTree.Builders<CommandSou
                 event -> event.getDispatcher().register(CommandTree.build(this)));
 
         modBus.addListener(RegisterKeyMappingsEvent.class, event -> {
-            final KeyMapping open = Keys.create();
+            final KeyMapping open = Keys.create(category -> registerCategory(event, category));
             if (open != null) {
                 event.register(open);
             }
@@ -60,6 +61,24 @@ public final class HideModelsNeoForge implements CommandTree.Builders<CommandSou
         // A server's opt-out lasts one connection, exactly as on Fabric.
         NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingOut.class,
                 event -> HideModels.clearServerOverride());
+    }
+
+    /**
+     * NeoForge's registerCategory, from 1.21.9 where a category became an object. By name, because
+     * this jar also runs on versions without it - where a category is a string and this is never
+     * called.
+     */
+    private static void registerCategory(RegisterKeyMappingsEvent event, Object category) {
+        for (Method m : RegisterKeyMappingsEvent.class.getMethods()) {
+            if (m.getName().equals("registerCategory") && m.getParameterCount() == 1) {
+                try {
+                    m.invoke(event, category);
+                } catch (ReflectiveOperationException e) {
+                    throw new IllegalStateException("could not register the key's category", e);
+                }
+                return;
+            }
+        }
     }
 
     @Override
