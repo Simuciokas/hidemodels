@@ -965,7 +965,7 @@ public final class HideModels {
                 #     [PvP] off
                 #     modelengine:wings/
                 #
-                # IN GAME: /hidemodels, or a key you bind under Miscellaneous in Controls, opens a
+                # IN GAME: /hidemodels, or a key you bind under Hide Models in Controls, opens a
                 # screen listing every model around you. Clicking one hides it, which adds its id
                 # to the unsaved lines; the Hidden tab takes lines back out, saves them as a
                 # profile, and switches profiles on and off.

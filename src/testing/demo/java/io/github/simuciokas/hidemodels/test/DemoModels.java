@@ -67,7 +67,7 @@ public final class DemoModels implements ClientModInitializer {
                 server.execute(() -> place(server, x, y, z, yaw));
                 mc.execute(() -> NearbyModels.say(Component.literal("hidemodels demo: a dragon, a "
                         + "golem, a statue and a lantern are in front of you. Open /hidemodels, "
-                        + "or bind Open Hide Models under Controls > Miscellaneous.")
+                        + "or bind Open Hide Models in Controls > Key Binds.")
                         .withStyle(ChatFormatting.AQUA)));
             }
             try {
