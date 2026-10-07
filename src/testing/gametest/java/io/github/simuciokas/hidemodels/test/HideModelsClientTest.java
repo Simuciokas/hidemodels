@@ -110,6 +110,16 @@ public final class HideModelsClientTest implements FabricClientGameTest {
         return null;
     }
 
+    /** mc.screen up to 1.21.11, mc.gui.screen() from 26.1. */
+    private static Object screenOf(Object mc) throws ReflectiveOperationException {
+        try {
+            final Object gui = mc.getClass().getField("gui").get(mc);
+            return gui.getClass().getMethod("screen").invoke(gui);
+        } catch (ReflectiveOperationException e) {
+            return mc.getClass().getField("screen").get(mc);
+        }
+    }
+
     @Override
     public void runTest(ClientGameTestContext context) {
         // Before the world, so the very first hidden() call already sees an empty list.
@@ -452,6 +462,81 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
                 context.runOnClient(client -> client.options.guiScale().set(0));
             }
+
+            // 11. THE HIDDEN TAB, and the one rule that makes it usable: unhiding edits the
+            //     config but leaves the row where it is. A row that vanished under the cursor
+            //     would make undoing a misclick impossible - the list is a snapshot, re-read only
+            //     when the tab is.
+            writeConfig("meg:ghost/");
+            context.waitTicks(10);
+            context.runOnClient(client -> client.getConnection().sendCommand("hidemodels add meg:spectre/"));
+            context.waitTicks(10);
+            context.runOnClient(client -> client.getConnection().sendCommand("hidemodels gui"));
+            context.waitTicks(20);
+            context.runOnClient(client -> {
+                try {
+                    Object mc = net.minecraft.client.Minecraft.getInstance();
+                    Object scr;
+                    try {
+                        Object gui = mc.getClass().getField("gui").get(mc);
+                        scr = gui.getClass().getMethod("screen").invoke(gui);
+                    } catch (ReflectiveOperationException e) {
+                        scr = mc.getClass().getField("screen").get(mc);
+                    }
+                    // second button is the hidden tab
+                    int n = 0;
+                    for (Object child : ((net.minecraft.client.gui.screens.Screen) scr).children()) {
+                        if (child instanceof net.minecraft.client.gui.components.Button btn && ++n == 2) {
+                            for (java.lang.reflect.Method m : btn.getClass().getMethods()) {
+                                if (m.getName().equals("onPress")) {
+                                    m.invoke(btn, new Object[m.getParameterCount()]);
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not switch tab", e);
+                }
+            });
+            context.waitTicks(15);
+            // Unhiding from this tab must edit the config but leave the row in place.
+            context.runOnClient(client -> {
+                try {
+                    Object mc = net.minecraft.client.Minecraft.getInstance();
+                    Object scr = screenOf(mc);
+                    int before = ((net.minecraft.client.gui.screens.Screen) scr).children().size();
+                    int n = 0;
+                    for (Object child : ((net.minecraft.client.gui.screens.Screen) scr).children()) {
+                        if (child instanceof net.minecraft.client.gui.components.Button btn && ++n == 3) {
+                            for (java.lang.reflect.Method m : btn.getClass().getMethods()) {
+                                if (m.getName().equals("onPress")) {
+                                    m.invoke(btn, new Object[m.getParameterCount()]);
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    scr = screenOf(mc);
+                    int after = ((net.minecraft.client.gui.screens.Screen) scr).children().size();
+                    if (before != after) {
+                        throw new AssertionError("the row went away when unhidden: " + before
+                                + " rows became " + after);
+                    }
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not press a hidden row", e);
+                }
+            });
+            context.waitTicks(10);
+            context.runOnClient(client -> {
+                if (HideModels.listed("meg:ghost/")) {
+                    throw new AssertionError("unhiding from the hidden tab did not edit the config");
+                }
+                System.out.println("[hidemodels-gametest] hidden tab: config edited, row kept");
+            });
+            context.waitTicks(5);
 
             // Kept for a human to look at when a run fails; asserts nothing by itself, because a
             // screenshot comparison would fail on every unrelated resource-pack or lighting change.
