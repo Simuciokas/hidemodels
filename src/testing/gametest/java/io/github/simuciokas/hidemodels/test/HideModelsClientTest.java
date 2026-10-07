@@ -110,13 +110,63 @@ public final class HideModelsClientTest implements FabricClientGameTest {
         return null;
     }
 
-    /** mc.screen up to 1.21.11, mc.gui.screen() from 26.1. */
+    /**
+     * mc.gui.screen() from 26.1, mc.screen before.
+     *
+     * <p>The old field is found by type: production names it field_1755, and it is the only
+     * Screen field Minecraft has on any 1.20.5 to 1.21.11 version.
+     */
     private static Object screenOf(Object mc) throws ReflectiveOperationException {
         try {
             final Object gui = mc.getClass().getField("gui").get(mc);
             return gui.getClass().getMethod("screen").invoke(gui);
         } catch (ReflectiveOperationException e) {
-            return mc.getClass().getField("screen").get(mc);
+            for (java.lang.reflect.Field f : mc.getClass().getFields()) {
+                if (f.getType() == Screen.class) {
+                    return f.get(mc);
+                }
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Presses the nth button on the open screen, counting from 1 in the order they were added.
+     *
+     * <p>Through the button's OnPress field, found by type: Button.onPress() gained a parameter
+     * in 1.21.10 and is named method_25306 in production, while OnPress.onPress(Button) is the
+     * same everywhere and gets remapped with this class.
+     */
+    private static void press(int nth) {
+        try {
+            final Object scr = screenOf(net.minecraft.client.Minecraft.getInstance());
+            int n = 0;
+            for (Object child : ((Screen) scr).children()) {
+                if (!(child instanceof net.minecraft.client.gui.components.Button btn) || ++n != nth) {
+                    continue;
+                }
+                for (java.lang.reflect.Field f : net.minecraft.client.gui.components.Button.class
+                        .getDeclaredFields()) {
+                    if (f.getType() == net.minecraft.client.gui.components.Button.OnPress.class) {
+                        f.setAccessible(true);
+                        ((net.minecraft.client.gui.components.Button.OnPress) f.get(btn)).onPress(btn);
+                        return;
+                    }
+                }
+                throw new AssertionError("Button has no OnPress field on this version");
+            }
+            throw new AssertionError("the open screen has no button " + nth + " (it has " + n + ")");
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("could not press button " + nth, e);
+        }
+    }
+
+    /** Children on the open screen: one per row, drawn or not. */
+    private static int childCount() {
+        try {
+            return ((Screen) screenOf(net.minecraft.client.Minecraft.getInstance())).children().size();
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("could not read the open screen", e);
         }
     }
 
@@ -473,60 +523,16 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.waitTicks(10);
             context.runOnClient(client -> client.getConnection().sendCommand("hidemodels gui"));
             context.waitTicks(20);
-            context.runOnClient(client -> {
-                try {
-                    Object mc = net.minecraft.client.Minecraft.getInstance();
-                    Object scr;
-                    try {
-                        Object gui = mc.getClass().getField("gui").get(mc);
-                        scr = gui.getClass().getMethod("screen").invoke(gui);
-                    } catch (ReflectiveOperationException e) {
-                        scr = mc.getClass().getField("screen").get(mc);
-                    }
-                    // second button is the hidden tab
-                    int n = 0;
-                    for (Object child : ((net.minecraft.client.gui.screens.Screen) scr).children()) {
-                        if (child instanceof net.minecraft.client.gui.components.Button btn && ++n == 2) {
-                            for (java.lang.reflect.Method m : btn.getClass().getMethods()) {
-                                if (m.getName().equals("onPress")) {
-                                    m.invoke(btn, new Object[m.getParameterCount()]);
-                                    break;
-                                }
-                            }
-                            break;
-                        }
-                    }
-                } catch (ReflectiveOperationException e) {
-                    throw new AssertionError("could not switch tab", e);
-                }
-            });
+            // Buttons in the order the screen adds them: the tabs, then the rows.
+            context.runOnClient(client -> press(2));
             context.waitTicks(15);
-            // Unhiding from this tab must edit the config but leave the row in place.
             context.runOnClient(client -> {
-                try {
-                    Object mc = net.minecraft.client.Minecraft.getInstance();
-                    Object scr = screenOf(mc);
-                    int before = ((net.minecraft.client.gui.screens.Screen) scr).children().size();
-                    int n = 0;
-                    for (Object child : ((net.minecraft.client.gui.screens.Screen) scr).children()) {
-                        if (child instanceof net.minecraft.client.gui.components.Button btn && ++n == 3) {
-                            for (java.lang.reflect.Method m : btn.getClass().getMethods()) {
-                                if (m.getName().equals("onPress")) {
-                                    m.invoke(btn, new Object[m.getParameterCount()]);
-                                    break;
-                                }
-                            }
-                            break;
-                        }
-                    }
-                    scr = screenOf(mc);
-                    int after = ((net.minecraft.client.gui.screens.Screen) scr).children().size();
-                    if (before != after) {
-                        throw new AssertionError("the row went away when unhidden: " + before
-                                + " rows became " + after);
-                    }
-                } catch (ReflectiveOperationException e) {
-                    throw new AssertionError("could not press a hidden row", e);
+                final int before = childCount();
+                press(3);
+                final int after = childCount();
+                if (before != after) {
+                    throw new AssertionError("the row went away when unhidden: " + before
+                            + " rows became " + after);
                 }
             });
             context.waitTicks(10);
