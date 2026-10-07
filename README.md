@@ -37,7 +37,7 @@ Requirements, all declared in `fabric.mod.json`:
 | Fabric Loader | `>=0.19.0` — or Quilt Loader, which runs the same jar |
 | Java | `>=25` on 26.x, `>=21` on 1.21.x — each version's own requirement |
 | Fabric API | **required** on Fabric and Quilt. Not on NeoForge, where its work is done by NeoForge's own events |
-| Other mods | none |
+| Other mods | none; with Mod Menu installed, its Configure button opens the screen |
 
 Client-only (`"environment": "client"`), so there is nothing to install server-side.
 
@@ -110,6 +110,12 @@ that the `item_model` component still resolves out of the registry, and that edi
 lets it run everywhere — including 26.x, where there is no Loom and `gradle/runclient.gradle` assembles
 the launch by hand (client jar, loader's own libraries from `fabric-installer.json`, natives, and a
 stub asset index so no gigabyte is downloaded to reach a title screen).
+
+**The Configure button needs Mod Menu to test.** The entrypoint is compiled against a copy of Mod
+Menu's two interfaces in `src/stubs`, which the jar leaves out, so no Mod Menu build has to be picked
+per Minecraft version. A launch that assembles `mods/` itself takes `-PextraMods=modmenu.jar`, and
+the smoke test then asks Mod Menu for the screen the way its button does. On NeoForge it always
+asks the mods list's factory.
 
 `./gradlew runClientGameTest -Pminecraft_version=1.21.8` goes further where Fabric's harness exists:
 it builds a world, summons an `item_display` carrying `minecraft:item_model`, and asserts the mod
@@ -239,7 +245,8 @@ renderer down with it.
 `/hidemodels` opens the screen, and so does a key: unbound until you pick one, under Hide Models
 in Controls. There is nothing else to type. **Shift with that key** switches hiding on or off
 without opening anything, and says which over the hotbar. Controls cannot record a combination on
-Fabric, so the mod reads Shift itself: bind the key to H, and Shift+H is the switch.
+Fabric, so the mod reads Shift itself: bind the key to H, and Shift+H is the switch. The mods list
+opens the screen too: Mod Menu's Configure button on Fabric and Quilt, Config on NeoForge.
 
 The screen is a panel in the top left, leaving the rest of the view clear so you can watch a model
 go as you click it. It has three tabs:

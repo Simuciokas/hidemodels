@@ -206,6 +206,12 @@ tasks.register('testModJar', Jar) {
     manifest { attributes 'Fabric-Loom-Remap': 'false' }
 }
 
+// Other mods to run beside this one, as -PextraMods=a.jar,b.jar - Mod Menu, to see its Configure
+// button. Taken by every launch here that fills mods/ itself.
+def extraMods = project.hasProperty('extraMods')
+        ? project.property('extraMods').toString().split(',').collect { file(it.trim()) }
+        : []
+
 // EVERYTHING BELOW IS 26.x ONLY. On 1.21.x, Loom already provides runClient and
 // runClientGameTest, and build.gradle defines smokeTest against its run task - registering the
 // same names here would collide. The standalone gametest further down is the legacy-only half.
@@ -230,6 +236,7 @@ if (!legacy) {
                 from tasks.jar.archiveFile
                 from tasks.named('testModJar').get().archiveFile
                 from configurations.fabricApiRuntime
+                from extraMods
                 into mods
             }
             // A stale verdict would be indistinguishable from a fresh one.
@@ -302,6 +309,7 @@ if (!legacy) {
                 from tasks.jar.archiveFile
                 from tasks.named('testModJar').get().archiveFile
                 from configurations.fabricApiRuntime
+                from extraMods
                 into mods
             }
             // The harness on top of the API. No remapping on 26.x - intermediary
@@ -359,6 +367,7 @@ if (!legacy) {
                 from tasks.jar.archiveFile
                 from tasks.named('testModJar').get().archiveFile
                 from configurations.fabricApiRuntime
+                from extraMods
                 into mods
             }
         }
@@ -437,6 +446,7 @@ if (legacy && project.hasGametest && project.gametestModuleVersion != null) {
                 from tasks.named('remapTestModJar').get().archiveFile
                 from configurations.fabricApiRuntime
                 from configurations.gametestHarness
+                from extraMods
                 into mods
             }
             writeTestClientOptions(new File(runDir, 'options.txt'))
@@ -540,6 +550,7 @@ if (true) {
                 from tasks.named(legacy ? 'remapJar' : 'jar').get().archiveFile
                 from tasks.named(legacy ? 'remapTestModJar' : 'testModJar').get().archiveFile
                 from configurations.fabricApiRuntime
+                from extraMods
                 into mods
             }
             delete new File(runDir, 'smoketest-result.txt')

@@ -17,19 +17,24 @@ package io.github.simuciokas.hidemodels.neoforge;
 
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import io.github.simuciokas.hidemodels.CommandTree;
+import io.github.simuciokas.hidemodels.HiddenListScreen;
 import io.github.simuciokas.hidemodels.HideModels;
 import io.github.simuciokas.hidemodels.Keys;
 import java.lang.reflect.Method;
 import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
+import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
 
 /**
@@ -41,7 +46,9 @@ import net.neoforged.neoforge.common.NeoForge;
 @Mod(value = HideModels.MOD_ID, dist = Dist.CLIENT)
 public final class HideModelsNeoForge implements CommandTree.Builders<CommandSourceStack> {
 
-    public HideModelsNeoForge(IEventBus modBus) {
+    public HideModelsNeoForge(IEventBus modBus, ModContainer container) {
+        container.registerExtensionPoint(IConfigScreenFactory.class, new ConfigButton());
+
         NeoForge.EVENT_BUS.addListener(RegisterClientCommandsEvent.class,
                 event -> event.getDispatcher().register(CommandTree.build(this)));
 
@@ -84,5 +91,21 @@ public final class HideModelsNeoForge implements CommandTree.Builders<CommandSou
     @Override
     public LiteralArgumentBuilder<CommandSourceStack> literal(String name) {
         return Commands.literal(name);
+    }
+
+    /**
+     * The mods list's Config button, opening the same screen as the key. NeoForge for 1.20.6 asks
+     * for the screen with the Minecraft instance and from 1.21 with the mod's container, inside the
+     * range one jar covers - so both are here, and each version calls the one it declares.
+     */
+    private static final class ConfigButton implements IConfigScreenFactory {
+
+        public Screen createScreen(ModContainer container, Screen parent) {
+            return new HiddenListScreen(parent);
+        }
+
+        public Screen createScreen(Minecraft minecraft, Screen parent) {
+            return new HiddenListScreen(parent);
+        }
     }
 }

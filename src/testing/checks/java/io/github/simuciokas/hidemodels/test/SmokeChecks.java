@@ -75,8 +75,9 @@ public final class SmokeChecks {
             checkProfiles();
             checkKeyRegistered();
             checkScreenOpens();
+            final String button = checkConfigButton();
             report("PASS - component resolved, config drove the matcher, add/remove, settings and "
-                    + "profiles worked, key registered, screen opened");
+                    + "profiles worked, key registered, screen opened, " + button);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
             report("FAIL - " + t);
@@ -287,17 +288,92 @@ public final class SmokeChecks {
                   "the screen did not close");
     }
 
-    /** mc.gui.screen() from 26.1, mc.screen before; by name, since these checks run in development. */
+    /**
+     * A mods list's Config button gives the screen: NeoForge's extension point, or Mod Menu asked
+     * the way its button asks. Mod Menu has to be installed for that - a run with -PextraMods - so
+     * a plain Fabric run has no button to check. Says which it checked, for the verdict.
+     */
+    private static String checkConfigButton() throws Exception {
+        final String by;
+        final java.util.concurrent.Callable<Object> ask;
+        if (exists("net.neoforged.fml.ModList")) {
+            by = "NeoForge's Config button";
+            ask = SmokeChecks::askNeoForge;
+        } else if (exists("com.terraformersmc.modmenu.ModMenu")) {
+            by = "Mod Menu's Configure button";
+            ask = () -> Class.forName("com.terraformersmc.modmenu.ModMenu")
+                    .getMethod("getConfigScreen", String.class,
+                               net.minecraft.client.gui.screens.Screen.class)
+                    .invoke(null, HideModels.MOD_ID, null);
+        } else {
+            return "no mods list installed to give a Config button";
+        }
+        final java.util.concurrent.CompletableFuture<Object> made =
+                new java.util.concurrent.CompletableFuture<>();
+        Minecraft.getInstance().execute(() -> {
+            try {
+                made.complete(ask.call());
+            } catch (Throwable t) {
+                made.completeExceptionally(t);
+            }
+        });
+        final Object screen = made.get(30, java.util.concurrent.TimeUnit.SECONDS);
+        if (!(screen instanceof io.github.simuciokas.hidemodels.HiddenListScreen)) {
+            throw new AssertionError(by + " gives " + screen + " rather than the screen");
+        }
+        return by + " opens it";
+    }
+
+    /** The factory registered with this mod's container, called the way the mods list calls it. */
+    private static Object askNeoForge() throws Exception {
+        final Class<?> factoryType =
+                Class.forName("net.neoforged.neoforge.client.gui.IConfigScreenFactory");
+        final Object modList = Class.forName("net.neoforged.fml.ModList").getMethod("get").invoke(null);
+        final Object container = ((java.util.Optional<?>) modList.getClass()
+                .getMethod("getModContainerById", String.class).invoke(modList, HideModels.MOD_ID))
+                .orElseThrow(() -> new AssertionError("NeoForge does not know the mod"));
+        final Object factory = ((java.util.Optional<?>) container.getClass()
+                .getMethod("getCustomExtension", Class.class).invoke(container, factoryType))
+                .orElseThrow(() -> new AssertionError("no config screen factory is registered"));
+        for (java.lang.reflect.Method m : factoryType.getMethods()) {
+            final Class<?>[] p = m.getParameterTypes();
+            if (m.getName().equals("createScreen") && p.length == 2) {
+                final Object first = p[0].isInstance(container) ? container : Minecraft.getInstance();
+                return m.invoke(factory, first, null);
+            }
+        }
+        throw new AssertionError("IConfigScreenFactory has no createScreen to call");
+    }
+
+    private static boolean exists(String className) {
+        try {
+            Class.forName(className, false, SmokeChecks.class.getClassLoader());
+            return true;
+        } catch (ClassNotFoundException | LinkageError e) {
+            return false;
+        }
+    }
+
+    /**
+     * mc.gui.screen() from 26.1, mc.screen before. The old field is found by type, as in the
+     * gametest: a run of the remapped jar names it field_1755, and it is the only Screen field
+     * Minecraft has on any 1.20.5 to 1.21.11 version.
+     */
     private static Object currentScreen(Minecraft mc) {
         try {
             final Object gui = mc.getClass().getField("gui").get(mc);
             return gui.getClass().getMethod("screen").invoke(gui);
         } catch (ReflectiveOperationException e) {
-            try {
-                return mc.getClass().getField("screen").get(mc);
-            } catch (ReflectiveOperationException e2) {
-                return null;
+            for (Field f : mc.getClass().getFields()) {
+                if (f.getType() == net.minecraft.client.gui.screens.Screen.class) {
+                    try {
+                        return f.get(mc);
+                    } catch (ReflectiveOperationException e2) {
+                        return null;
+                    }
+                }
             }
+            return null;
         }
     }
 

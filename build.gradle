@@ -261,6 +261,9 @@ sourceSets.main.resources.srcDir("src/${loader}/resources")
 // ChatOut. A rename in a library, rather than in Minecraft, but the handling is the same shape.
 if (loader == 'fabric') {
     sourceSets.main.java.srcDir(legacy ? 'src/versions/fabricapi-mc121/java' : 'src/versions/fabricapi-mc26/java')
+    // Mod Menu's two interfaces, to compile its entrypoint against. The jar task leaves them out -
+    // Mod Menu brings the real ones - so no Mod Menu build has to be picked per Minecraft version.
+    sourceSets.main.java.srcDir('src/stubs/modmenu/java')
 }
 
 // THE GAMETEST'S OWN SOURCE, named rather than inherited: Gradle's `test` source set defaults to
@@ -833,6 +836,7 @@ processResources {
 
 jar {
     archiveBaseName = project.archives_base_name
+    exclude 'com/terraformersmc/**'
     // 26.x runs what it compiled - intermediary is an identity mapping there, so remapping is a
     // no-op that Loom is not present to perform anyway. On 1.21.x the opposite is true and Loom's
     // remapJar produces the artifact, so the flag must NOT be set.

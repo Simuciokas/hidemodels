@@ -16,6 +16,9 @@
   "entrypoints": {
     "client": [
       "io.github.simuciokas.hidemodels.fabric.HideModelsFabric"
+    ],
+    "modmenu": [
+      "io.github.simuciokas.hidemodels.fabric.ModMenuEntry"
     ]
   },
   "mixins": [
