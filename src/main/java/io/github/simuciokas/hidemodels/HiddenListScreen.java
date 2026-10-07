@@ -622,7 +622,8 @@ public final class HiddenListScreen extends ClearScreen {
     /** Each writes the config exactly as its command does, so the screen and the file agree. */
     private int settings(int y, int w) {
         final boolean enabled = HideModels.isEnabled();
-        toggle(y, w, "Hiding", "Off keeps the list but hides nothing", enabled,
+        toggle(y, w, "Hiding", "Off keeps the list but hides nothing\n"
+                + "Shift with the Hide Models key switches it anywhere", enabled,
                 () -> HideModels.setEnabled(!enabled));
         y += ROW + GAP;
         final boolean firstPerson = HideModels.isFirstPersonOnly();
@@ -799,7 +800,7 @@ public final class HiddenListScreen extends ClearScreen {
     /** What the hover box says about a row. Tabs and chrome get nothing: they say it already. */
     private List<String> detail(Row row, List<NearbyModels.Nearby> around, double radius) {
         if (row.hint != null) {
-            return List.of(row.hint);
+            return List.of(row.hint.split("\n"));
         }
         if (row.id == null) {
             return List.of();

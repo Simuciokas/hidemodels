@@ -23,10 +23,13 @@ import java.lang.reflect.RecordComponent;
 import java.util.function.Consumer;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 
 /**
  * The key that opens the screen, in a Hide Models section of its own in Controls. Unbound until the
- * player picks one, so it can never take a key another mod or the player already uses.
+ * player picks one, so it can never take a key another mod or the player already uses. With Shift
+ * held it switches hiding on and off instead - a combination Controls cannot record on Fabric, so
+ * the mod reads Shift itself.
  */
 public final class Keys {
 
@@ -37,6 +40,9 @@ public final class Keys {
     private static final String CATEGORY_PATH = "main";
 
     private static KeyMapping open;
+    /** InputConstants.isKeyDown in whichever shape this version has, once looked up. */
+    private static Method isKeyDown;
+    private static boolean isKeyDownLooked;
 
     private Keys() {
     }
@@ -125,7 +131,67 @@ public final class Keys {
         }
         while (open.consumeClick()) {
             final Minecraft mc = Minecraft.getInstance();
-            Screens.open(mc, new HiddenListScreen(null));
+            // A key bound to Shift itself always has Shift down, and must still open the screen.
+            if (!open.saveString().endsWith(".shift") && shiftDown(mc)) {
+                final boolean on = !HideModels.isEnabled();
+                HideModels.setEnabled(on);
+                ChatOut.actionBar(Component.literal("Hide Models: " + (on ? "On" : "Off")
+                        + (on && HideModels.isServerDisabled() ? " - but this server has it off" : "")));
+            } else {
+                Screens.open(mc, new HiddenListScreen(null));
+            }
         }
+    }
+
+    /**
+     * Whether either Shift key is held. InputConstants.isKeyDown is found by shape - it takes the
+     * window's handle up to 1.21.8, the Window from 1.21.9 and the key alone from 26.3 - and the
+     * keys by name, because 26.3 numbers keys as SDL does and a constant would be compiled in as
+     * one version's number.
+     */
+    static boolean shiftDown(Minecraft mc) {
+        try {
+            if (!isKeyDownLooked) {
+                isKeyDownLooked = true;
+                for (Method m : InputConstants.class.getMethods()) {
+                    final Class<?>[] p = m.getParameterTypes();
+                    if (Modifier.isStatic(m.getModifiers()) && m.getReturnType() == boolean.class
+                            && (p.length == 1 || p.length == 2) && p[p.length - 1] == int.class) {
+                        isKeyDown = m;
+                    }
+                }
+            }
+            if (isKeyDown == null) {
+                return false;
+            }
+            final Class<?>[] p = isKeyDown.getParameterTypes();
+            final Object window = p.length == 1 ? null : window(mc, p[0]);
+            for (String name : new String[] {"key.keyboard.left.shift", "key.keyboard.right.shift"}) {
+                final int key = InputConstants.getKey(name).getValue();
+                final Object down = p.length == 1 ? isKeyDown.invoke(null, key)
+                                                  : isKeyDown.invoke(null, window, key);
+                if (Boolean.TRUE.equals(down)) {
+                    return true;
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            // the keyboard cannot be read here, so the key does what it does without Shift
+        }
+        return false;
+    }
+
+    /** The window as isKeyDown takes it: the Window itself, or its handle - its one long getter. */
+    private static Object window(Minecraft mc, Class<?> type) throws ReflectiveOperationException {
+        final Object window = mc.getWindow();
+        if (type.isInstance(window)) {
+            return window;
+        }
+        for (Method m : window.getClass().getMethods()) {
+            if (!Modifier.isStatic(m.getModifiers()) && m.getReturnType() == long.class
+                    && m.getParameterCount() == 0) {
+                return m.invoke(window);
+            }
+        }
+        throw new NoSuchMethodException("a long getter on " + window.getClass());
     }
 }

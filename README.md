@@ -161,7 +161,7 @@ preprocessor, and all of them split where the jars already do, between 1.21.x an
 
 | files | why |
 |---|---|
-| `ChatOut` (`src/versions/chat-mc121`, `chat-mc26`) | the client-facing chat call was renamed: `LocalPlayer.displayClientMessage` before, `sendSystemMessage` after |
+| `ChatOut` (`src/versions/chat-mc121`, `chat-mc26`) | the client-facing chat calls were renamed: `LocalPlayer.displayClientMessage` before, `sendSystemMessage` and, over the hotbar, `sendOverlayMessage` after |
 | `ClearScreen`, `Painter`, `Screens` (`src/versions/screen-mc121`, `screen-mc26`) | 26.x replaced `GuiGraphics` and the screen's render methods, and `setScreen` with `setScreenAndShow` |
 | `Cmd`, `KeyRegistration` (`src/versions/fabricapi-mc121`, `fabricapi-mc26`) | Fabric API's renames, not Minecraft's: `ClientCommandManager` became `ClientCommands`, and `KeyBindingHelper` became `KeyMappingHelper` |
 
@@ -237,7 +237,9 @@ renderer down with it.
 ## In game
 
 `/hidemodels` opens the screen, and so does a key: unbound until you pick one, under Hide Models
-in Controls. There is nothing else to type.
+in Controls. There is nothing else to type. **Shift with that key** switches hiding on or off
+without opening anything, and says which over the hotbar. Controls cannot record a combination on
+Fabric, so the mod reads Shift itself: bind the key to H, and Shift+H is the switch.
 
 The screen is a panel in the top left, leaving the rest of the view clear so you can watch a model
 go as you click it. It has three tabs:

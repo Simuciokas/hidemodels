@@ -704,6 +704,41 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 System.out.println("[hidemodels-gametest] key opens the screen");
             });
             context.waitTicks(5);
+            //     With Shift held, the same key switches hiding instead and opens nothing.
+            final boolean[] wasOn = {false};
+            context.runOnClient(client -> {
+                try {
+                    ((Screen) screenOf(client)).onClose();
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not close the screen", e);
+                }
+                openKey[0].setKey(InputConstants.getKey("key.keyboard.h"));
+                KeyMapping.resetMapping();
+                wasOn[0] = HideModels.isEnabled();
+            });
+            context.waitTicks(5);
+            context.getInput().holdKey(InputConstants.KEY_LSHIFT);
+            context.getInput().pressKey(openKey[0]);
+            context.getInput().releaseKey(InputConstants.KEY_LSHIFT);
+            context.waitTicks(5);
+            context.runOnClient(client -> {
+                final Object scr;
+                try {
+                    scr = screenOf(client);
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not read the open screen", e);
+                }
+                final boolean on = HideModels.isEnabled();
+                HideModels.setEnabled(wasOn[0]);
+                openKey[0].setKey(InputConstants.UNKNOWN);
+                KeyMapping.resetMapping();
+                if (scr != null || on == wasOn[0]) {
+                    throw new AssertionError("Shift with the key opened " + scr
+                            + " and left hiding " + (on ? "on" : "off"));
+                }
+                System.out.println("[hidemodels-gametest] Shift with the key switches hiding");
+            });
+            context.waitTicks(5);
             //     Its section, seen the way a player finds it: Controls, scrolled to the bottom,
             //     where sections from mods go.
             context.runOnClient(client -> io.github.simuciokas.hidemodels.Screens.open(client,

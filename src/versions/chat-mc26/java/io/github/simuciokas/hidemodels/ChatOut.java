@@ -41,4 +41,13 @@ public final class ChatOut {
         }
         mc.player.sendSystemMessage(text);
     }
+
+    /** Over the hotbar for a few seconds, for a change made without the screen open. */
+    public static void actionBar(Component text) {
+        final Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.player == null) {
+            return;
+        }
+        mc.player.sendOverlayMessage(text);
+    }
 }
