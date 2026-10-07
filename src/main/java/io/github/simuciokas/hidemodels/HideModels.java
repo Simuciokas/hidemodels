@@ -565,6 +565,94 @@ public final class HideModels {
         }
     }
 
+    /** What a paste found: the profiles it added, and those already here with the same lines. */
+    public record Pasted(List<String> added, List<String> already) {
+    }
+
+    /** What an item_model id - or a custom_model_data number - can be made of. */
+    private static final java.util.regex.Pattern ID =
+            java.util.regex.Pattern.compile("[a-z0-9_.:/-]+");
+
+    /** A profile as text to share: its heading and its lines. Null if no profile has the name. */
+    public static String profileText(String name) {
+        for (Profile p : profiles()) {
+            if (p.name().equalsIgnoreCase(name)) {
+                return "[" + p.name() + "]\n" + String.join("\n", p.patterns());
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Adds the profiles in a piece of text - one copied from the screen, or a whole config -
+     * switched on. Only headings and the id lines under them are taken: comments, directives and
+     * anything that is not an id are dropped, so a paste never changes a setting. A name in use
+     * gets a number; a profile already here with the same lines is not added again.
+     */
+    public static Pasted pasteProfiles(String text) {
+        final ConfigText pasted = ConfigText.parse(
+                text == null ? List.of() : List.of(text.split("\\R")));
+        final List<String> added = new ArrayList<>();
+        final List<String> already = new ArrayList<>();
+        edit(config -> {
+            for (ConfigText.Section s : pasted.sections) {
+                if (s.name == null) {
+                    continue;
+                }
+                final java.util.Set<String> lines = new java.util.LinkedHashSet<>();
+                for (String raw : s.lines) {
+                    final String line = raw.trim().toLowerCase(Locale.ROOT);
+                    if (isPattern(line) && ID.matcher(line).matches()) {
+                        lines.add(line);
+                    }
+                }
+                if (lines.isEmpty()) {
+                    continue;
+                }
+                String name = s.name.replace("[", "").trim();
+                name = name.isEmpty() ? "Pasted" : name.substring(0, Math.min(name.length(), 48));
+                final ConfigText.Section same = config.profile(name);
+                if (same != null && patternsOf(same).equals(lines)) {
+                    already.add(same.name);
+                    continue;
+                }
+                final ConfigText.Section to = config.addProfile(freeName(config, name));
+                for (String line : lines) {
+                    ConfigText.append(to, line);
+                }
+                added.add(to.name);
+            }
+            return !added.isEmpty();
+        });
+        if (!added.isEmpty()) {
+            confirm("pasted " + (added.size() == 1 ? "the profile '" + added.get(0) + "'"
+                                                   : added.size() + " profiles"), true);
+        }
+        return new Pasted(List.copyOf(added), List.copyOf(already));
+    }
+
+    private static java.util.Set<String> patternsOf(ConfigText.Section s) {
+        final java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        for (String raw : s.lines) {
+            if (isPattern(raw)) {
+                out.add(raw.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        return out;
+    }
+
+    /** The name, or the name with the first number after it that no profile has. */
+    private static String freeName(ConfigText config, String name) {
+        if (config.profile(name) == null) {
+            return name;
+        }
+        for (int n = 2; ; n++) {
+            if (config.profile(name + " " + n) == null) {
+                return name + " " + n;
+            }
+        }
+    }
+
     public static void addToProfile(String name, String pattern) {
         final String line = pattern.trim().toLowerCase(Locale.ROOT);
         edit(text -> {

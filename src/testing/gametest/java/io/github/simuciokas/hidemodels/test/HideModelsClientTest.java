@@ -511,15 +511,16 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 if (!HideModels.listed("hidemodels:rig/")) {
                     throw new AssertionError("clicking it again did not switch it back on");
                 }
+                // Open, a profile shows the way back, its name box, Copy and Delete, then its lines.
                 press(7);
                 final int before = childCount();
                 final String line = HideModels.profiles().get(0).patterns().get(0);
-                press(6);
+                press(7);
                 if (HideModels.profiles().get(0).patterns().contains(line) || childCount() != before) {
                     throw new AssertionError("taking a line out of the profile did not edit it, "
                             + "or the row went away");
                 }
-                press(6);
+                press(7);
                 if (!HideModels.profiles().get(0).patterns().contains(line)) {
                     throw new AssertionError("clicking the line again did not put it back");
                 }
@@ -562,6 +563,43 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                         + "added to");
             });
             context.waitTicks(5);
+            //     Copy and Paste, through the real clipboard: the profile copied, deleted, then
+            //     pasted back as it was. Whatever the clipboard held before is put back after.
+            context.runOnClient(client -> {
+                final String held = client.keyboardHandler.getClipboard();
+                final HideModels.Profile was = HideModels.profiles().get(0);
+                try {
+                    press(7);
+                    press(5);
+                    final String copied = client.keyboardHandler.getClipboard();
+                    if (!copied.startsWith("[" + was.name() + "]")
+                            || !copied.contains(was.patterns().get(0))) {
+                        throw new AssertionError("Copy profile put this on the clipboard: " + copied);
+                    }
+                    press(6);
+                    press(6);
+                    if (!HideModels.profiles().isEmpty()) {
+                        throw new AssertionError("the profile was not deleted before pasting");
+                    }
+                    // Nothing unsaved and no profiles: Unsaved, its cell, then Paste.
+                    press(6);
+                    final HideModels.Profile back = HideModels.profiles().isEmpty()
+                            ? null : HideModels.profiles().get(0);
+                    if (back == null || !back.equals(was)) {
+                        throw new AssertionError("pasting gave " + back + " rather than " + was);
+                    }
+                    // Back on the page, the profile and its count sit above Paste again.
+                    press(8);
+                    if (HideModels.profiles().size() != 1) {
+                        throw new AssertionError("pasting the same profile again added it twice");
+                    }
+                } finally {
+                    client.keyboardHandler.setClipboard(held);
+                }
+                System.out.println("[hidemodels-gametest] profiles: copied, deleted and pasted back");
+            });
+            context.waitTicks(5);
+            context.takeScreenshot("profile-pasted");
 
             // 9. THE SETTINGS TAB, which must leave the config exactly as the matching directive
             //     typed into the file would. Buttons there: the tabs, hiding, first person only, radius -, radius +,
@@ -880,8 +918,8 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.waitTicks(10);
             context.runOnClient(client -> {
                 press(4);
-                press(5);
-                press(5);
+                press(6);
+                press(6);
                 if (!HideModels.profiles().isEmpty() || HideModels.listed("hidemodels:beast/")) {
                     throw new AssertionError("clicking a model hidden by a profile did not open it "
                             + "- the profile is still there: " + HideModels.profiles());

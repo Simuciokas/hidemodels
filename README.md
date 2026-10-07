@@ -254,7 +254,7 @@ go as you click it. It has three tabs:
 | tab | what it holds |
 |---|---|
 | Nearby | every model within the list radius: the one in front of you first, marked `»`, then nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head; a model with some bones hidden is marked orange, and clicking it hides the rest, then shows all of it again. A model a profile hides opens that profile instead |
-| Hidden | your lists: Unsaved, then each profile. Click a profile to switch it on or off, its count to open it, and `+` beside it to add the unsaved lines to it. In an open list a click takes a line out and keeps its row until the list is opened again, so a misclick is one click to undo; an open profile is also where it is renamed, by typing into its name, and deleted |
+| Hidden | your lists: Unsaved, then each profile. Click a profile to switch it on or off, its count to open it, and `+` beside it to add the unsaved lines to it. In an open list a click takes a line out and keeps its row until the list is opened again, so a misclick is one click to undo; an open profile is also where it is renamed, by typing into its name, copied, and deleted. *Paste a profile* adds the ones on your clipboard |
 | Settings | hiding on or off, first person only, the list radius, and where the panel sits: either top corner, or Move panel to put it anywhere |
 
 Hovering over a row says more: a model's piece count and how far away it is, how many of its pieces
@@ -268,6 +268,12 @@ moves those lines into a new profile, switched on, so nothing changes on screen 
 off. Switching a profile off brings its models back without forgetting them. A profile only changes
 from inside it, which is why clicking one of its models in Nearby opens it: a click that quietly
 edited a saved list would be easy to make and hard to notice.
+
+**Sharing a profile** is copying text. *Copy profile* puts its heading and lines on the clipboard,
+exactly as the config holds them, ready to send to someone on the same server; their *Paste a
+profile* reads the clipboard and adds every profile in it, switched on. Only ids are taken from a
+paste — comments, directives and anything else are dropped, so a pasted list never changes
+someone's settings — and pasting one already there does not add it twice.
 
 **Everything the screen changes is a line in the config.** Hiding a model appends its id to the
 unsaved lines, unhiding removes that exact line, a profile is its heading and the lines under it,

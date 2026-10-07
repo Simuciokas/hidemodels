@@ -238,6 +238,32 @@ public final class SmokeChecks {
         }
         waitUntil(() -> "Smoke".equals(HideModels.hidingList(a)), "the rename did not stick");
 
+        // Shared as text: copied, deleted, pasted back from among things that are not profile
+        // lines - chat above it, a directive and a comment inside it - which must not come along.
+        final String copied = HideModels.profileText("Smoke");
+        HideModels.deleteProfile("Smoke");
+        waitUntil(() -> !HideModels.hidden(a), "deleting the profile before pasting left it");
+        final HideModels.Pasted got = HideModels.pasteProfiles("look at this list:\n" + copied
+                + "\nfirst-person-only\n# mine\nnot an id");
+        if (!got.added().equals(java.util.List.of("Smoke"))) {
+            throw new AssertionError("pasting " + copied + " added " + got.added());
+        }
+        waitUntil(() -> "Smoke".equals(HideModels.hidingList(a))
+                        && "Smoke".equals(HideModels.hidingList(b)),
+                  "the pasted profile does not hide its lines");
+        if (HideModels.isFirstPersonOnly()
+                || HideModels.profileText("Smoke").split("\n").length != 3) {
+            throw new AssertionError("a paste took more than the profile's ids: "
+                    + HideModels.profileText("Smoke"));
+        }
+        final HideModels.Pasted again = HideModels.pasteProfiles(copied);
+        if (!again.added().isEmpty() || !again.already().contains("Smoke")) {
+            throw new AssertionError("pasting the same profile twice gave " + again);
+        }
+        if (!HideModels.pasteProfiles("hello there").added().isEmpty()) {
+            throw new AssertionError("text with no profile in it was pasted as one");
+        }
+
         HideModels.deleteProfile("Smoke");
         waitUntil(() -> HideModels.profiles().size() == 1 && !HideModels.hidden(a)
                         && !HideModels.hidden(b), "deleting the profile left it, or its lines");

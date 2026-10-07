@@ -76,6 +76,9 @@ public final class HiddenListScreen extends ClearScreen {
     private static final String SAVE_UNSAVED = "Save unsaved as a profile";
     private static final String DELETE = "Delete profile";
     private static final String DELETE_SURE = "Click again to delete";
+    private static final String COPY = "Copy profile";
+    private static final String COPIED = "Copied to the clipboard";
+    private static final String PASTE = "Paste a profile";
     private static final String NAME = "Name  ";
 
     private final Screen parent;
@@ -101,6 +104,10 @@ public final class HiddenListScreen extends ClearScreen {
     private int listsPage;
     /** Set by the first click on Delete profile; the second deletes. */
     private boolean confirmDelete;
+    /** Set by Copy profile, so its row can say it worked. */
+    private boolean copied;
+    /** What the last Paste found, shown on its row; null before one. */
+    private String pasted;
     /**
      * The open profile's name, typed into. Vanilla's text box, never drawn but added like the
      * buttons, so vanilla hands it the clicks and the keys - and handling keys ourselves would split
@@ -187,9 +194,9 @@ public final class HiddenListScreen extends ClearScreen {
             return 0;
         }
         if (openList != null) {
-            return openList.isEmpty() ? 1 : 3;
+            return openList.isEmpty() ? 1 : 4;
         }
-        return HideModels.unsaved().isEmpty() ? 1 : 2;
+        return HideModels.unsaved().isEmpty() ? 2 : 3;
     }
 
     private static HideModels.Profile profileNamed(String name) {
@@ -224,6 +231,8 @@ public final class HiddenListScreen extends ClearScreen {
         openLines = List.copyOf(list.isEmpty() ? HideModels.unsaved()
                 : p == null ? List.of() : p.patterns());
         confirmDelete = false;
+        copied = false;
+        pasted = null;
         page = 0;
         rebuildWidgets();
     }
@@ -320,6 +329,7 @@ public final class HiddenListScreen extends ClearScreen {
                         measure((p == null ? 0 : p.patterns().size()) + OPEN) + PAD * 2);
             }
             content = Math.max(content, measure(UNSAVED) + GAP + listCellW);
+            content = Math.max(content, measure(pasted != null ? pasted : PASTE));
             if (unsavedCount > 0) {
                 content = Math.max(content, measure(SAVE_UNSAVED));
             }
@@ -330,7 +340,7 @@ public final class HiddenListScreen extends ClearScreen {
         } else if (tab == HIDDEN) {
             content = Math.max(content, measure("◀ " + (openList.isEmpty() ? UNSAVED : openList)));
             if (!openList.isEmpty()) {
-                content = Math.max(content, measure(DELETE_SURE));
+                content = Math.max(content, Math.max(measure(DELETE_SURE), measure(COPIED)));
             }
         }
         final int prevW = measure(PREV) + PAD * 2;
@@ -551,15 +561,29 @@ public final class HiddenListScreen extends ClearScreen {
             hit(open, () -> openList(name));
             y += ROW + GAP;
         }
+
+        final Row paste = row(left, y, w, pasted != null ? pasted : PASTE);
+        paste.hint = "Adds a profile someone copied, from your clipboard";
+        hit(paste, () -> {
+            final HideModels.Pasted got =
+                    HideModels.pasteProfiles(minecraft.keyboardHandler.getClipboard());
+            pasted = got.added().size() > 1 ? "Pasted " + got.added().size() + " profiles"
+                    : got.added().size() == 1 ? "Pasted '" + got.added().get(0) + "'"
+                    : !got.already().isEmpty() ? "Already have '" + got.already().get(0) + "'"
+                    : "No profile on the clipboard";
+            rebuildWidgets();
+        });
+        y += ROW + GAP;
         return y;
     }
 
-    /** Above an open list: the way back, then a profile's name and Delete, which asks twice. */
+    /** Above an open list: the way back; for a profile, its name, Copy, and Delete - asked twice. */
     private int openListHead(int y, int w) {
         chrome(left, y, w, "◀ " + (openList.isEmpty() ? UNSAVED : openList), () -> {
             openList = null;
             nameBox = null;
             confirmDelete = false;
+            copied = false;
             page = listsPage;
             rebuildWidgets();
         });
@@ -569,6 +593,17 @@ public final class HiddenListScreen extends ClearScreen {
             name.field = true;
             name.hint = "Click to rename it, then type";
             y += ROW + GAP;
+            final Row copy = row(left, y, w, copied ? COPIED : COPY);
+            copy.hint = "Copies it as text, for someone to paste into theirs";
+            hit(copy, () -> {
+                final String text = HideModels.profileText(openList);
+                if (text != null) {
+                    minecraft.keyboardHandler.setClipboard(text);
+                    copied = true;
+                }
+                rebuildWidgets();
+            });
+            y += ROW + GAP;
             final Row delete = row(left, y, w, confirmDelete ? DELETE_SURE : DELETE);
             delete.muted = !confirmDelete;
             delete.hint = "Deletes the profile and every line in it";
@@ -576,6 +611,7 @@ public final class HiddenListScreen extends ClearScreen {
                 if (confirmDelete) {
                     HideModels.deleteProfile(openList);
                     openList = null;
+                    copied = false;
                     page = listsPage;
                 }
                 confirmDelete = !confirmDelete;
@@ -635,6 +671,8 @@ public final class HiddenListScreen extends ClearScreen {
             openList = null;
             nameBox = null;
             confirmDelete = false;
+            copied = false;
+            pasted = null;
             bonesOf = null;
             page = 0;
             rebuildWidgets();
