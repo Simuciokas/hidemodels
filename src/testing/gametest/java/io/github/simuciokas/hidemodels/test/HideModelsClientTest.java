@@ -361,6 +361,98 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                         + shouldRender.getParameterCount() + "-arg shouldRender)");
             });
 
+            // 9. THE CLICK EVENT RESOLVES. ClickRun builds it reflectively, so nothing at compile
+            //    time proves the names are right - and a failure returns Style.EMPTY, which looks
+            //    like plain text rather than an error. This is the only check that it worked, and
+            //    it has to run in production mode too: dev keeps official names, while a released
+            //    1.21.x jar runs against intermediary and takes the other candidate.
+            context.runOnClient(client -> {
+                final net.minecraft.network.chat.Style styled =
+                        io.github.simuciokas.hidemodels.ClickRun.style("/hidemodels help");
+                if (net.minecraft.network.chat.Style.EMPTY.equals(styled)) {
+                    throw new AssertionError("ClickRun produced no click event - neither the modern "
+                            + "nor the legacy ClickEvent shape resolved on this version");
+                }
+                System.out.println("[hidemodels-gametest] click event resolved");
+            });
+
+            // 10. THE SERVER OPT-OUT'S REFLECTIVE HALF. HideModels.channelId reads the id off a
+            //     payload type by reflection, because that id is ResourceLocation up to 1.21.10 and
+            //     Identifier after - naming it would split the NeoForge jar.
+            //
+            //     The id comes OUT OF A REGISTRY rather than being constructed, and the payload
+            //     type is built through its constructor rather than with new, because both of those
+            //     would name the moving type here and break this test's own compile on half the
+            //     range. CustomPacketPayload.Type is stable; only what it holds is not.
+            context.runOnClient(client -> {
+                try {
+                    final Object id = net.minecraft.core.registries.BuiltInRegistries.ITEM
+                            .getKey(net.minecraft.world.item.Items.STONE);
+                    final Object type = net.minecraft.network.protocol.common.custom
+                            .CustomPacketPayload.Type.class.getConstructors()[0].newInstance(id);
+                    final String read = HideModels.channelId(type);
+                    if (!"minecraft:stone".equals(read)) {
+                        throw new AssertionError("channelId read '" + read + "' from a payload type "
+                                + "whose id is minecraft:stone - the reflective id() lookup is wrong "
+                                + "on this version, so a server could not switch the mod off");
+                    }
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not build a payload type to test channelId", e);
+                }
+                System.out.println("[hidemodels-gametest] channel id read reflectively");
+            });
+
+            // THE GUI SWEEP, off unless asked for: -PguiSweep captures the screen at every GUI
+            // scale so a layout change can be eyeballed at the sizes people actually play at.
+            //
+            // SCALE RATHER THAN RESOLUTION, because the layout only sees the effective GUI size -
+            // the window divided by the scale - and 1920x1080 at scale 4 gives it less room than
+            // 1280x720 at scale 2. The window stays put; the scale is what moves.
+            if (System.getProperty("hidemodels.guisweep") != null) {
+                for (int i = 0; i < 24; i++) {
+                    singleplayer.getServer().runCommand(
+                            "summon item_display ~ ~1 ~ {item:{id:\"stone\",components:"
+                                    + "{\"minecraft:item_model\":\"modelengine:mount_" + i
+                                    + "/body\"}}}");
+                }
+                writeConfig("modelengine:mount_3/");
+                context.waitTicks(30);
+                context.runOnClient(client ->
+                        client.getConnection().sendCommand("hidemodels gui"));
+                context.waitTicks(20);
+
+                // One capture at whatever scale the client is on, which is all a production-mode
+                // run can do: the resize call is remapped there and this is a dev tool.
+                context.takeScreenshot("sweep-asis");
+                context.waitTicks(3);
+
+                for (int scale : new int[] {1, 2, 3, 4}) {
+                    final boolean[] resized = {false};
+                    context.runOnClient(client -> {
+                        client.options.guiScale().set(scale);
+                        // resizeDisplay() up to 1.21.11, resizeGui() from 26.1 - dev names only.
+                        for (String name : new String[] {"resizeGui", "resizeDisplay"}) {
+                            try {
+                                client.getClass().getMethod(name).invoke(client);
+                                resized[0] = true;
+                                return;
+                            } catch (ReflectiveOperationException ignored) {
+                                // the other spelling, or a remapped runtime
+                            }
+                        }
+                    });
+                    if (!resized[0]) {
+                        System.out.println("[hidemodels-gametest] no resize call here - "
+                                + "sweep needs a development runtime");
+                        break;
+                    }
+                    context.waitTicks(10);
+                    context.takeScreenshot("sweep-scale" + scale);
+                    context.waitTicks(3);
+                }
+                context.runOnClient(client -> client.options.guiScale().set(0));
+            }
+
             // Kept for a human to look at when a run fails; asserts nothing by itself, because a
             // screenshot comparison would fail on every unrelated resource-pack or lighting change.
             context.takeScreenshot("hidemodels-after-hide");
