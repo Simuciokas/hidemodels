@@ -283,6 +283,9 @@ if (loader != 'fabric') {
 // its own two-line entrypoint on top - a ClientModInitializer on Fabric, a @Mod on NeoForge.
 if (loader == 'fabric') {
     sourceSets.test.java.srcDir 'src/testing/checks/java'
+    // The sample scene for runDemo rides along in the test mod, inert unless that task asks for it.
+    sourceSets.test.java.srcDir 'src/testing/demo/java'
+    sourceSets.test.resources.srcDir 'src/testing/demo/resources'
 }
 
 // The gametest class implements an interface that does not exist on every version, so it is
