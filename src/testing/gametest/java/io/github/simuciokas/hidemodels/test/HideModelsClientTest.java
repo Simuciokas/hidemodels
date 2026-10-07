@@ -659,7 +659,69 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             hoverFirstRow(context);
             context.takeScreenshot("hover-detail");
 
-            // 12. THE DEMO SCENE that runDemo places, checked model by model: its summons fail
+            // 12. A MODEL'S BONES, opened from its row so one piece can be hidden on its own. The
+            //     area is cleared first, leaving one three-bone model, which fixes where the
+            //     buttons fall: the tabs, the model, its cell, close - and once opened, the tabs,
+            //     the way back, three bones, close.
+            context.runOnClient(client -> {
+                try {
+                    ((Screen) screenOf(client)).onClose();
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not close the screen", e);
+                }
+            });
+            singleplayer.getServer().runCommand("kill @e[type=item_display]");
+            singleplayer.getServer().runCommand("kill @e[type=armor_stand]");
+            final String[] beast = {"hidemodels:beast/head", "hidemodels:beast/body",
+                                    "hidemodels:beast/tail"};
+            for (String bone : beast) {
+                singleplayer.getServer().runCommand(
+                        "summon item_display ~ ~1 ~ {item:{id:\"stone\",components:"
+                                + "{\"minecraft:item_model\":\"" + bone + "\"}}}");
+            }
+            writeConfig("# cleared for the bone view");
+            context.waitFor(client -> !HideModels.hidden(beast[0]));
+            context.waitTicks(20);
+            context.runOnClient(client -> client.getConnection().sendCommand(HideModels.MOD_ID));
+            context.waitTicks(10);
+            context.takeScreenshot("model-with-cell");
+            context.runOnClient(client -> {
+                if (childCount() != 6) {
+                    throw new AssertionError("expected the tabs, one model, its cell and close - "
+                            + "got " + childCount() + " buttons");
+                }
+                press(5);
+                if (childCount() != 8) {
+                    throw new AssertionError("the model's three bones did not open: "
+                            + childCount() + " buttons");
+                }
+                press(5);
+                int hidden = 0;
+                for (String bone : beast) {
+                    if (HideModels.listed(bone)) {
+                        hidden++;
+                    }
+                }
+                if (hidden != 1 || HideModels.listed("hidemodels:beast/")) {
+                    throw new AssertionError("clicking one bone hid " + hidden + " of three"
+                            + (HideModels.listed("hidemodels:beast/") ? ", and the model" : ""));
+                }
+            });
+            context.waitTicks(5);
+            context.takeScreenshot("bone-view");
+            context.runOnClient(client -> {
+                press(4);
+                if (childCount() != 6) {
+                    throw new AssertionError("going back did not return to the models: "
+                            + childCount() + " buttons");
+                }
+            });
+            hoverFirstRow(context);
+            context.takeScreenshot("partly-hidden");
+            context.runOnClient(client -> System.out.println(
+                    "[hidemodels-gametest] bone view: one bone of three hidden, back to the models"));
+
+            // 13. THE DEMO SCENE that runDemo places, checked model by model: its summons fail
             //     silently, and a broken one would only show as an empty world in the demo.
             final double[] at = new double[4];
             context.runOnClient(client -> {

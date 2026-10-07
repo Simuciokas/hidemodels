@@ -28,7 +28,8 @@ import net.minecraft.world.entity.Entity;
 
 /**
  * The models around you, as the screen lists them: every item_model id within a radius, grouped by
- * MODEL - {@code modelengine:some_mount/} - because that is what goes in the config.
+ * MODEL - {@code modelengine:some_mount/} - because that is what goes in the config, and one
+ * model's bones when a single piece is wanted.
  *
  * <p>Nothing here runs on a timer: it is a scan of the level's render list, made while the screen
  * is open, so it costs nothing otherwise.
@@ -84,6 +85,21 @@ public final class NearbyModels {
         final List<Nearby> out = new ArrayList<>();
         for (Map.Entry<String, Group> e : scan(radius, false).entrySet()) {
             out.add(new Nearby(e.getKey(), e.getValue().pieces, Math.sqrt(e.getValue().nearestSq)));
+        }
+        out.sort(Comparator.comparingDouble(Nearby::distance));
+        return out;
+    }
+
+    /** One model's bones within the radius, nearest first. */
+    public static List<Nearby> bones(double radius, String model) {
+        // From the start, not as a substring the way the hide list matches: a substring would pull
+        // in another model that merely contains the same word.
+        final String prefix = model.toLowerCase(Locale.ROOT);
+        final List<Nearby> out = new ArrayList<>();
+        for (Map.Entry<String, Group> e : scan(radius, true).entrySet()) {
+            if (e.getKey().toLowerCase(Locale.ROOT).startsWith(prefix)) {
+                out.add(new Nearby(e.getKey(), e.getValue().pieces, Math.sqrt(e.getValue().nearestSq)));
+            }
         }
         out.sort(Comparator.comparingDouble(Nearby::distance));
         return out;

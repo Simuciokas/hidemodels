@@ -64,6 +64,7 @@ public final class HiddenListScreen extends ClearScreen {
     private static final String NEXT = "Next ▶";
     private static final String CLOSE = "Close";
     private static final String MOVING = "Click to place, Esc cancels";
+    private static final String OPEN = " ▶";
 
     private final Screen parent;
     private final List<Row> rows = new ArrayList<>();
@@ -77,6 +78,10 @@ public final class HiddenListScreen extends ClearScreen {
      * goes, and the list is only re-read when the tab is.
      */
     private List<String> hiddenSnapshot = List.of();
+    /** The model whose bones the Nearby tab lists, or null while it lists models. */
+    private String bonesOf;
+    /** The models page to go back to from a model's bones. */
+    private int modelPage;
     /** Set by build: the widest row on this page, which is what the panel is drawn around. */
     private int panelWidth;
     /** Set by build: from the header down to the bottom of the last row. */
@@ -126,25 +131,40 @@ public final class HiddenListScreen extends ClearScreen {
     }
 
     private int perPage() {
-        // Room kept for three rows of chrome - the tabs, the pager and close - plus the header.
-        final int usable = height - Y - 14 - 3 * (ROW + GAP) - BOTTOM_MARGIN;
+        // Room kept for the header and the chrome rows: the tabs, the pager, close, and the way
+        // back when a model's bones are showing.
+        final int chrome = 3 + (showingBones() ? 1 : 0);
+        final int usable = height - Y - 14 - chrome * (ROW + GAP) - BOTTOM_MARGIN;
         return Math.max(1, usable / (ROW + GAP));
+    }
+
+    private boolean showingBones() {
+        return tab == NEARBY && bonesOf != null;
     }
 
     private int pageCount(int total) {
         return Math.max(1, (total + perPage() - 1) / perPage());
     }
 
-    private List<String> source() {
-        if (tab == HIDDEN) {
-            return hiddenSnapshot;
+    /** The Nearby tab's rows: the models around you, or one model's bones. */
+    private List<NearbyModels.Nearby> nearbyRows() {
+        if (tab != NEARBY) {
+            return List.of();
         }
-        return tab == NEARBY ? NearbyModels.nearbyIds(HideModels.listRadius()) : List.of();
+        final double radius = HideModels.listRadius();
+        return bonesOf == null ? NearbyModels.nearby(radius) : NearbyModels.bones(radius, bonesOf);
     }
 
     private void build() {
         rows.clear();
-        final List<String> source = source();
+        final List<NearbyModels.Nearby> found = nearbyRows();
+        final List<String> source = new ArrayList<>();
+        if (tab == HIDDEN) {
+            source.addAll(hiddenSnapshot);
+        }
+        for (NearbyModels.Nearby n : found) {
+            source.add(n.id());
+        }
         final int perPage = perPage();
         final int pages = pageCount(source.size());
         // A page can vanish under you: hiding the last model on it leaves the index past the end.
@@ -166,8 +186,18 @@ public final class HiddenListScreen extends ClearScreen {
         // meant to leave clear - but never narrower than the tabs.
         final int cap = Math.max(strip, width / 3);
         int content = Math.max(measure(header(source.size(), pages)), moving ? measure(MOVING) : 0);
+        if (showingBones()) {
+            content = Math.max(content, measure("◀ " + bonesOf));
+        }
+        // A model can be opened up into its bones, from a cell on the right of its row.
+        int cellW = 0;
+        for (int i = 0; i < shown.size(); i++) {
+            if (opensUp(shown.get(i))) {
+                cellW = Math.max(cellW, measure(found.get(from + i).pieces() + OPEN) + PAD * 2);
+            }
+        }
         for (String id : shown) {
-            content = Math.max(content, measure(id));
+            content = Math.max(content, measure(id) + (opensUp(id) ? GAP + cellW : 0));
         }
         final int prevW = measure(PREV) + PAD * 2;
         final int nextW = measure(NEXT) + PAD * 2;
@@ -190,8 +220,19 @@ public final class HiddenListScreen extends ClearScreen {
             y = settings(y, rowWidth);
         }
 
-        for (String id : shown) {
-            final Row row = row(left, y, rowWidth, id);
+        if (showingBones()) {
+            chrome(left, y, rowWidth, "◀ " + bonesOf, () -> {
+                bonesOf = null;
+                page = modelPage;
+                rebuildWidgets();
+            });
+            y += ROW + GAP;
+        }
+
+        for (int i = 0; i < shown.size(); i++) {
+            final String id = shown.get(i);
+            final boolean opens = opensUp(id);
+            final Row row = row(left, y, opens ? rowWidth - cellW - GAP : rowWidth, id);
             row.id = id;
             row.on = HideModels.listed(id);
             hit(row, () -> {
@@ -202,6 +243,18 @@ public final class HiddenListScreen extends ClearScreen {
                 }
                 rebuildWidgets();
             });
+            if (opens) {
+                final Row cell = row(left + rowWidth - cellW, y, cellW,
+                        found.get(from + i).pieces() + OPEN);
+                cell.muted = true;
+                cell.hint = "Show its bones, to hide just one";
+                hit(cell, () -> {
+                    modelPage = page;
+                    bonesOf = id;
+                    page = 0;
+                    rebuildWidgets();
+                });
+            }
             y += ROW + GAP;
         }
 
@@ -248,6 +301,11 @@ public final class HiddenListScreen extends ClearScreen {
         return Math.max(0, height - BOTTOM_MARGIN - Y - panelHeight);
     }
 
+    /** Only a model can be opened, and only one whose id has bones under it. */
+    private boolean opensUp(String id) {
+        return tab == NEARBY && bonesOf == null && id.endsWith("/");
+    }
+
     private static int measure(String s) {
         return net.minecraft.client.Minecraft.getInstance().font.width(s);
     }
@@ -274,6 +332,7 @@ public final class HiddenListScreen extends ClearScreen {
         hit(row, () -> {
             tab = which;
             hiddenSnapshot = List.of(HideModels.patterns());
+            bonesOf = null;
             page = 0;
             rebuildWidgets();
         });
@@ -386,8 +445,7 @@ public final class HiddenListScreen extends ClearScreen {
         p.fill(left - 4 + ox, top - 6 + oy, panelWidth + 8, panelHeight + 12, PANEL);
 
         final double radius = HideModels.listRadius();
-        final List<NearbyModels.Nearby> around =
-                tab == NEARBY ? NearbyModels.nearby(radius) : List.of();
+        final List<NearbyModels.Nearby> around = nearbyRows();
         final int total = tab == HIDDEN ? hiddenSnapshot.size() : around.size();
         p.text(moving ? MOVING : header(total, pageCount(total)), left + ox, top + oy,
                 moving ? TEXT : DIM);
@@ -449,6 +507,20 @@ public final class HiddenListScreen extends ClearScreen {
             if (n.id().equals(row.id)) {
                 lines.add(n.pieces() + (n.pieces() == 1 ? " piece, " : " pieces, nearest ")
                         + NearbyModels.fmt(n.distance()) + " blocks away");
+            }
+        }
+        // Hiding single bones leaves a model's own row unmarked, so say how much of it is gone.
+        if (covering == null && opensUp(row.id)) {
+            int pieces = 0;
+            int hidden = 0;
+            for (NearbyModels.Nearby bone : NearbyModels.bones(radius, row.id)) {
+                pieces += bone.pieces();
+                if (HideModels.listed(bone.id())) {
+                    hidden += bone.pieces();
+                }
+            }
+            if (hidden > 0) {
+                lines.add(hidden + " of its " + pieces + " pieces hidden");
             }
         }
         if (covering == null) {
@@ -515,9 +587,11 @@ public final class HiddenListScreen extends ClearScreen {
         }
         final int radius = (int) HideModels.listRadius();
         if (total == 0) {
-            return "Nothing within " + radius + " blocks";
+            return (showingBones() ? "No bones" : "Nothing") + " within " + radius + " blocks";
         }
-        return total + " models within " + radius + page;
+        final String noun = showingBones() ? (total == 1 ? " bone" : " bones")
+                                           : (total == 1 ? " model" : " models");
+        return total + noun + " within " + radius + page;
     }
 
     private static boolean inside(Row row, double mx, double my) {
