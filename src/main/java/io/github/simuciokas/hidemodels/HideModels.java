@@ -347,6 +347,16 @@ public final class HideModels {
         return listRadius;
     }
 
+    public static boolean isEnabled() {
+        maybeReload();
+        return enabled;
+    }
+
+    public static boolean isFirstPersonOnly() {
+        maybeReload();
+        return firstPersonOnly;
+    }
+
     public static String[] patterns() {
         maybeReload();
         return patterns.clone();
