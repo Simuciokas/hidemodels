@@ -27,8 +27,7 @@ import net.minecraft.client.KeyMapping;
 /**
  * What the mod needs from the loader, on Fabric.
  *
- * <p>A registered command rather than an intercepted one: it gets tab completion, and it needs no
- * injection point for the clicked-command path that only exists from 1.21.6.
+ * <p>/hidemodels is a registered client command, so it never reaches the server.
  *
  * <p>What stays a mixin is what has no event behind it: the render hook and the stack accessor.
  */

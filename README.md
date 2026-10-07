@@ -51,7 +51,7 @@ outside it.
 ## Which versions it can target
 
 **1.20.5 through 26.3** — nineteen releases — from one source tree with no preprocessor, and with
-exactly three small files that differ per version —
+a handful of small files that differ between 1.21.x and 26.x —
 every mixin target and every vanilla type the mod names resolves on all of them, checked against
 each version's own client jar rather than assumed. CI runs that matrix on every push.
 
@@ -113,7 +113,8 @@ stub asset index so no gigabyte is downloaded to reach a title screen).
 
 `./gradlew runClientGameTest -Pminecraft_version=1.21.8` goes further where Fabric's harness exists:
 it builds a world, summons an `item_display` carrying `minecraft:item_model`, and asserts the mod
-reads the component, intercepts its own command — typed *and* clicked — and honours its config. No
+reads the component, honours its config, and that `/hidemodels`, its key and every tab of the screen
+do what they say. No
 ModelEngine and no server are needed, because the mod keys on a vanilla component on a vanilla
 entity, which is what makes it runnable anywhere.
 
@@ -126,7 +127,7 @@ Fabric publishes no client gametest module there at all, checked against each ve
 
 CI runs the smoke test on all nineteen versions and the gametest on ten of them — all five 26.x
 releases and 1.21.4 through 1.21.8 — under xvfb.
-What the smoke test cannot cover is anything needing a world: the render hook, the registered
+What the smoke test cannot cover is anything needing a world: the render hook, the screen, the
 command and `ChatOut` are only exercised where the gametest runs.
 
 **The gametest does not run in CI on 1.21.9 and later.** On a hosted runner their integrated server
@@ -155,20 +156,19 @@ version that has it.
 Compiling is still what catches most version breaks — the checker is static and cannot see member
 access, which is exactly how the real source differences below were found.
 
-**Three small files differ across the range**, each on its own boundary, kept as pairs of copies
-rather than behind a preprocessor. Notice that no two boundaries are in the same place — which is
-why they are three separate splits rather than one "old versus new" fork:
+**A few small files differ across the range**, kept as pairs of copies rather than behind a
+preprocessor, and all of them split where the jars already do, between 1.21.x and 26.x:
 
-| file | boundary | why |
-|---|---|---|
-| `ChatOut` (`src/versions/chat-mc121`, `chat-mc26`) | 1.21.x ↔ 26.x | the client-facing chat call was renamed: `LocalPlayer.displayClientMessage` before, `sendSystemMessage` after |
-| `ClickRun` (`src/versions/click-mc1214`, `click-mc1215`) | 1.21.4 ↔ 1.21.5 | `ClickEvent` was a class with a constructor, and became a sealed interface whose cases are records |
-| `ClientDisconnectMixin` (`src/disconnect1206`, `src/disconnect121`) | 1.20.6 ↔ 1.21 | `onDisconnect` takes a `Component` before and a `DisconnectionDetails` after, and a Mixin handler must mirror its target's parameters |
+| files | why |
+|---|---|
+| `ChatOut` (`src/versions/chat-mc121`, `chat-mc26`) | the client-facing chat call was renamed: `LocalPlayer.displayClientMessage` before, `sendSystemMessage` after |
+| `ClearScreen`, `Painter`, `Screens` (`src/versions/screen-mc121`, `screen-mc26`) | 26.x replaced `GuiGraphics` and the screen's render methods, and `setScreen` with `setScreenAndShow` |
+| `Cmd`, `KeyRegistration` (`src/versions/fabricapi-mc121`, `fabricapi-mc26`) | Fabric API's renames, not Minecraft's: `ClientCommandManager` became `ClientCommands`, and `KeyBindingHelper` became `KeyMappingHelper` |
 
-Reflection cannot paper over any of them: a 1.21.x build is remapped to intermediary, so the runtime
-name is something like `method_7353` and no name-based lookup would find it. For the chat call in
-particular, `CommandSource.sendSystemMessage` does exist on every version — but on 1.21.x the player
-does not override it, and the inherited server implementation prints nothing at all.
+Those cost nothing, since 26.x needs Java 25 class files and gets its own jar regardless. Changes
+*inside* a jar's range are reached by reflection instead, and every candidate name is checked against
+each version by `tools/verify_targets.py`, because a 1.21.x build runs against intermediary names
+like `method_7353` that no compiler sees.
 
 Three things the checker does not tell you. It is a **static** check: that a hook exists is not that it
 fires. It reads only **declared** members, so an inherited one reads as absent. And it says nothing
@@ -195,8 +195,8 @@ preset would be wrong everywhere but one server.
 |---|---|
 | `off` | disable without emptying the list |
 | `first-person-only` | hide only while the camera is in first person, so the model reappears in third person (F5) |
-| `list-radius 32` | default radius for `/hidemodels list` |
-| `gui-position 1 0` | where `/hidemodels gui` sits, as fractions of the free space: `0 0` is the top left (the default), `1 0` the top right, `1 1` the bottom right |
+| `list-radius 32` | how far the screen's Nearby tab looks, in blocks |
+| `gui-position 1 0` | where the screen sits, as fractions of the free space: `0 0` is the top left (the default), `1 0` the top right, `1 1` the bottom right |
 
 `first-person-only` is the one to use for a mount whose head fills your screen: hidden while you're
 riding and looking ahead, visible again the moment you pull the camera out to look at it. The
@@ -206,70 +206,36 @@ camera is read live on each render check, so pressing F5 takes effect on the nex
 lazily from the render hook — the first time any `item_display` comes up for a render check. If it
 doesn't exist by then, the mod writes a documented default and loads that. After that it's a
 timestamp poll throttled to once a second, so a saved edit takes effect within about a second: no
-restart, no command, no keybind. An unreadable file keeps the previous list rather than taking the
+restart and nothing to click. An unreadable file keeps the previous list rather than taking the
 renderer down with it.
 
-## The `/hidemodels` command
+## In game
 
-| command | what it does |
+`/hidemodels` opens the screen, and so does a key: unbound until you pick one, under Miscellaneous
+in Controls. There is nothing else to type.
+
+The screen is a panel in the top left, leaving the rest of the view clear so you can watch a model
+go as you click it. It has three tabs:
+
+| tab | what it holds |
 |---|---|
-| `/hidemodels` | status: pattern count, on/off, first-person and server-opt-out state |
-| `/hidemodels list [radius]` | every model within the radius, grouped by model, nearest first |
-| `/hidemodels list bones [radius] [model]` | the same, but individual bone ids — `model` narrows it to one model |
-| `/hidemodels gui` | the list, what is hidden, and the settings as a screen down one side — also on a key, unbound until you pick one under Miscellaneous in Controls |
-| `/hidemodels add <id>` | hide it now — writes the line and reloads |
-| `/hidemodels remove <id>` | stop hiding it |
-| `/hidemodels on` / `off` | stop hiding without emptying the list |
-| `/hidemodels first-person on` / `off` | hide only while the camera is in first person |
-| `/hidemodels radius <blocks>` | the default radius for `list` |
-| `/hidemodels gui-position left` / `right` / `<x> <y>` | where the gui sits — `left` and `right` are the top corners, and Move panel in its Settings tab puts it anywhere |
+| Nearby | every model within the list radius, nearest first; click one to hide it, click again to bring it back |
+| Hidden | the lines in your config; unhiding one keeps its row until the tab is reopened, so a misclick is one click to undo |
+| Settings | hiding on or off, first person only, the list radius, and where the panel sits: either top corner, or Move panel to put it anywhere |
 
-**Every setting is also a command, and every command edits the config.** The directives can be
-typed into the file or set in game, and both routes write the same file and reload it — so
-there is no second place where state could live and disagree.
+Hovering over a row says more: a model's piece count and how far away it is, and which line hides
+it. When that line is broader than the model's own id, clicking the row cannot remove it, and the
+box says to unhide it from the Hidden tab instead.
 
-Each row shows the piece count, the id, and the distance to the nearest piece; ids your config
-already hides are green and marked `hidden`. Radius defaults to `list-radius` in the config (32)
-and is clamped to 256. Output is capped at 40 rows.
+**Everything the screen changes is a line in the config.** Hiding a model appends its id,
+unhiding removes that exact line, and each setting is one of the directives above, so the file
+stays the one description of what the mod is doing and editing it by hand works just as well.
+Appending leaves your comments and directives where you put them, and a change from the screen
+applies at once rather than waiting for the poll.
 
-```
-hidemodels: 3 models within 32 blocks (12 pieces)
-  x8  modelengine:some_mount/     0.9m  hidden
-  x2  modelengine:internal_fire/  0.9m  click to hide
-  x2  modelengine:warp_core/      14.3m  click to hide
-```
+The command is handled entirely on the client and is **not** forwarded to the server.
 
-**The ids are clickable.** Anything not already hidden is underlined and runs `add` for you, so the
-whole loop is: stand next to the thing, run `list`, click it, watch it vanish. Ids that are already
-hidden are not clickable — a click that did nothing would be worse than none, and removal stays a
-typed command on purpose, so nothing disappears from your config by a stray click in chat.
-
-**The piece counts are clickable too, and they go the other way — inward.** Clicking `x8` beside a
-model lists that model's eight bones and nothing else, each one clickable in turn, so hiding a
-single piece is: `list`, click the count, click the bone. That's the "see past the mount's head but
-keep the mount" case; plain `list bones` prints every bone of every model in range, which near a
-couple of mounts overruns the 40-row cap. Counts only link where there is something underneath —
-bone rows and slashless ids stay plain text.
-
-```
-hidemodels: 8 bones of modelengine:some_mount/ within 32 blocks (8 pieces)
-  x1  modelengine:some_mount/head   0.9m  click to hide
-  x1  modelengine:some_mount/body   1.2m  click to hide
-```
-
-`add` appends to the config rather than rewriting it, leaving your comments and directives where
-you put them, and reloads immediately instead of waiting for the poll. It tells you when an id is
-already covered by a broader line rather than silently adding a redundant one. `remove` deletes a
-line that matches exactly; if the id is only hidden because of a broader pattern, it says which one
-rather than deleting more than you asked.
-
-The command is handled entirely on the client and is **not** forwarded to the server. It is a real
-brigadier command in the client's own tree, so it tab-completes: `add` suggests the ids around you,
-`remove` suggests the patterns already in your config, and `list bones <radius>` suggests which
-model to narrow to — the three arguments nobody wants to type, each offered from the mod's own
-state without asking the server anything.
-
-## Finding ids without the command
+## Finding ids by hand
 
 Every piece of a model is an `item_display` — or an armor stand wearing it as a helmet — whose item
 carries an `item_model` component. Since 1.21.4 those ids resolve to item definition files inside

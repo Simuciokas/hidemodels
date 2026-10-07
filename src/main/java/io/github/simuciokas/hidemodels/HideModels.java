@@ -66,11 +66,11 @@ public final class HideModels {
     /** When set, hiding applies only while the camera is in first person. */
     private static volatile boolean firstPersonOnly;
 
-    /** Default radius for /hidemodels list, in blocks. */
+    /** How far the Nearby tab looks, in blocks. */
     private static volatile double listRadius = DEFAULT_LIST_RADIUS;
 
     /**
-     * Where the /hidemodels gui panel sits, as fractions of the room it has to move in: 0 0 is the
+     * Where the screen's panel sits, as fractions of the room it has to move in: 0 0 is the
      * top left, 1 0 the top right. Fractions rather than pixels, so the spot survives a different
      * window size or GUI scale.
      */
@@ -331,34 +331,6 @@ public final class HideModels {
         return itemModelId == null ? null : coveringPattern(itemModelId.toLowerCase(Locale.ROOT));
     }
 
-    public static void status() {
-        NearbyModels.say(Component.literal("hidemodels " + version() + "- " + patterns.length
-                + " pattern(s), " + (enabled ? "on" : "off")
-                + (firstPersonOnly ? ", first person only" : "")
-                + (serverDisabled ? ", DISABLED BY SERVER" : "")).withStyle(ChatFormatting.AQUA));
-        NearbyModels.say(Component.literal("  /hidemodels list [radius]  - models nearby, grouped by model")
-                .withStyle(ChatFormatting.GRAY));
-        NearbyModels.say(Component.literal("  /hidemodels list bones [radius] [model]  - individual "
-                + "bone ids (or click a piece count)").withStyle(ChatFormatting.GRAY));
-        NearbyModels.say(Component.literal("  /hidemodels gui  - the list and settings as a screen "
-                + "(or bind a key in Controls)").withStyle(ChatFormatting.GRAY));
-        NearbyModels.say(Component.literal("  /hidemodels add <id>  - hide it now (or click an id in the list)")
-                .withStyle(ChatFormatting.GRAY));
-        NearbyModels.say(Component.literal("  /hidemodels remove <id>  - stop hiding it")
-                .withStyle(ChatFormatting.GRAY));
-        NearbyModels.say(Component.literal("  /hidemodels on | off  - hiding without emptying the list")
-                .withStyle(ChatFormatting.GRAY));
-        NearbyModels.say(Component.literal("  /hidemodels first-person on | off  - hide only while "
-                + "the camera is in first person").withStyle(ChatFormatting.GRAY));
-        NearbyModels.say(Component.literal("  /hidemodels radius <blocks>  - default radius for list")
-                .withStyle(ChatFormatting.GRAY));
-        NearbyModels.say(Component.literal("  /hidemodels gui-position left | right | <x> <y>  - where "
-                + "the gui sits, 0 0 being the top left").withStyle(ChatFormatting.GRAY));
-        NearbyModels.say(Component.literal("  config/" + MOD_ID
-                + ".txt holds the list and the directives (default radius " + listRadius + ")")
-                .withStyle(ChatFormatting.DARK_GRAY));
-    }
-
     public static double listRadius() {
         maybeReload();
         return listRadius;
@@ -479,7 +451,7 @@ public final class HideModels {
     }
 
     /**
-     * The directives, as commands.
+     * The directives, as the Settings tab sets them.
      *
      * <p>Each edits the config, so a setting changed in game and one typed into the file cannot
      * disagree. Written in the canonical spelling even where the parser also accepts an alias.
@@ -529,7 +501,7 @@ public final class HideModels {
      * Rewrites one directive in the config: removes every spelling of it, then appends the new one.
      *
      * <p>Removal takes the aliases too, or setting something off would leave a line the parser
-     * still honours - and the setting would appear to ignore the command.
+     * still honours - and the setting would appear to ignore the click.
      *
      * @param line     the directive to write, or null to only remove it
      * @param spellings every form the parser recognises, matched case-insensitively
@@ -590,7 +562,7 @@ public final class HideModels {
         return null;
     }
 
-    /** Re-reads the config at once, so a command that edits it takes effect before it replies. */
+    /** Re-reads the config at once, so a change from the screen shows on the next frame. */
     private static void reloadNow() {
         try {
             lastModified = Files.isRegularFile(CONFIG)
@@ -613,14 +585,6 @@ public final class HideModels {
         } catch (NumberFormatException e) {
             return 0;
         }
-    }
-
-    /**
-     * Version straight from the jar metadata, so the help line cannot drift from the build. Asked
-     * through LoaderInfo, which has a copy per loader, keeping this class free of loader types.
-     */
-    private static String version() {
-        return LoaderInfo.modVersion();
     }
 
     /**
@@ -768,28 +732,20 @@ public final class HideModels {
                 # too-broad fragment will hide things you still want to see, such as teleporters
                 # or signposts.
                 #
-                # DIRECTIVES, each on a line of its own. Every one of them also has a command,
-                # which edits THIS FILE and reloads it - so the two can never disagree:
-                #     off                 disable without emptying the list   (/hidemodels off)
+                # DIRECTIVES, each on a line of its own. The screen's Settings tab writes these
+                # same lines, so the screen and this file can never disagree:
+                #     off                 disable without emptying the list
                 #     first-person-only   hide only while the camera is in first person, so the
                 #                         model reappears in third person (F5) - useful when you
                 #                         want a mount out of your view but still want to see it
-                #                                              (/hidemodels first-person on)
-                #     list-radius 32      default radius for /hidemodels list (/hidemodels radius 32)
-                #     gui-position 1 0    where /hidemodels gui sits, as fractions of the free space:
-                #                         0 0 top left, 1 0 top right    (/hidemodels gui-position)
+                #     list-radius 32      how far the screen's Nearby tab looks, in blocks
+                #     gui-position 1 0    where the screen sits, as fractions of the free space:
+                #                         0 0 top left, 1 0 top right, 1 1 bottom right
                 #
-                # IN GAME: /hidemodels list [radius] prints every model around you with its piece
-                # count and distance, marking the ones this file already hides - so the ids can be
-                # read off the screen instead of unzipping a resource pack. "list bones" prints
-                # individual bone ids, for hiding one piece of a model.
-                #
-                # CLICK AN ID in that list to hide it, or type /hidemodels add <id>. Lines added
-                # that way land at the end of this file, below whatever you have written here.
-                # /hidemodels remove <id> takes one back out.
-                #
-                # CLICK THE PIECE COUNT ("x7") beside a model to list just that model's bones, so
-                # one piece can be picked out without reading past every other model in range.
+                # IN GAME: /hidemodels, or a key you bind under Miscellaneous in Controls, opens a
+                # screen listing every model around you. Clicking one hides it, which adds its id
+                # to the end of this file, below whatever you have written here; the Hidden tab
+                # takes lines back out.
                 #
                 # Saved changes apply within a second; no restart needed.
                 """;

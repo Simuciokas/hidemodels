@@ -15,9 +15,7 @@
  */
 package io.github.simuciokas.hidemodels.neoforge;
 
-import com.mojang.brigadier.arguments.ArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import io.github.simuciokas.hidemodels.CommandTree;
 import io.github.simuciokas.hidemodels.HideModels;
 import io.github.simuciokas.hidemodels.Keys;
@@ -36,7 +34,7 @@ import net.neoforged.neoforge.common.NeoForge;
 /**
  * What the mod needs from the loader, on NeoForge. The counterpart of HideModelsFabric.
  *
- * <p>What the command does lives in CommandTree, shared with Fabric; only the source type differs,
+ * <p>The command itself lives in CommandTree, shared with Fabric; only the source type differs,
  * vanilla's CommandSourceStack rather than a Fabric interface.
  */
 @Mod(value = HideModels.MOD_ID, dist = Dist.CLIENT)
@@ -67,11 +65,5 @@ public final class HideModelsNeoForge implements CommandTree.Builders<CommandSou
     @Override
     public LiteralArgumentBuilder<CommandSourceStack> literal(String name) {
         return Commands.literal(name);
-    }
-
-    @Override
-    public <T> RequiredArgumentBuilder<CommandSourceStack, T> argument(
-            String name, ArgumentType<T> type) {
-        return Commands.argument(name, type);
     }
 }
