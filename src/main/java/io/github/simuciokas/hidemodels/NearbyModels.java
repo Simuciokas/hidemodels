@@ -18,9 +18,11 @@ package io.github.simuciokas.hidemodels;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.chat.Component;
@@ -112,6 +114,18 @@ public final class NearbyModels {
             out.add(n.id());
         }
         return out;
+    }
+
+    /** Models within the radius that have at least one bone hidden by a line of the config. */
+    public static Set<String> withHiddenBones(double radius) {
+        final Set<String> models = new HashSet<>();
+        for (String bone : scan(radius, true).keySet()) {
+            final int cut = bone.lastIndexOf('/');
+            if (cut >= 0 && HideModels.listed(bone)) {
+                models.add(bone.substring(0, cut + 1));
+            }
+        }
+        return models;
     }
 
     /** Pieces within the radius that one config line hides, matched the way the hide list matches. */

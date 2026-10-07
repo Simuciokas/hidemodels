@@ -735,8 +735,25 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             });
             hoverFirstRow(context);
             context.takeScreenshot("partly-hidden");
-            context.runOnClient(client -> System.out.println(
-                    "[hidemodels-gametest] bone view: one bone of three hidden, back to the models"));
+            //     The partly hidden model's own row: one click hides all of it, the next shows all
+            //     of it again, taking the single bone's line with it.
+            context.runOnClient(client -> {
+                press(4);
+                for (String bone : beast) {
+                    if (!HideModels.listed(bone)) {
+                        throw new AssertionError("hiding a partly hidden model left " + bone
+                                + " showing");
+                    }
+                }
+                press(4);
+                for (String bone : beast) {
+                    if (HideModels.listed(bone)) {
+                        throw new AssertionError("unhiding the model left " + bone + " hidden");
+                    }
+                }
+                System.out.println("[hidemodels-gametest] bone view: one bone of three hidden, "
+                        + "then all of it, then none");
+            });
 
             // 13. THE DEMO SCENE that runDemo places, checked model by model: its summons fail
             //     silently, and a broken one would only show as an empty world in the demo.

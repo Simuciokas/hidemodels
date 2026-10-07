@@ -219,7 +219,7 @@ go as you click it. It has three tabs:
 
 | tab | what it holds |
 |---|---|
-| Nearby | every model within the list radius, nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head |
+| Nearby | every model within the list radius, nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head; a model with some bones hidden is marked orange, and clicking it hides the rest, then shows all of it again |
 | Hidden | the lines in your config; unhiding one keeps its row until the tab is reopened, so a misclick is one click to undo |
 | Settings | hiding on or off, first person only, the list radius, and where the panel sits: either top corner, or Move panel to put it anywhere |
 
