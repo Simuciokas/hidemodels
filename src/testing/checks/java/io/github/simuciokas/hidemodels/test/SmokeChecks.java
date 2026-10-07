@@ -72,8 +72,9 @@ public final class SmokeChecks {
             checkAddAndRemove();
             checkSettings();
             checkKeyRegistered();
+            checkScreenOpens();
             report("PASS - component resolved, config drove the matcher, add/remove and settings "
-                    + "worked, key registered");
+                    + "worked, key registered, screen opened");
         } catch (Throwable t) {
             t.printStackTrace(System.err);
             report("FAIL - " + t);
@@ -208,6 +209,37 @@ public final class SmokeChecks {
             }
         }
         throw new AssertionError("the open key is not in Controls - it never registered");
+    }
+
+    /**
+     * The screen opens, draws and closes again - the first thing every user does, and on NeoForge
+     * the only run it gets. With no world it lists nothing; a second of frames is the check.
+     */
+    private static void checkScreenOpens() throws InterruptedException {
+        final Minecraft mc = Minecraft.getInstance();
+        mc.execute(() -> io.github.simuciokas.hidemodels.Screens.open(mc,
+                new io.github.simuciokas.hidemodels.HiddenListScreen(
+                        (net.minecraft.client.gui.screens.Screen) currentScreen(mc))));
+        waitUntil(() -> currentScreen(mc) instanceof io.github.simuciokas.hidemodels.HiddenListScreen,
+                  "the screen never opened");
+        Thread.sleep(1000L);
+        mc.execute(() -> ((net.minecraft.client.gui.screens.Screen) currentScreen(mc)).onClose());
+        waitUntil(() -> !(currentScreen(mc) instanceof io.github.simuciokas.hidemodels.HiddenListScreen),
+                  "the screen did not close");
+    }
+
+    /** mc.gui.screen() from 26.1, mc.screen before; by name, since these checks run in development. */
+    private static Object currentScreen(Minecraft mc) {
+        try {
+            final Object gui = mc.getClass().getField("gui").get(mc);
+            return gui.getClass().getMethod("screen").invoke(gui);
+        } catch (ReflectiveOperationException e) {
+            try {
+                return mc.getClass().getField("screen").get(mc);
+            } catch (ReflectiveOperationException e2) {
+                return null;
+            }
+        }
     }
 
     /**
