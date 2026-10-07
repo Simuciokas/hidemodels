@@ -334,6 +334,10 @@ def check_version(version, mixins):
     problems = []
     notes = []
 
+    refl_problems, refl_notes = check_reflective(version, classes, methods)
+    problems.extend(refl_problems)
+    notes.extend(refl_notes)
+
     for mx in mixins:
         target = obf_class(mx["class"])
         found = members_of(jar, target)
@@ -399,6 +403,174 @@ def check_version(version, mixins):
     return (not problems), problems, notes
 
 
+
+# ---------------------------------------------------------------------------------------------
+# REFLECTIVE CANDIDATES
+#
+# A name looked up by string is invisible to the compiler and to everything above: the 19-version
+# build stays green while the mod quietly stops finding what it needs. These checks put those names
+# back under the same net as the mixin targets.
+#
+# The candidates live in the source, as arrays of "net.minecraft.*" literals, so they cannot drift
+# from the code that uses them. A member is written owner#name.
+#
+# The check is stronger than "one of them resolves". For each group, the OFFICIAL candidate is
+# resolved to what this version actually calls it in intermediary - the namespace a released Fabric
+# jar runs against - and that name has to be in the group. A version that invents a third spelling
+# fails here rather than in someone's chat.
+INTERMEDIARY_URL = ("https://maven.fabricmc.net/net/fabricmc/intermediary/%s/intermediary-%s-v2.jar")
+
+
+def reflective_groups():
+    """Every array of net.minecraft.* literals in src/main, as [(file, [candidate, ...]), ...]."""
+    out = []
+    for root, _, files in os.walk(SRC_DIR):
+        for name in sorted(files):
+            if not name.endswith(".java"):
+                continue
+            src = open(os.path.join(root, name), encoding="utf-8").read()
+            for body in re.findall(r"=\s*\{([^}]*)\}\s*;", src, re.S):
+                # A bare "#member" entry is a name with no owner - the runtime only reads the
+                # part after the '#', and inventing an owner would be a second name to maintain.
+                lits = re.findall(r'"(net\.minecraft\.[^"]+|#[A-Za-z0-9_$]+)"', body)
+                if lits:
+                    out.append((name, lits))
+    return out
+
+
+def intermediary_map(version):
+    """{obf class: intermediary class} and {(obf class, obf member, desc): intermediary member}."""
+    cache = os.path.join(ROOT, "build", "minecraft", version, "intermediary-v2.jar")
+    if not os.path.isfile(cache):
+        os.makedirs(os.path.dirname(cache), exist_ok=True)
+        try:
+            urllib.request.urlretrieve(INTERMEDIARY_URL % (version, version), cache)
+        except Exception:
+            return None, None
+    import zipfile
+    try:
+        with zipfile.ZipFile(cache) as z:
+            tiny = z.read("mappings/mappings.tiny").decode("utf-8", "replace")
+    except Exception:
+        return None, None
+    classes, members, owner = {}, {}, None
+    for line in tiny.splitlines():
+        parts = line.split("\t")
+        if parts[0] == "c" and len(parts) >= 3:
+            owner = parts[1]
+            classes[parts[1]] = parts[2]
+        elif parts and parts[0] == "" and len(parts) >= 5 and parts[1] in ("m", "f") and owner:
+            # \tm\t<desc>\t<obf>\t<intermediary>
+            members[(owner, parts[3], parts[2])] = parts[4]
+    return classes, members
+
+PRIMITIVES = {"void": "V", "int": "I", "boolean": "Z", "byte": "B", "char": "C",
+              "short": "S", "long": "J", "float": "F", "double": "D"}
+
+
+def load_method_sigs(path):
+    """{(official class, name, (param types,)): (obf name, return type)} from the ProGuard file.
+
+    Keyed by the FULL signature, not the name. An obfuscator reuses short names - getKey becomes
+    "b", and so do several unrelated methods on the same class - so a lookup by name alone can
+    resolve to a different member and report it as verified.
+    """
+    sigs, cur = {}, None
+    for raw in io.open(path, encoding="utf-8"):
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        if not raw.startswith(" ") and not raw.startswith("\t"):
+            left, right = raw.rstrip().rsplit(" -> ", 1)
+            cur = left.strip()
+            continue
+        if cur is None or "(" not in raw:
+            continue
+        body, obf = raw.rstrip().rsplit(" -> ", 1)
+        body = body.strip()
+        if ":" in body.split(" ")[0]:
+            body = body.split(":", 2)[2].strip() if body.count(":") >= 2 else body.split(":")[-1].strip()
+        head, args = body.split("(", 1)
+        parts = head.split()
+        if len(parts) < 2:
+            continue
+        params = tuple(a.strip() for a in args.rstrip(")").split(",") if a.strip())
+        sigs[(cur, parts[-1], params)] = (obf.strip(), parts[-2])
+    return sigs
+
+
+def jvm_type(java_type, classes):
+    arr = 0
+    while java_type.endswith("[]"):
+        arr += 1
+        java_type = java_type[:-2]
+    if java_type in PRIMITIVES:
+        base = PRIMITIVES[java_type]
+    else:
+        base = "L" + classes.get(java_type, java_type).replace(".", "/") + ";"
+    return "[" * arr + base
+
+
+def check_reflective(version, classes, methods):
+    """Problems for reflective groups whose list misses what this version calls the member."""
+    if version.startswith("26"):
+        return [], []                  # no intermediary published; official IS the runtime name
+    inter_c, inter_m = intermediary_map(version)
+    if inter_c is None:
+        return ["could not read intermediary mappings for %s" % version], []
+    try:
+        _, maps = client_jar(version)
+        sigs = load_method_sigs(maps)
+    except SystemExit as e:
+        return [str(e)], []
+
+    problems, notes = [], []
+    for file, group in reflective_groups():
+        listed = "".join(group)
+        for name in [c for c in group if not re.search(r"\bclass_\d+", c) and not c.startswith("#")]:
+            cls, _, member = name.partition("#")
+            obf_cls = classes.get(cls)
+            if obf_cls is None:
+                continue               # an absent class is the targets check's business
+
+            if not member:
+                want = inter_c.get(obf_cls)
+                if want and want.split("/")[-1] not in listed:
+                    problems.append("%s: %s is %s here, which is not in the candidate list"
+                                    % (file, cls.split(".")[-1], want))
+                continue
+
+            # A candidate may pin the overload: Owner#name(java.lang.Object)
+            want_params = None
+            if "(" in member:
+                member, args = member.split("(", 1)
+                want_params = tuple(a.strip() for a in args.rstrip(")").split(",") if a.strip())
+
+            hits = [k for k in sigs if k[0] == cls and k[1] == member
+                    and (want_params is None or k[2] == want_params)]
+            if not hits:
+                # Said out loud rather than skipped: a candidate the mappings cannot resolve is
+                # UNCHECKED, and silence here is what makes a green run look like a verified one.
+                notes.append("%s#%s is not in this version's mappings - candidate unchecked"
+                             % (cls.split(".")[-1], member))
+                continue
+            if len(hits) > 1:
+                problems.append("%s: %s#%s is ambiguous - %d overloads here; pin it as %s#%s(types)"
+                                % (file, cls.split(".")[-1], member, len(hits),
+                                   cls.split(".")[-1], member))
+                continue
+
+            obf_name, ret = sigs[hits[0]]
+            desc = "(" + "".join(jvm_type(a, classes) for a in hits[0][2]) + ")" \
+                   + jvm_type(ret, classes)
+            want = inter_m.get((obf_cls, obf_name, desc))
+            if want is None:
+                problems.append("%s: %s#%s has no intermediary entry for %s"
+                                % (file, cls.split(".")[-1], member, desc))
+            elif want not in listed:
+                problems.append("%s: %s#%s is %s here, which is not in the candidate list"
+                                % (file, cls.split(".")[-1], member, want))
+    return problems, notes
+
 def main(argv):
     versions = argv[1:]
     if not versions:
@@ -409,8 +581,9 @@ def main(argv):
     IMPORTS = imported_classes()
     # Counted from the first version asked for: one hook has a per-version copy, so the number is a
     # property of the version rather than of the source tree.
-    print("checking %d mixin targets and %d imported vanilla types\n"
-          % (sum(len(m["members"]) for m in parse_mixins(versions[0])), len(IMPORTS)))
+    print("checking %d mixin targets, %d vanilla types, %d reflective candidates\n"
+          % (sum(len(m["members"]) for m in parse_mixins(versions[0])), len(IMPORTS),
+             sum(len(g) for _, g in reflective_groups())))
 
     worst = 0
     for v in versions:
