@@ -165,6 +165,17 @@ public final class HideModelsClientTest implements FabricClientGameTest {
         }
     }
 
+    /**
+     * Puts the cursor on the first row under the tabs. The cursor is in window pixels, the layout
+     * in GUI pixels, so the point is scaled - at whatever scale the window actually got.
+     */
+    private static void hoverFirstRow(ClientGameTestContext context) {
+        final double[] scale = {1};
+        context.runOnClient(client -> scale[0] = client.getWindow().getGuiScale());
+        context.getInput().setCursorPos(30 * scale[0], 54 * scale[0]);
+        context.waitTicks(3);
+    }
+
     /** Children on the open screen: one per row, drawn or not. */
     private static int childCount() {
         try {
@@ -520,6 +531,11 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                         context.waitTicks(3);
                     }
                     context.runOnClient(client -> press(1));
+                    context.waitTicks(3);
+                    hoverFirstRow(context);
+                    context.takeScreenshot("sweep-scale" + scale + "-hover");
+                    context.getInput().setCursorPos(0, 0);
+                    context.waitTicks(3);
                 }
                 context.runOnClient(client -> client.options.guiScale().set(0));
             }
@@ -634,6 +650,43 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 System.out.println("[hidemodels-gametest] key opens the screen");
             });
             context.waitTicks(5);
+
+            // 14. WHAT THE HOVER BOX IS BUILT FROM: a model's piece count, the line that covers
+            //     it, and how much a line hides. The box itself is only looked at.
+            writeConfig("hidemodels:rig/");
+            context.waitFor(client -> HideModels.hidden("hidemodels:rig/head"));
+            context.runOnClient(client -> {
+                final String covering = HideModels.coveredBy("hidemodels:rig/head");
+                if (!"hidemodels:rig/".equals(covering)) {
+                    throw new AssertionError("a bone of a hidden model reported '" + covering
+                            + "' as the line covering it, not hidemodels:rig/");
+                }
+                NearbyModels.Nearby rig = null;
+                for (NearbyModels.Nearby n : NearbyModels.nearby(32.0)) {
+                    if ("hidemodels:rig/".equals(n.id())) {
+                        rig = n;
+                    }
+                }
+                if (rig == null || rig.pieces() != 2) {
+                    throw new AssertionError("the two-bone rig came back as " + rig);
+                }
+                final int matched = NearbyModels.piecesMatching(32.0, "hidemodels:rig/");
+                if (matched != 2) {
+                    throw new AssertionError("the rig's line matched " + matched + " pieces, not 2");
+                }
+                System.out.println("[hidemodels-gametest] hover detail: 2 pieces, covered by its line");
+            });
+            // The case the box exists for: hidden by a broader line, which a click cannot remove.
+            writeConfig("hidemodels:");
+            // Something only the new line hides, or this passes on the old config.
+            context.waitFor(client -> HideModels.hidden(TEST_MODEL));
+            context.runOnClient(client -> {
+                if (!"hidemodels:".equals(HideModels.coveredBy("hidemodels:rig/head"))) {
+                    throw new AssertionError("a broader line was not reported as the cover");
+                }
+            });
+            hoverFirstRow(context);
+            context.takeScreenshot("hover-detail");
 
             // Kept for a human to look at when a run fails; asserts nothing by itself, because a
             // screenshot comparison would fail on every unrelated resource-pack or lighting change.
