@@ -154,7 +154,7 @@ public final class SmokeChecks {
     }
 
     /**
-     * The three directives, driven the way the commands drive them.
+     * The directives, driven the way the commands drive them.
      *
      * <p>Each writes the config and reloads, and the observable effect is the point: off means
      * hidden() stops saying yes even though the pattern is still listed, and on brings it back.
@@ -184,6 +184,10 @@ public final class SmokeChecks {
 
         HideModels.setFirstPersonOnly(true);
         HideModels.setFirstPersonOnly(false);
+
+        HideModels.setGuiOnRight(true);
+        waitUntil(HideModels::isGuiOnRight, "/hidemodels gui-side right did not stick");
+        HideModels.setGuiOnRight(false);
         HideModels.remove(id);
     }
 

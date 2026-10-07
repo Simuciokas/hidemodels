@@ -170,9 +170,17 @@ public final class HideModelsClientTest implements FabricClientGameTest {
      * in GUI pixels, so the point is scaled - at whatever scale the window actually got.
      */
     private static void hoverFirstRow(ClientGameTestContext context) {
-        final double[] scale = {1};
-        context.runOnClient(client -> scale[0] = client.getWindow().getGuiScale());
-        context.getInput().setCursorPos(30 * scale[0], 54 * scale[0]);
+        hoverFirstRow(context, false);
+    }
+
+    /** As above, for a panel against the right edge: 30 GUI pixels in from that side instead. */
+    private static void hoverFirstRow(ClientGameTestContext context, boolean right) {
+        final double[] at = {1, 30};
+        context.runOnClient(client -> {
+            at[0] = client.getWindow().getGuiScale();
+            at[1] = right ? client.getWindow().getGuiScaledWidth() - 30 : 30;
+        });
+        context.getInput().setCursorPos(at[1] * at[0], 54 * at[0]);
         context.waitTicks(3);
     }
 
@@ -534,6 +542,17 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                     context.waitTicks(3);
                     hoverFirstRow(context);
                     context.takeScreenshot("sweep-scale" + scale + "-hover");
+                    context.runOnClient(client -> {
+                        HideModels.setGuiOnRight(true);
+                        press(1);
+                    });
+                    context.waitTicks(3);
+                    hoverFirstRow(context, true);
+                    context.takeScreenshot("sweep-scale" + scale + "-right");
+                    context.runOnClient(client -> {
+                        HideModels.setGuiOnRight(false);
+                        press(1);
+                    });
                     context.getInput().setCursorPos(0, 0);
                     context.waitTicks(3);
                 }
@@ -606,7 +625,20 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                     throw new AssertionError("radius - twice took 32 to " + HideModels.listRadius()
                             + ", not 16");
                 }
-                System.out.println("[hidemodels-gametest] settings tab: toggles and radius written");
+                press(8);
+                if (!HideModels.isGuiOnRight()) {
+                    throw new AssertionError("the panel side row did not move the panel right");
+                }
+            });
+            context.waitTicks(5);
+            context.takeScreenshot("settings-right");
+            context.runOnClient(client -> {
+                press(8);
+                if (HideModels.isGuiOnRight()) {
+                    throw new AssertionError("the panel side row did not move the panel back left");
+                }
+                System.out.println("[hidemodels-gametest] settings tab: toggles, radius and side "
+                        + "written");
             });
             context.waitTicks(5);
 

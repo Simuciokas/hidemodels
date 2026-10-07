@@ -133,6 +133,15 @@ public final class CommandTree {
                                             DoubleArgumentType.getDouble(ctx, "blocks"));
                                     return 1;
                                 })))
+                .then(b.literal("gui-side")
+                        .then(b.literal("left").executes(ctx -> {
+                            HideModels.setGuiOnRight(false);
+                            return 1;
+                        }))
+                        .then(b.literal("right").executes(ctx -> {
+                            HideModels.setGuiOnRight(true);
+                            return 1;
+                        })))
                 .then(b.literal("remove")
                         .then(b.argument("id", StringArgumentType.greedyString())
                                 .suggests(listed)
