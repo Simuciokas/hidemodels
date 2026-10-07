@@ -178,12 +178,15 @@ identical.
 
 ## Configuring it
 
-`config/hidemodels.txt`, one `item_model` id fragment per line, `#` for comments. Matching is a
-**substring** test, so a trailing slash hides a whole model and no slash hides a single bone:
+`config/hidemodels.txt`, one `item_model` id fragment per line, and `#` at the start of a line for a
+comment — after an id it would be read as part of it. Matching is a **substring** test, so a
+trailing slash hides a whole model and no slash hides a single bone:
 
 ```
-some_mount/         # the whole model
-some_mount/head     # just the head, so you can see past it while riding
+# the whole model
+some_mount/
+# just the head, so you can see past it while riding
+some_mount/head
 ```
 
 The shipped list is **empty**: which ids exist is entirely up to the server's resource pack, so any
@@ -207,7 +210,8 @@ under it, up to the next heading, apply while it is on; `off` after the brackets
 not applied. The lines above the first heading always apply — the screen calls them unsaved:
 
 ```
-some_mount/head         # unsaved: always applies
+# unsaved: always applies
+some_mount/head
 
 [Mounts]
 modelengine:some_mount/
