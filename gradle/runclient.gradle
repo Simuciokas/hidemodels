@@ -212,16 +212,16 @@ def extraMods = project.hasProperty('extraMods')
         ? project.property('extraMods').toString().split(',').collect { file(it.trim()) }
         : []
 
+// ONE BACKGROUND WORKER, on the launches here. 26.x compiles its shader pipelines in parallel on
+// that pool while loading resources, and AMD's driver crashes in its shader compiler doing so on at
+// least the RX 580, on OpenGL and Vulkan alike; 1.21.x is unaffected either way. Loading takes a
+// few seconds longer; nothing a test or the demo does leans on that pool.
+def oneWorker = '-Dmax.bg.threads=1'
+
 // EVERYTHING BELOW IS 26.x ONLY. On 1.21.x, Loom already provides runClient and
 // runClientGameTest, and build.gradle defines smokeTest against its run task - registering the
 // same names here would collide. The standalone gametest further down is the legacy-only half.
 if (!legacy) {
-    // ONE BACKGROUND WORKER, on every 26.x launch below. 26.x compiles its shader pipelines in
-    // parallel on that pool while loading resources, and AMD's driver crashes in its shader
-    // compiler doing so on at least the RX 580, on OpenGL and Vulkan alike. Loading takes a few
-    // seconds longer; nothing a test or the demo does leans on that pool.
-    def oneWorker = '-Dmax.bg.threads=1'
-
     tasks.register('runSmokeTest26', JavaExec) {
         group = 'verification'
         description = "Starts the ${mc} client with the mod and the smoke test, offline."
@@ -569,6 +569,7 @@ if (true) {
                 "-Djava.library.path=${nativesDir}".toString(),
                 "-Dorg.lwjgl.librarypath=${nativesDir}".toString(),
                 '-Dhidemodels.smoketest=true',
+                oneWorker,
                 '-Djava.awt.headless=true',
         ]
         args = [
