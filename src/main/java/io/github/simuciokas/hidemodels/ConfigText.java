@@ -24,22 +24,43 @@ import java.util.regex.Pattern;
 
 /**
  * The config file as sections: the lines before the first heading, which always apply, then one
- * section per profile, opened by a heading - {@code [Name]}, or {@code [Name] off} for one that is
- * saved but not applied.
+ * section per profile, opened by a heading - {@code [Name]}, with {@code off} after it for one that
+ * is saved but not applied, and {@code @address} for each server it is used on.
  *
  * <p>Every edit goes through here so it lands in the right section, and every line the user wrote
  * - comments, blank lines, their order - comes back out as it went in.
  */
 final class ConfigText {
 
-    private static final Pattern HEADING =
-            Pattern.compile("^\\s*\\[([^\\]]+)\\]\\s*(off)?\\s*$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern HEADING = Pattern.compile(
+            "^\\s*\\[([^\\]]+)\\]((?:\\s+(?:off|@\\S+))*)\\s*$", Pattern.CASE_INSENSITIVE);
 
     static final class Section {
         /** Null for the lines before the first heading. */
         String name;
         boolean on = true;
+        /** The servers it switches on for, as serverKey gives them; empty for one switched by hand. */
+        final List<String> servers = new ArrayList<>();
         final List<String> lines = new ArrayList<>();
+    }
+
+    /**
+     * A server address as profiles are linked by it: lower case, without spaces, a trailing dot or
+     * the default port - so Play.Example.net. and play.example.net:25565 are one server. Null for
+     * an address with nothing in it.
+     */
+    static String serverKey(String address) {
+        if (address == null) {
+            return null;
+        }
+        String key = address.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
+        if (key.endsWith(":25565")) {
+            key = key.substring(0, key.length() - ":25565".length());
+        }
+        while (key.endsWith(".")) {
+            key = key.substring(0, key.length() - 1);
+        }
+        return key.isEmpty() ? null : key;
     }
 
     /** The first is always the unnamed one, empty or not. */
@@ -57,7 +78,16 @@ final class ConfigText {
             if (m.matches()) {
                 current = new Section();
                 current.name = m.group(1).trim();
-                current.on = m.group(2) == null;
+                for (String word : m.group(2).trim().split("\\s+")) {
+                    if (word.equalsIgnoreCase("off")) {
+                        current.on = false;
+                    } else if (word.startsWith("@")) {
+                        final String key = serverKey(word.substring(1));
+                        if (key != null && !current.servers.contains(key)) {
+                            current.servers.add(key);
+                        }
+                    }
+                }
                 text.sections.add(current);
             } else {
                 current.lines.add(line);
@@ -70,11 +100,23 @@ final class ConfigText {
         final List<String> out = new ArrayList<>();
         for (Section s : sections) {
             if (s.name != null) {
-                out.add("[" + s.name + "]" + (s.on ? "" : " off"));
+                out.add(heading(s.name, s.on, s.servers));
             }
             out.addAll(s.lines);
         }
         return out;
+    }
+
+    /** A profile's heading line, as the file holds it. */
+    static String heading(String name, boolean on, List<String> servers) {
+        final StringBuilder out = new StringBuilder("[").append(name).append(']');
+        if (!on) {
+            out.append(" off");
+        }
+        for (String server : servers) {
+            out.append(" @").append(server);
+        }
+        return out.toString();
     }
 
     Section top() {

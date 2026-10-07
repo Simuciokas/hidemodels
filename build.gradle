@@ -376,11 +376,20 @@ ext.writeTestClientOptions = { File f ->
     f.text = kept.join(System.lineSeparator()) + System.lineSeparator()
 }
 
+// The gametest joins a dedicated server it starts in its own run directory, to test profiles tied to
+// a server, and a dedicated server refuses to start there until Mojang's EULA is marked accepted.
+// Only the gametest runs write this, and only into their own run directories.
+ext.acceptServerEula = { File dir ->
+    dir.mkdirs()
+    new File(dir, 'eula.txt').text = 'eula=true' + System.lineSeparator()
+}
+
 if (usesLoom) {
     def prepareClientOptions = tasks.register('prepareClientOptions') {
         description = 'Mutes the client and trims its render distance before it launches.'
         doLast {
             writeTestClientOptions(file('run/options.txt'))
+            acceptServerEula(file('run'))
             logger.lifecycle('client options written (run/options.txt): muted, render distance 2')
         }
     }

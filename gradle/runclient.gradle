@@ -320,6 +320,7 @@ if (!legacy) {
                 into mods
             }
             writeTestClientOptions(new File(runDir, 'options.txt'))
+            acceptServerEula(runDir)
         }
 
         classpath = files(clientJar) + mcLibJars +
@@ -450,6 +451,7 @@ if (legacy && project.hasGametest && project.gametestModuleVersion != null) {
                 into mods
             }
             writeTestClientOptions(new File(runDir, 'options.txt'))
+            acceptServerEula(runDir)
         }
 
         classpath = files(clientJar) + mcLibJars +

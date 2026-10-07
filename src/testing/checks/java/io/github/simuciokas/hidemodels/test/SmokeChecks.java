@@ -73,6 +73,7 @@ public final class SmokeChecks {
             checkAddAndRemove();
             checkSettings();
             checkProfiles();
+            checkServerProfiles();
             checkKeyRegistered();
             checkScreenOpens();
             final String button = checkConfigButton();
@@ -312,6 +313,51 @@ public final class SmokeChecks {
         mc.execute(() -> ((net.minecraft.client.gui.screens.Screen) currentScreen(mc)).onClose());
         waitUntil(() -> !(currentScreen(mc) instanceof io.github.simuciokas.hidemodels.HiddenListScreen),
                   "the screen did not close");
+    }
+
+    /**
+     * Profiles tied to servers, without one to join - there is no world here - so the switch that
+     * a join makes is called directly: profiles for that server on, those for others off, and one
+     * with no server left as it was. The heading keeps the addresses, written the one way.
+     */
+    private static void checkServerProfiles() throws IOException, InterruptedException {
+        final String here = "hidemodels:smoke_here";
+        final String there = "hidemodels:smoke_there";
+        final String mine = "hidemodels:smoke_mine";
+        write("[Here] off @Play.Example.NET.:25565\n" + here + "\n[There] @mc.other.org\n" + there
+                + "\n[Mine]\n" + mine);
+        waitUntil(() -> HideModels.profiles().size() == 3, "the server profiles were not read");
+        if (!HideModels.profiles().get(0).servers().equals(java.util.List.of("play.example.net"))) {
+            throw new AssertionError("the address was read as " + HideModels.profiles().get(0));
+        }
+        if (HideModels.currentServer() != null) {
+            throw new AssertionError("on the title screen, the server is "
+                    + HideModels.currentServer());
+        }
+        HideModels.switchProfilesFor("play.example.net");
+        waitUntil(() -> HideModels.hidden(here) && !HideModels.hidden(there)
+                        && HideModels.hidden(mine),
+                  "joining play.example.net did not switch its profile on and the other's off");
+        HideModels.setProfileServer("Mine", "MC.other.org", true);
+        HideModels.switchProfilesFor("mc.other.org");
+        waitUntil(() -> !HideModels.hidden(here) && HideModels.hidden(there)
+                        && HideModels.hidden(mine),
+                  "joining mc.other.org did not switch the profiles used there on and the other off");
+        final String file = Files.readString(CONFIG);
+        if (!file.contains("[Here] off @play.example.net")
+                || !file.contains("[Mine] @mc.other.org")) {
+            throw new AssertionError("the headings were written as:\n" + file);
+        }
+        final String copied = HideModels.profileText("There");
+        if (!copied.startsWith("[There] @mc.other.org\n")) {
+            throw new AssertionError("a copied profile lost its server: " + copied);
+        }
+        HideModels.setProfileServer("Mine", "mc.other.org", false);
+        if (!HideModels.profiles().get(2).servers().isEmpty()) {
+            throw new AssertionError("the profile was not unlinked: " + HideModels.profiles().get(2));
+        }
+        write("# cleared after the server profiles");
+        waitUntil(() -> HideModels.profiles().isEmpty(), "the server profiles were not cleared");
     }
 
     /**

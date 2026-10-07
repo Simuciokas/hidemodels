@@ -120,8 +120,10 @@ asks the mods list's factory.
 `./gradlew runClientGameTest -Pminecraft_version=1.21.8` goes further where Fabric's harness exists:
 it builds a world, summons an `item_display` carrying `minecraft:item_model`, and asserts the mod
 reads the component, honours its config, and that `/hidemodels`, its key and every tab of the screen
-do what they say. No ModelEngine and no server are needed, because the mod keys on a vanilla
-component on a vanilla entity, which is what makes it runnable anywhere.
+do what they say. No ModelEngine and no outside server are needed, because the mod keys on a
+vanilla component on a vanilla entity, which is what makes it runnable anywhere. Profiles tied to a
+server are tested on a real one: the harness starts a dedicated server in the run directory and
+joins it twice, which is why the gametest runs mark Mojang's EULA accepted there.
 
 **That includes 26.x, where there is no Loom.** The harness is published for 26.x like any other
 version, and it is just a mod: `gradle/runclient.gradle` puts it in the run directory beside the mod
@@ -229,6 +231,18 @@ Any number can be on at once, and a model is hidden if any of them hides it. A n
 without a square bracket, and two names that differ only in case are the same profile. Directives
 belong to the whole file wherever they are written; the screen writes them above the first heading.
 
+**An `@address` after the brackets ties a profile to a server**, as many as it is used on:
+
+```
+[Mounts] @play.example.net @mc.example.org
+modelengine:some_mount/
+```
+
+Joining one of them switches it on, and joining any other server switches it off; a profile with
+no address is only ever switched by hand. Addresses are compared as the server list has them —
+ignoring case, a trailing dot and the default `:25565` — and nothing switches in single player, on a
+LAN world or on a Realm, whose addresses change between sessions.
+
 **Profiles cost nothing per frame.** When the file loads, the unsaved lines and every profile that is
 on are merged into the one list the render check already reads, so the render hook never sees a
 profile at all, and switching one is a reload rather than a lookup.
@@ -254,7 +268,7 @@ go as you click it. It has three tabs:
 | tab | what it holds |
 |---|---|
 | Nearby | every model within the list radius: the one in front of you first, marked `»`, then nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head; a model with some bones hidden is marked orange, and clicking it hides the rest, then shows all of it again. A model a profile hides opens that profile instead |
-| Hidden | your lists: Unsaved, then each profile. Click a profile to switch it on or off, its count to open it, and `+` beside it to add the unsaved lines to it. In an open list a click takes a line out and keeps its row until the list is opened again, so a misclick is one click to undo; an open profile is also where it is renamed, by typing into its name, copied, and deleted. *Paste a profile* adds the ones on your clipboard |
+| Hidden | your lists: Unsaved, then each profile — this server's first, then those switched by hand, then other servers', dimmed but just as editable. Click a profile to switch it on or off, its count to open it, and `+` beside it to add the unsaved lines to it. In an open list a click takes a line out and keeps its row until the list is opened again, so a misclick is one click to undo; an open profile is also where it is renamed, by typing into its name, tied to the server you are on with *Use on this server*, copied, and deleted. *Paste a profile* adds the ones on your clipboard |
 | Settings | hiding on or off, first person only, the list radius, and where the panel sits: either top corner, or Move panel to put it anywhere |
 
 Hovering over a row says more: a model's piece count and how far away it is, how many of its pieces
@@ -268,6 +282,18 @@ moves those lines into a new profile, switched on, so nothing changes on screen 
 off. Switching a profile off brings its models back without forgetting them. A profile only changes
 from inside it, which is why clicking one of its models in Nearby opens it: a click that quietly
 edited a saved list would be easy to make and hard to notice.
+
+**Profiles for a server** switch themselves: *Use on this server* in an open profile ties it to the
+server you are playing on, and from then on joining that server switches it on and joining another
+switches it off. A switch by hand holds until you next join, and a profile can be tied to several
+servers, each listed in it with a switch of its own.
+
+On a network behind BungeeCord or Velocity this means one set of profiles for the whole network.
+The proxy moves you between its servers over the one connection you opened, and nothing the client
+receives names the server behind it — the brand says only "Paper (Velocity)", and every server uses
+the same dimension names — so the address you joined is the finest key there is. That is usually
+fine here, since an id from another server's resource pack simply matches nothing; a fragment
+without its namespace, though, could mean different models on different servers of a network.
 
 **Sharing a profile** is copying text. *Copy profile* puts its heading and lines on the clipboard,
 exactly as the config holds them, ready to send to someone on the same server; their *Paste a

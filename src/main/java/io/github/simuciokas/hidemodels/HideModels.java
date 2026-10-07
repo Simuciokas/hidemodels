@@ -71,7 +71,8 @@ public final class HideModels {
     private static volatile List<Profile> profiles = List.of();
 
     /** A saved list of lines, applied while it is on. */
-    public record Profile(String name, boolean on, List<String> patterns) {
+    /** A saved list; {@code servers} are those it switches on for, empty for one switched by hand. */
+    public record Profile(String name, boolean on, List<String> patterns, List<String> servers) {
     }
     private static volatile boolean enabled = true;
 
@@ -311,6 +312,89 @@ public final class HideModels {
     /** Must be called once per client tick; each loader's entrypoint does it. */
     public static void tick() {
         maybeReload();
+        switchOnJoin();
+    }
+
+    /** The connection's ServerData that profiles were last switched for. */
+    private static Object switchedFor;
+
+    /**
+     * On joining a server, each profile linked to servers is switched on if this is one of them and
+     * off if not; profiles without servers are left alone.
+     *
+     * <p>Once per connection, told apart by its ServerData: a proxy moving you to another backend
+     * keeps the same one, so a profile you switch by hand stays as you left it until you join
+     * again, while joining from the server list makes a new one.
+     */
+    private static void switchOnJoin() {
+        final net.minecraft.client.multiplayer.ServerData server =
+                Minecraft.getInstance().getCurrentServer();
+        if (server == null || server == switchedFor) {
+            return;
+        }
+        switchedFor = server;
+        final String key = currentServer();
+        if (key != null) {
+            switchProfilesFor(key);
+        }
+    }
+
+    /**
+     * The server being played on, as profiles are linked by it. Null in single player, and on a
+     * LAN world or a Realm, whose addresses change from one session to the next.
+     */
+    public static String currentServer() {
+        final net.minecraft.client.multiplayer.ServerData server =
+                Minecraft.getInstance().getCurrentServer();
+        return server == null || server.isLan() || server.isRealm()
+               ? null : ConfigText.serverKey(server.ip);
+    }
+
+    /** What joining a server does: profiles linked to it on, those linked only elsewhere off. */
+    public static void switchProfilesFor(String server) {
+        final List<String> changed = new ArrayList<>();
+        edit(text -> {
+            for (ConfigText.Section s : text.sections) {
+                if (s.name != null && !s.servers.isEmpty() && s.on != s.servers.contains(server)) {
+                    s.on = !s.on;
+                    changed.add("'" + s.name + "' " + (s.on ? "on" : "off"));
+                }
+            }
+            return !changed.isEmpty();
+        });
+        if (!changed.isEmpty()) {
+            confirm("on " + server + ": " + String.join(", ", changed), true);
+        }
+    }
+
+    /**
+     * Links a profile to a server so joining it switches the profile on, or unlinks it. Linking it
+     * to the server being played on switches it on now, as joining would have.
+     */
+    public static void setProfileServer(String name, String server, boolean linked) {
+        final String key = ConfigText.serverKey(server);
+        if (key == null) {
+            return;
+        }
+        final boolean[] changed = {false};
+        edit(text -> {
+            final ConfigText.Section s = text.profile(name);
+            if (s == null || s.servers.contains(key) == linked) {
+                return false;
+            }
+            if (linked) {
+                s.servers.add(key);
+                s.on |= key.equals(currentServer());
+            } else {
+                s.servers.remove(key);
+            }
+            changed[0] = true;
+            return true;
+        });
+        if (changed[0]) {
+            confirm("profile '" + name + "' " + (linked ? "used on " : "no longer used on ") + key,
+                    true);
+        }
     }
 
     private static boolean matches(String itemModelId) {
@@ -573,23 +657,29 @@ public final class HideModels {
     private static final java.util.regex.Pattern ID =
             java.util.regex.Pattern.compile("[a-z0-9_.:/-]+");
 
-    /** A profile as text to share: its heading and its lines. Null if no profile has the name. */
+    /**
+     * A profile as text to share: its heading, with the servers it is used on, and its lines. Null
+     * if no profile has the name.
+     */
     public static String profileText(String name) {
         for (Profile p : profiles()) {
             if (p.name().equalsIgnoreCase(name)) {
-                return "[" + p.name() + "]\n" + String.join("\n", p.patterns());
+                return ConfigText.heading(p.name(), true, p.servers()) + "\n"
+                        + String.join("\n", p.patterns());
             }
         }
         return null;
     }
 
     /**
-     * Adds the profiles in a piece of text - one copied from the screen, or a whole config -
-     * switched on. Only headings and the id lines under them are taken: comments, directives and
-     * anything that is not an id are dropped, so a paste never changes a setting. A name in use
-     * gets a number; a profile already here with the same lines is not added again.
+     * Adds the profiles in a piece of text - one copied from the screen, or a whole config - each
+     * switched on unless it is used only on other servers. Only headings, with their servers, and
+     * the id lines under them are taken: comments, directives and anything that is not an id are
+     * dropped, so a paste never changes a setting. A name in use gets a number; a profile already
+     * here with the same lines is not added again.
      */
     public static Pasted pasteProfiles(String text) {
+        final String here = currentServer();
         final ConfigText pasted = ConfigText.parse(
                 text == null ? List.of() : List.of(text.split("\\R")));
         final List<String> added = new ArrayList<>();
@@ -617,6 +707,8 @@ public final class HideModels {
                     continue;
                 }
                 final ConfigText.Section to = config.addProfile(freeName(config, name));
+                to.servers.addAll(s.servers);
+                to.on = s.servers.isEmpty() || s.servers.contains(here);
                 for (String line : lines) {
                     ConfigText.append(to, line);
                 }
@@ -1013,7 +1105,8 @@ public final class HideModels {
                 loose.addAll(pats);
                 effective.addAll(pats);
             } else {
-                saved.add(new Profile(section.name, section.on, List.copyOf(pats)));
+                saved.add(new Profile(section.name, section.on, List.copyOf(pats),
+                        List.copyOf(section.servers)));
                 if (section.on) {
                     effective.addAll(pats);
                 }
@@ -1074,10 +1167,11 @@ public final class HideModels {
                 # PROFILES. A line in square brackets starts a profile: the lines under it, up to
                 # the next one, are a saved list that applies while it is on. "off" after the
                 # brackets keeps it saved but not applied. Lines above the first profile always
-                # apply - the screen calls them unsaved.
+                # apply - the screen calls them unsaved. An @address after the brackets ties a
+                # profile to a server: joining it switches the profile on, joining any other off.
                 #     [Mounts]
                 #     modelengine:some_mount/
-                #     [PvP] off
+                #     [PvP] off @play.example.net
                 #     modelengine:wings/
                 #
                 # IN GAME: /hidemodels, or a key you bind under Hide Models in Controls, opens a

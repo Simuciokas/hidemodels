@@ -997,5 +997,80 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             // screenshot comparison would fail on every unrelated resource-pack or lighting change.
             context.takeScreenshot("hidemodels-after-hide");
         }
+
+        // 14. PROFILES FOR A SERVER, on a real one: the harness starts a dedicated server and
+        //     joins it, the only way to have an address to link to. Joining switches a profile
+        //     linked elsewhere off and leaves one switched by hand alone; Use on this server links
+        //     one; and only a fresh join switches again, so a hand switch holds until then.
+        writeConfig("[Elsewhere] @other.example.net\nhidemodels:elsewhere/\n[Manual]\nhidemodels:manual/");
+        context.waitFor(client -> HideModels.profiles().size() == 2);
+        try (var server = context.worldBuilder().createServer()) {
+            final String[] here = {null};
+            try (var connection = server.connect()) {
+                context.waitTicks(20);
+                context.runOnClient(client -> {
+                    here[0] = HideModels.currentServer();
+                    if (here[0] == null || profile("Elsewhere").on() || !profile("Manual").on()) {
+                        throw new AssertionError("joining " + here[0] + " left "
+                                + HideModels.profiles());
+                    }
+                    io.github.simuciokas.hidemodels.Screens.open(client, new HiddenListScreen(null));
+                });
+                context.waitTicks(5);
+                context.runOnClient(client -> {
+                    // The lists: Unsaved, its cell, then Manual and its count - switched by hand,
+                    // so above Elsewhere, which is for another server.
+                    press(2);
+                    press(7);
+                    // Open: the way back, the name box, Use on this server, Copy, Delete.
+                    press(5);
+                    if (!profile("Manual").servers().equals(java.util.List.of(here[0]))
+                            || !profile("Manual").on()) {
+                        throw new AssertionError("Use on this server gave " + profile("Manual"));
+                    }
+                });
+                context.waitTicks(5);
+                context.takeScreenshot("use-on-this-server");
+                context.runOnClient(client -> {
+                    // Back on the lists, Manual is now this server's and comes first.
+                    press(4);
+                    press(6);
+                    if (profile("Manual").on()) {
+                        throw new AssertionError("switching the profile off by hand did nothing");
+                    }
+                });
+                context.waitTicks(5);
+                context.takeScreenshot("server-profiles");
+                context.waitTicks(20);
+                context.runOnClient(client -> {
+                    if (profile("Manual").on()) {
+                        throw new AssertionError("a profile switched off by hand came back on "
+                                + "without a new join");
+                    }
+                });
+            }
+            // A beat for the server to let the last session go: joining again in the same tick
+            // stalls the login on 1.21.11.
+            context.waitTicks(20);
+            try (var connection = server.connect()) {
+                context.waitTicks(20);
+                context.runOnClient(client -> {
+                    if (!profile("Manual").on() || profile("Elsewhere").on()) {
+                        throw new AssertionError("joining again left " + HideModels.profiles());
+                    }
+                    System.out.println("[hidemodels-gametest] server profiles: switched on joining "
+                            + here[0] + ", linked from the screen, held until the next join");
+                });
+            }
+        }
+    }
+
+    private static HideModels.Profile profile(String name) {
+        for (HideModels.Profile p : HideModels.profiles()) {
+            if (p.name().equals(name)) {
+                return p;
+            }
+        }
+        throw new AssertionError("no profile " + name + " in " + HideModels.profiles());
     }
 }

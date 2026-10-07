@@ -100,6 +100,8 @@ public final class HiddenListScreen extends ClearScreen {
      * and the lines are only re-read when the list is opened again.
      */
     private List<String> openLines = List.of();
+    /** The servers the open profile was used on when it opened; kept like its lines. */
+    private List<String> openServers = List.of();
     /** The page of lists to go back to from an open one. */
     private int listsPage;
     /** Set by the first click on Delete profile; the second deletes. */
@@ -188,15 +190,44 @@ public final class HiddenListScreen extends ClearScreen {
         return tab == NEARBY && bonesOf != null;
     }
 
-    /** Back and Delete above an open list; Unsaved and Save above the profiles. */
+    /** The rows above an open list, and above and below the profiles. */
     private int hiddenFixedRows() {
         if (tab != HIDDEN) {
             return 0;
         }
         if (openList != null) {
-            return openList.isEmpty() ? 1 : 4;
+            return openList.isEmpty() ? 1 : 4 + serverRows().size();
         }
         return HideModels.unsaved().isEmpty() ? 2 : 3;
+    }
+
+    /**
+     * The open profile's server rows: the server being played on first, if there is one, then each
+     * other server it was used on when it opened.
+     */
+    private List<String> serverRows() {
+        final String here = HideModels.currentServer();
+        final List<String> out = new ArrayList<>();
+        if (here != null) {
+            out.add(here);
+        }
+        for (String server : openServers) {
+            if (!server.equals(here)) {
+                out.add(server);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Which group a profile is listed in: those for the server being played on, then those switched
+     * by hand, then those for other servers - still there to open, rename and edit.
+     */
+    private static int serverRank(HideModels.Profile p, String here) {
+        if (p.servers().isEmpty()) {
+            return 1;
+        }
+        return here != null && p.servers().contains(here) ? 0 : 2;
     }
 
     private static HideModels.Profile profileNamed(String name) {
@@ -230,6 +261,7 @@ public final class HiddenListScreen extends ClearScreen {
         final HideModels.Profile p = list.isEmpty() ? null : profileNamed(list);
         openLines = List.copyOf(list.isEmpty() ? HideModels.unsaved()
                 : p == null ? List.of() : p.patterns());
+        openServers = p == null ? List.of() : List.copyOf(p.servers());
         confirmDelete = false;
         copied = false;
         pasted = null;
@@ -270,7 +302,10 @@ public final class HiddenListScreen extends ClearScreen {
         final List<NearbyModels.Nearby> found = nearbyRows();
         final List<String> source = new ArrayList<>();
         if (tab == HIDDEN && openList == null) {
-            for (HideModels.Profile p : HideModels.profiles()) {
+            final String here = HideModels.currentServer();
+            final List<HideModels.Profile> ranked = new ArrayList<>(HideModels.profiles());
+            ranked.sort(java.util.Comparator.comparingInt(p -> serverRank(p, here)));
+            for (HideModels.Profile p : ranked) {
                 source.add(p.name());
             }
         } else if (tab == HIDDEN) {
@@ -341,6 +376,9 @@ public final class HiddenListScreen extends ClearScreen {
             content = Math.max(content, measure("◀ " + (openList.isEmpty() ? UNSAVED : openList)));
             if (!openList.isEmpty()) {
                 content = Math.max(content, Math.max(measure(DELETE_SURE), measure(COPIED)));
+                for (String server : serverRows()) {
+                    content = Math.max(content, measure(serverLabel(server)) + PAD + measure("Off"));
+                }
             }
         }
         final int prevW = measure(PREV) + PAD * 2;
@@ -538,7 +576,14 @@ public final class HiddenListScreen extends ClearScreen {
             final int cells = cellW + (unsavedCount > 0 ? plusW + GAP : 0);
             final Row row = row(left, y, w - cells - GAP, name);
             row.on = p.on();
-            row.hint = p.on() ? "On - click to switch it off" : "Off - click to switch it on";
+            final int rank = serverRank(p, HideModels.currentServer());
+            row.muted = rank == 2;
+            row.hint = (rank == 0 ? "Used on this server\n"
+                        : rank == 2 ? "Used on " + p.servers().get(0)
+                                      + (p.servers().size() > 1 ? " and " + (p.servers().size() - 1)
+                                         + " more" : "") + "\n"
+                        : "")
+                    + (p.on() ? "On - click to switch it off" : "Off - click to switch it on");
             hit(row, () -> {
                 HideModels.setProfileOn(name, !p.on());
                 rebuildWidgets();
@@ -593,6 +638,18 @@ public final class HiddenListScreen extends ClearScreen {
             name.field = true;
             name.hint = "Click to rename it, then type";
             y += ROW + GAP;
+            final HideModels.Profile profile = profileNamed(openList);
+            final String here = HideModels.currentServer();
+            // Switches, as in Settings: on means joining that server switches the profile on.
+            for (String server : serverRows()) {
+                final boolean used = profile != null && profile.servers().contains(server);
+                toggle(y, w, serverLabel(server), used
+                        ? "Switched on when you join " + server + ",\nand off on any other"
+                        : "Switch it on whenever you join " + server
+                          + (server.equals(here) ? "" : "\nYou are not on it now"), used,
+                        () -> HideModels.setProfileServer(openList, server, !used));
+                y += ROW + GAP;
+            }
             final Row copy = row(left, y, w, copied ? COPIED : COPY);
             copy.hint = "Copies it as text, for someone to paste into theirs";
             hit(copy, () -> {
@@ -620,6 +677,11 @@ public final class HiddenListScreen extends ClearScreen {
             y += ROW + GAP;
         }
         return y;
+    }
+
+    /** A server row's label: the server being played on as such, any other by its address. */
+    private static String serverLabel(String server) {
+        return server.equals(HideModels.currentServer()) ? "Use on this server" : "Use on " + server;
     }
 
     /** Takes a line out of the open list, or puts it back. */
