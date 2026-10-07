@@ -507,8 +507,15 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                         break;
                     }
                     context.waitTicks(10);
-                    context.takeScreenshot("sweep-scale" + scale);
-                    context.waitTicks(3);
+                    final String[] tabs = {"nearby", "hidden", "settings"};
+                    for (int t = 0; t < tabs.length; t++) {
+                        final int nth = t + 1;
+                        context.runOnClient(client -> press(nth));
+                        context.waitTicks(5);
+                        context.takeScreenshot("sweep-scale" + scale + "-" + tabs[t]);
+                        context.waitTicks(3);
+                    }
+                    context.runOnClient(client -> press(1));
                 }
                 context.runOnClient(client -> client.options.guiScale().set(0));
             }
@@ -523,12 +530,12 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.waitTicks(10);
             context.runOnClient(client -> client.getConnection().sendCommand("hidemodels gui"));
             context.waitTicks(20);
-            // Buttons in the order the screen adds them: the tabs, then the rows.
+            // Buttons in the order the screen adds them: the three tabs, then the rows.
             context.runOnClient(client -> press(2));
             context.waitTicks(15);
             context.runOnClient(client -> {
                 final int before = childCount();
-                press(3);
+                press(4);
                 final int after = childCount();
                 if (before != after) {
                     throw new AssertionError("the row went away when unhidden: " + before
@@ -541,6 +548,45 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                     throw new AssertionError("unhiding from the hidden tab did not edit the config");
                 }
                 System.out.println("[hidemodels-gametest] hidden tab: config edited, row kept");
+            });
+            context.waitTicks(5);
+
+            // 12. THE SETTINGS TAB, which must leave the config exactly as the matching command
+            //     would. Buttons there: the tabs, hiding, first person only, radius -, radius +.
+            context.runOnClient(client -> client.getConnection().sendCommand("hidemodels radius 30"));
+            context.waitTicks(10);
+            context.runOnClient(client -> press(3));
+            context.waitTicks(10);
+            context.runOnClient(client -> {
+                press(4);
+                if (HideModels.isEnabled()) {
+                    throw new AssertionError("the hiding toggle did not turn hiding off");
+                }
+                press(4);
+                if (!HideModels.isEnabled()) {
+                    throw new AssertionError("the hiding toggle did not turn hiding back on");
+                }
+                press(5);
+                if (!HideModels.isFirstPersonOnly()) {
+                    throw new AssertionError("the first-person toggle did not turn it on");
+                }
+                press(5);
+                if (HideModels.isFirstPersonOnly()) {
+                    throw new AssertionError("the first-person toggle did not turn it back off");
+                }
+                // Off a multiple on purpose: + goes to the next one, not 30 + 8.
+                press(7);
+                if (HideModels.listRadius() != 32.0) {
+                    throw new AssertionError("radius + took 30 to " + HideModels.listRadius()
+                            + ", not 32");
+                }
+                press(6);
+                press(6);
+                if (HideModels.listRadius() != 16.0) {
+                    throw new AssertionError("radius - twice took 32 to " + HideModels.listRadius()
+                            + ", not 16");
+                }
+                System.out.println("[hidemodels-gametest] settings tab: toggles and radius written");
             });
             context.waitTicks(5);
 

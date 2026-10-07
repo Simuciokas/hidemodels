@@ -40,7 +40,7 @@ public final class HiddenListScreen extends ClearScreen {
     private static final int GAP = 2;
     /** Text inset either side of a label, so a row is never flush against its own edge. */
     private static final int PAD = 7;
-    private static final int MIN_WIDTH = 90;
+    private static final int RADIUS_STEP = 8;
 
     private static final int PANEL = 0xF00C0C10;
     private static final int ROW_BG = 0xFF1C1C24;
@@ -49,8 +49,11 @@ public final class HiddenListScreen extends ClearScreen {
     private static final int TEXT = 0xFFE8E8E8;
     private static final int DIM = 0xFF9A9AA4;
 
-    private static final String NEARBY_TAB = "nearby";
-    private static final String HIDDEN_TAB = "hidden";
+    private static final int NEARBY = 0;
+    private static final int HIDDEN = 1;
+    private static final int SETTINGS = 2;
+    private static final String[] TABS = {"nearby", "hidden", "settings"};
+
     private static final String PREV = "◀ prev";
     private static final String NEXT = "next ▶";
     private static final String CLOSE = "close";
@@ -58,7 +61,7 @@ public final class HiddenListScreen extends ClearScreen {
     private final Screen parent;
     private final List<Row> rows = new ArrayList<>();
     private int page;
-    private boolean showHidden;
+    private int tab = NEARBY;
     /**
      * The hide list as it was when this tab was opened.
      *
@@ -68,7 +71,7 @@ public final class HiddenListScreen extends ClearScreen {
      */
     private List<String> hiddenSnapshot = List.of();
     /** Set by build: the widest row on this page, which is what the panel is drawn around. */
-    private int panelWidth = MIN_WIDTH;
+    private int panelWidth;
 
     /**
      * One line: where it is, what it says, and a hit target.
@@ -84,8 +87,11 @@ public final class HiddenListScreen extends ClearScreen {
         int y;
         int w;
         String label;
+        /** Drawn against the right edge, for a setting's current value. */
+        String value;
         boolean on;
         boolean muted;
+        boolean clickable;
     }
 
     public HiddenListScreen(Screen parent) {
@@ -97,7 +103,7 @@ public final class HiddenListScreen extends ClearScreen {
     private static final int BOTTOM_MARGIN = 12;
 
     private int perPage() {
-        // Room kept for two rows of chrome at the bottom - the pager and close - plus the header.
+        // Room kept for three rows of chrome - the tabs, the pager and close - plus the header.
         final int usable = height - Y - 14 - 3 * (ROW + GAP) - BOTTOM_MARGIN;
         return Math.max(1, usable / (ROW + GAP));
     }
@@ -106,11 +112,16 @@ public final class HiddenListScreen extends ClearScreen {
         return Math.max(1, (total + perPage() - 1) / perPage());
     }
 
+    private List<String> source() {
+        if (tab == HIDDEN) {
+            return hiddenSnapshot;
+        }
+        return tab == NEARBY ? NearbyModels.nearbyIds(HideModels.listRadius()) : List.of();
+    }
+
     private void build() {
         rows.clear();
-        final List<String> source = showHidden
-                ? hiddenSnapshot
-                : NearbyModels.nearbyIds(HideModels.listRadius());
+        final List<String> source = source();
         final int perPage = perPage();
         final int pages = pageCount(source.size());
         // A page can vanish under you: hiding the last model on it leaves the index past the end.
@@ -119,36 +130,43 @@ public final class HiddenListScreen extends ClearScreen {
         final int from = page * perPage;
         final List<String> shown = source.subList(from, Math.min(source.size(), from + perPage));
 
+        final int[] tabW = new int[TABS.length];
+        int strip = -GAP;
+        for (int i = 0; i < TABS.length; i++) {
+            tabW[i] = measure(TABS[i]) + PAD * 2;
+            strip += tabW[i] + GAP;
+        }
+
         // WIDTH COMES FROM THIS PAGE'S CONTENT, not from a constant: ids vary from a dozen
         // characters to fifty, and a column sized for the worst case wastes the screen the rest of
         // the time. Capped at a third of the screen so one absurd id cannot swallow the view it is
-        // meant to leave clear.
-        final int cap = Math.max(MIN_WIDTH, width / 3);
+        // meant to leave clear - but never narrower than the tabs.
+        final int cap = Math.max(strip, width / 3);
         int content = measure(header(source.size(), pages));
         for (String id : shown) {
             content = Math.max(content, measure(id));
         }
         final int prevW = measure(PREV) + PAD * 2;
         final int nextW = measure(NEXT) + PAD * 2;
-        final int rowWidth = Math.min(cap, Math.max(MIN_WIDTH,
+        final int rowWidth = Math.min(cap, Math.max(strip,
                 Math.max(content + PAD * 2, pages > 1 ? prevW + GAP + nextW : 0)));
         panelWidth = rowWidth;
 
         int y = Y + 14;
-        // The two tabs, the active one lit. Switching re-reads the hide list and goes to page one.
-        final int tabW = Math.max(measure(NEARBY_TAB), measure(HIDDEN_TAB)) + PAD * 2;
-        tab(X, y, tabW, NEARBY_TAB, !showHidden, false);
-        tab(X + tabW + GAP, y, tabW, HIDDEN_TAB, showHidden, true);
+        int x = X;
+        for (int i = 0; i < TABS.length; i++) {
+            tabButton(x, y, tabW[i], i);
+            x += tabW[i] + GAP;
+        }
         y += ROW + GAP;
 
+        if (tab == SETTINGS) {
+            y = settings(y, rowWidth);
+        }
+
         for (String id : shown) {
-            final Row row = new Row();
-            row.x = X;
-            row.y = y;
-            row.w = rowWidth;
-            row.label = id;
+            final Row row = row(X, y, rowWidth, id);
             row.on = HideModels.listed(id);
-            rows.add(row);
             hit(row, () -> {
                 if (HideModels.listed(id)) {
                     HideModels.remove(id);
@@ -173,36 +191,74 @@ public final class HiddenListScreen extends ClearScreen {
         return net.minecraft.client.Minecraft.getInstance().font.width(s);
     }
 
-    /** An invisible button over the row, so vanilla delivers the click. */
-    private void hit(Row row, Runnable action) {
-        addRenderableWidget(Button.builder(Component.empty(), b -> action.run())
-                .bounds(row.x, row.y, row.w, ROW).build());
-    }
-
-    private void tab(int x, int y, int w, String label, boolean active, boolean hidden) {
+    private Row row(int x, int y, int w, String label) {
         final Row row = new Row();
         row.x = x;
         row.y = y;
         row.w = w;
         row.label = label;
-        row.muted = !active;
         rows.add(row);
+        return row;
+    }
+
+    /** An invisible button over the row, so vanilla delivers the click. */
+    private void hit(Row row, Runnable action) {
+        row.clickable = true;
+        addRenderableWidget(Button.builder(Component.empty(), b -> action.run())
+                .bounds(row.x, row.y, row.w, ROW).build());
+    }
+
+    /** Switching re-reads the hide list and goes back to page one. */
+    private void tabButton(int x, int y, int w, int which) {
+        final Row row = row(x, y, w, TABS[which]);
+        row.muted = tab != which;
         hit(row, () -> {
-            showHidden = hidden;
+            tab = which;
             hiddenSnapshot = List.of(HideModels.patterns());
             page = 0;
             rebuildWidgets();
         });
     }
 
+    /** Each writes the config exactly as its command does, so the screen and the file agree. */
+    private int settings(int y, int w) {
+        final boolean enabled = HideModels.isEnabled();
+        toggle(y, w, "hiding", enabled, () -> HideModels.setEnabled(!enabled));
+        y += ROW + GAP;
+        final boolean firstPerson = HideModels.isFirstPersonOnly();
+        toggle(y, w, "first person only", firstPerson,
+                () -> HideModels.setFirstPersonOnly(!firstPerson));
+        y += ROW + GAP;
+
+        final int sideW = measure("+") + PAD * 2;
+        chrome(X, y, sideW, "-", () -> stepRadius(-1));
+        final Row radius = row(X + sideW + GAP, y, w - 2 * (sideW + GAP), "list radius");
+        radius.value = Integer.toString((int) HideModels.listRadius());
+        chrome(X + w - sideW, y, sideW, "+", () -> stepRadius(1));
+        return y + ROW + GAP;
+    }
+
+    private void toggle(int y, int w, String label, boolean on, Runnable action) {
+        final Row row = row(X, y, w, label);
+        row.value = on ? "on" : "off";
+        row.on = on;
+        hit(row, () -> {
+            action.run();
+            rebuildWidgets();
+        });
+    }
+
+    /** To the next multiple of the step, so 30 goes to 32 rather than 38. */
+    private void stepRadius(int direction) {
+        final double steps = HideModels.listRadius() / RADIUS_STEP;
+        final double next = direction > 0 ? Math.floor(steps) + 1 : Math.ceil(steps) - 1;
+        HideModels.setListRadius(next * RADIUS_STEP);
+        rebuildWidgets();
+    }
+
     private void chrome(int x, int y, int w, String label, Runnable action) {
-        final Row row = new Row();
-        row.x = x;
-        row.y = y;
-        row.w = w;
-        row.label = label;
+        final Row row = row(x, y, w, label);
         row.muted = true;
-        rows.add(row);
         hit(row, action);
     }
 
@@ -224,20 +280,25 @@ public final class HiddenListScreen extends ClearScreen {
         final int bottom = rows.isEmpty() ? Y + 28 : rows.get(rows.size() - 1).y + ROW;
         p.fill(X - 4, Y - 6, panelWidth + 8, bottom - Y + 12, PANEL);
 
-        final int total = showHidden
-                ? hiddenSnapshot.size()
-                : NearbyModels.nearbyIds(HideModels.listRadius()).size();
+        final int total = source().size();
         p.text(header(total, pageCount(total)), X, Y, DIM);
 
         for (Row row : rows) {
-            final boolean hover = inside(row, mouseX, mouseY);
+            final boolean hover = row.clickable && inside(row, mouseX, mouseY);
             p.fill(row.x, row.y, row.w, ROW, hover ? ROW_HOVER : ROW_BG);
             if (row.on) {
                 // A bar down the left edge rather than a tick: it reads at a glance down a column.
                 p.fill(row.x, row.y, 2, ROW, ACCENT);
             }
             final int ty = row.y + (ROW - p.lineHeight()) / 2 + 1;
-            p.text(fit(p, row.label, row.w - PAD * 2), row.x + PAD, ty, row.muted ? DIM : TEXT);
+            int room = row.w - PAD * 2;
+            if (row.value != null) {
+                final int vw = p.textWidth(row.value);
+                p.text(row.value, row.x + row.w - PAD - vw, ty,
+                        row.on ? ACCENT : row.clickable ? DIM : TEXT);
+                room -= vw + PAD;
+            }
+            p.text(fit(p, row.label, room), row.x + PAD, ty, row.muted ? DIM : TEXT);
         }
     }
 
@@ -259,8 +320,13 @@ public final class HiddenListScreen extends ClearScreen {
     }
 
     private String header(int total, int pages) {
+        if (tab == SETTINGS) {
+            return HideModels.isServerDisabled()
+                    ? "this server has hiding off"
+                    : "config/" + HideModels.MOD_ID + ".txt";
+        }
         final String page = pages > 1 ? "    " + (this.page + 1) + "/" + pages : "";
-        if (showHidden) {
+        if (tab == HIDDEN) {
             return (total == 0 ? "nothing hidden" : total + " hidden") + page;
         }
         final int radius = (int) HideModels.listRadius();
