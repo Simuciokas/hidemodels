@@ -72,21 +72,14 @@ ext.neoForgeVersion = NEOFORGE[project.minecraft_version]
 def GROUPS = [
         fabric  : [
                 ['26.3', '26.2', '26.1.2', '26.1.1', '26.1'],
-                ['1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7', '1.21.6', '1.21.5'],
-                ['1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5'],
+                ['1.21.11', '1.21.10', '1.21.9', '1.21.8', '1.21.7', '1.21.6', '1.21.5',
+                 '1.21.4', '1.21.3', '1.21.2', '1.21.1', '1.21', '1.20.6', '1.20.5'],
         ],
-        // NEOFORGE SPLITS WHERE FABRIC DOES NOT, at 1.21.11, and the reason is unavoidable:
-        // ResourceLocation was renamed to Identifier there, and a class name sits inside the method
-        // descriptors this mod compiles against. Fabric never sees it - a Fabric jar is remapped to
-        // intermediary, where both spellings are the same id - while NeoForge runs on official
-        // names, where they are two different classes.
-        //
         // Only versions NeoForge has a stable build for appear here.
         neoforge: [
                 ['26.3', '26.2', '26.1.2'],
-                ['1.21.11'],
-                ['1.21.10', '1.21.8', '1.21.5'],
-                ['1.21.4', '1.21.3', '1.21.1', '1.21', '1.20.6'],
+                ['1.21.11', '1.21.10', '1.21.8', '1.21.5', '1.21.4', '1.21.3', '1.21.1', '1.21',
+                 '1.20.6'],
         ],
 ]
 
@@ -225,6 +218,7 @@ tasks.register('printGroups') {
 // cannot bridge it, since a 1.21.x build is remapped to intermediary and the runtime name is
 // method_NNNN. Everything else in src/main compiles unchanged across the whole range.
 sourceSets.main.java.srcDir(legacy ? 'src/versions/chat-mc121/java' : 'src/versions/chat-mc26/java')
+sourceSets.main.java.srcDir(legacy ? 'src/versions/screen-mc121/java' : 'src/versions/screen-mc26/java')
 
 // A SECOND SPLIT, on a DIFFERENT BOUNDARY, which is why it is not folded into the one above.
 // ClickEvent was a class with a constructor through 1.21.4 and became a sealed interface of records
@@ -251,7 +245,6 @@ ext.olderThan = { String bound ->
     }
     return false
 }
-sourceSets.main.java.srcDir(olderThan('1.21.5') ? 'src/versions/click-mc1214/java' : 'src/versions/click-mc1215/java')
 
 // THE LOADER'S OWN CODE. src/main is loader-agnostic - it knows about Minecraft and nothing else -
 // and everything that talks to Fabric API lives here: the registered command and the disconnect
@@ -326,6 +319,14 @@ if (usesLoom) {
 // only way to test a mod whose logic only exists inside a running game. Gradle 9 fails a build when
 // a test task finds sources but discovers no tests, so `./gradlew build` broke on both paths until
 // this said out loud that there is nothing to discover.
+// -PguiSweep turns on the screenshot sweep inside the client gametest: the screen captured at
+// every GUI scale, written to the run directory's screenshots folder. Off by default because it
+// adds twenty-odd seconds and a pile of images to an ordinary run.
+if (project.hasProperty('guiSweep')) {
+    tasks.matching { it.name in ['runClientGameTest', 'runClientGameTestStandalone'] }
+            .configureEach { systemProperty 'hidemodels.guisweep', 'true' }
+}
+
 tasks.named('test') { enabled = false }
 
 // SETTINGS EVERY TEST LAUNCH WANTS, written before the client reads options.txt at startup. Shared
