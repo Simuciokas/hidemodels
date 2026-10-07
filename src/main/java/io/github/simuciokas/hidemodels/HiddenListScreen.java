@@ -67,6 +67,7 @@ public final class HiddenListScreen extends ClearScreen {
     private static final String NEXT = "Next ▶";
     private static final String CLOSE = "Close";
     private static final String MOVING = "Click to place, Esc cancels";
+    private static final String RADIUS_LABEL = "List radius";
     private static final String OPEN = " ▶";
 
     private final Screen parent;
@@ -126,6 +127,8 @@ public final class HiddenListScreen extends ClearScreen {
         Runnable action;
         boolean on;
         boolean muted;
+        /** Text in the middle of the row rather than at its left, for a number in a small box. */
+        boolean centered;
     }
 
     public HiddenListScreen(Screen parent) {
@@ -189,6 +192,9 @@ public final class HiddenListScreen extends ClearScreen {
         // meant to leave clear - but never narrower than the tabs.
         final int cap = Math.max(strip, width / 3);
         int content = Math.max(measure(header(source.size(), pages)), moving ? measure(MOVING) : 0);
+        if (tab == SETTINGS) {
+            content = Math.max(content, measure(RADIUS_LABEL) + GAP + stepperWidth());
+        }
         if (showingBones()) {
             content = Math.max(content, measure("◀ " + bonesOf));
         }
@@ -356,12 +362,17 @@ public final class HiddenListScreen extends ClearScreen {
                 firstPerson, () -> HideModels.setFirstPersonOnly(!firstPerson));
         y += ROW + GAP;
 
+        // - and + either side of the number, so both buttons sit by what they change.
         final int sideW = measure("+") + PAD * 2;
-        chrome(left, y, sideW, "-", () -> stepRadius(-1));
-        final Row radius = row(left + sideW + GAP, y, w - 2 * (sideW + GAP), "List radius");
-        radius.value = Integer.toString((int) HideModels.listRadius());
+        final int stepX = left + w - stepperWidth();
+        final Row radius = row(left, y, w - stepperWidth() - GAP, RADIUS_LABEL);
         radius.hint = "How far the Nearby tab looks, in blocks";
-        chrome(left + w - sideW, y, sideW, "+", () -> stepRadius(1));
+        chrome(stepX, y, sideW, "-", () -> stepRadius(-1));
+        final Row number = row(stepX + sideW + GAP, y, numberWidth(),
+                Integer.toString((int) HideModels.listRadius()));
+        number.hint = radius.hint;
+        number.centered = true;
+        chrome(stepX + sideW + GAP + numberWidth() + GAP, y, sideW, "+", () -> stepRadius(1));
         y += ROW + GAP;
 
         // The two top corners as presets; anywhere else came from Move panel. The panel moves the
@@ -397,6 +408,15 @@ public final class HiddenListScreen extends ClearScreen {
             action.run();
             rebuildWidgets();
         });
+    }
+
+    /** Wide enough for the largest radius, so the buttons stay put as the number changes. */
+    private static int numberWidth() {
+        return measure("256") + PAD * 2;
+    }
+
+    private static int stepperWidth() {
+        return 2 * (measure("+") + PAD * 2) + numberWidth() + 2 * GAP;
     }
 
     /** To the next multiple of the step, so 30 goes to 32 rather than 38. */
@@ -482,7 +502,9 @@ public final class HiddenListScreen extends ClearScreen {
                         on ? ACCENT : "Off".equals(row.value) ? DIM : TEXT);
                 room -= vw + PAD;
             }
-            p.text(fit(p, row.label, room), x + PAD, ty, row.muted ? DIM : TEXT);
+            final String label = fit(p, row.label, room);
+            final int tx = row.centered ? x + (row.w - p.textWidth(label)) / 2 : x + PAD;
+            p.text(label, tx, ty, row.muted ? DIM : TEXT);
         }
 
         if (hovered != null) {
