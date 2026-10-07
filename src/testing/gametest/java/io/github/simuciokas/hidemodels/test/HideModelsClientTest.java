@@ -525,6 +525,27 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
             });
             context.waitTicks(5);
+            //     Renaming, by real clicks and keys: the name box is an invisible vanilla EditBox,
+            //     and the input reaching it is the part worth testing. Its row is the third under
+            //     the header, after the tabs and the way back.
+            final double[] guiScale = {1};
+            context.runOnClient(client -> guiScale[0] = client.getWindow().getGuiScale());
+            context.getInput().setCursorPos(30 * guiScale[0], 72 * guiScale[0]);
+            context.waitTicks(2);
+            context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+            context.getInput().pressKey(InputConstants.KEY_END);
+            for (int i = 0; i < 16; i++) {
+                context.getInput().pressKey(InputConstants.KEY_BACKSPACE);
+            }
+            context.getInput().typeChars("Mounts");
+            context.waitTicks(5);
+            context.runOnClient(client -> {
+                if (!"Mounts".equals(HideModels.profiles().get(0).name())) {
+                    throw new AssertionError("typing into the name box did not rename the profile: "
+                            + HideModels.profiles().get(0).name());
+                }
+                System.out.println("[hidemodels-gametest] profiles: renamed by typing");
+            });
             context.takeScreenshot("profile-open");
             //     + beside a profile adds the unsaved lines to it. With something unsaved the front
             //     page is Unsaved, its cell, Save, then the profile, its +, its count.

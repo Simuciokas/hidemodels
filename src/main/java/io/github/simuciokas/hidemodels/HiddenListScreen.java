@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -73,6 +74,7 @@ public final class HiddenListScreen extends ClearScreen {
     private static final String SAVE_UNSAVED = "Save unsaved as a profile";
     private static final String DELETE = "Delete profile";
     private static final String DELETE_SURE = "Click again to delete";
+    private static final String NAME = "Name  ";
 
     private final Screen parent;
     private final List<Row> rows = new ArrayList<>();
@@ -95,6 +97,17 @@ public final class HiddenListScreen extends ClearScreen {
     private int listsPage;
     /** Set by the first click on Delete profile; the second deletes. */
     private boolean confirmDelete;
+    /**
+     * The open profile's name, typed into. Vanilla's text box, never drawn but added like the
+     * buttons, so vanilla hands it the clicks and the keys - and handling keys ourselves would split
+     * the 1.21.x jar the same way clicks would.
+     */
+    private EditBox nameBox;
+    /**
+     * The name box's text across a rebuild while it has the keyboard. Vanilla clears focus before
+     * the screen is built again, so the new box cannot ask the old one.
+     */
+    private String stillTyping;
     /** The model whose bones the Nearby tab lists, or null while it lists models. */
     private String bonesOf;
     /** The models page to go back to from a model's bones. */
@@ -142,6 +155,8 @@ public final class HiddenListScreen extends ClearScreen {
         boolean muted;
         /** Text in the middle of the row rather than at its left, for a number in a small box. */
         boolean centered;
+        /** The open profile's name, typed into: drawn from the name box rather than its label. */
+        boolean field;
     }
 
     public HiddenListScreen(Screen parent) {
@@ -167,7 +182,7 @@ public final class HiddenListScreen extends ClearScreen {
             return 0;
         }
         if (openList != null) {
-            return openList.isEmpty() ? 1 : 2;
+            return openList.isEmpty() ? 1 : 3;
         }
         return HideModels.unsaved().isEmpty() ? 1 : 2;
     }
@@ -196,6 +211,7 @@ public final class HiddenListScreen extends ClearScreen {
     /** Opens a list in the Hidden tab, from wherever the screen is. */
     private void openList(String list) {
         listsPage = tab == HIDDEN && openList == null ? page : 0;
+        nameBox = null;
         tab = HIDDEN;
         bonesOf = null;
         openList = list;
@@ -402,11 +418,46 @@ public final class HiddenListScreen extends ClearScreen {
             return;
         }
         for (Row row : rows) {
-            if (row.action != null) {
+            if (row.field) {
+                addNameBox(row);
+            } else if (row.action != null) {
                 final Runnable action = row.action;
                 addRenderableWidget(Button.builder(Component.empty(), b -> action.run())
                         .bounds(row.x, row.y, row.w, ROW).build());
             }
+        }
+    }
+
+    /**
+     * Over the name row. A rebuild makes a new box, so one that had the keyboard hands its text
+     * and the keyboard on - including a name not yet taken because it is empty or in use.
+     */
+    private void addNameBox(Row row) {
+        final boolean typing = stillTyping != null;
+        final String text = typing ? stillTyping : openList;
+        stillTyping = null;
+        nameBox = new EditBox(font, row.x, row.y, row.w, ROW, Component.literal(row.label));
+        nameBox.setMaxLength(48);
+        nameBox.setValue(text);
+        nameBox.setResponder(this::rename);
+        addRenderableWidget(nameBox);
+        if (typing) {
+            setFocused(nameBox);
+            nameBox.setFocused(true);
+        }
+    }
+
+    /**
+     * As it is typed, so there is nothing to confirm. A name that is empty or another profile's is
+     * not taken; the profile keeps its last good one until the text becomes one.
+     */
+    private void rename(String typed) {
+        if (openList != null && !openList.isEmpty() && HideModels.renameProfile(openList, typed)) {
+            openList = typed.trim();
+            minecraft.execute(() -> {
+                stillTyping = nameBox != null && nameBox.isFocused() ? nameBox.getValue() : null;
+                rebuildWidgets();
+            });
         }
     }
 
@@ -481,16 +532,21 @@ public final class HiddenListScreen extends ClearScreen {
         return y;
     }
 
-    /** Above an open list: the way back, and for a profile, Delete - which asks twice. */
+    /** Above an open list: the way back, then a profile's name and Delete, which asks twice. */
     private int openListHead(int y, int w) {
         chrome(left, y, w, "◀ " + (openList.isEmpty() ? UNSAVED : openList), () -> {
             openList = null;
+            nameBox = null;
             confirmDelete = false;
             page = listsPage;
             rebuildWidgets();
         });
         y += ROW + GAP;
         if (!openList.isEmpty()) {
+            final Row name = row(left, y, w, openList);
+            name.field = true;
+            name.hint = "Click to rename it, then type";
+            y += ROW + GAP;
             final Row delete = row(left, y, w, confirmDelete ? DELETE_SURE : DELETE);
             delete.muted = !confirmDelete;
             delete.hint = "Deletes the profile and every line in it";
@@ -555,6 +611,7 @@ public final class HiddenListScreen extends ClearScreen {
         hit(row, () -> {
             tab = which;
             openList = null;
+            nameBox = null;
             confirmDelete = false;
             bonesOf = null;
             page = 0;
@@ -696,7 +753,9 @@ public final class HiddenListScreen extends ClearScreen {
             }
             final int x = row.x + ox;
             final int y = row.y + oy;
-            p.fill(x, y, row.w, ROW, over && row.action != null ? ROW_HOVER : ROW_BG);
+            final boolean typing = row.field && nameBox != null && nameBox.isFocused();
+            p.fill(x, y, row.w, ROW, typing || (over && (row.action != null || row.field))
+                    ? ROW_HOVER : ROW_BG);
             // Read live, so a hand edit to the config shows without reopening. In an open list
             // the bar means the line is still in it; elsewhere, that something hides the model.
             final boolean on = row.id == null ? row.on
@@ -713,8 +772,19 @@ public final class HiddenListScreen extends ClearScreen {
                         on ? ACCENT : "Off".equals(row.value) ? DIM : TEXT);
                 room -= vw + PAD;
             }
-            final String label = fit(p, row.label, room);
-            final int tx = row.centered ? x + (row.w - p.textWidth(label)) / 2 : x + PAD;
+            int tx = x + PAD;
+            String text = row.label;
+            if (row.field && nameBox != null) {
+                // Labelled, so the row reads as somewhere to type rather than as one more line.
+                p.text(NAME, tx, ty, DIM);
+                tx += p.textWidth(NAME);
+                room -= p.textWidth(NAME);
+                text = nameBox.getValue() + (typing && System.currentTimeMillis() / 500 % 2 == 0 ? "_" : "");
+            }
+            final String label = fit(p, text, room);
+            if (row.centered) {
+                tx = x + (row.w - p.textWidth(label)) / 2;
+            }
             p.text(label, tx, ty, row.muted ? DIM : TEXT);
         }
 
