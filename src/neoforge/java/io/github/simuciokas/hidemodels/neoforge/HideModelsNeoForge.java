@@ -20,6 +20,8 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import io.github.simuciokas.hidemodels.CommandTree;
 import io.github.simuciokas.hidemodels.HideModels;
+import io.github.simuciokas.hidemodels.Keys;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.neoforged.api.distmarker.Dist;
@@ -28,6 +30,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 
 /**
@@ -43,9 +46,18 @@ public final class HideModelsNeoForge implements CommandTree.Builders<CommandSou
         NeoForge.EVENT_BUS.addListener(RegisterClientCommandsEvent.class,
                 event -> event.getDispatcher().register(CommandTree.build(this)));
 
+        modBus.addListener(RegisterKeyMappingsEvent.class, event -> {
+            final KeyMapping open = Keys.create();
+            if (open != null) {
+                event.register(open);
+            }
+        });
+
         // The config poll, once a tick - see HideModels.tick.
-        NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class,
-                event -> HideModels.tick());
+        NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, event -> {
+            HideModels.tick();
+            Keys.tick();
+        });
 
         // A server's opt-out lasts one connection, exactly as on Fabric.
         NeoForge.EVENT_BUS.addListener(ClientPlayerNetworkEvent.LoggingOut.class,

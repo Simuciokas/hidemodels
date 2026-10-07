@@ -256,12 +256,11 @@ ext.olderThan = { String bound ->
 sourceSets.main.java.srcDir("src/${loader}/java")
 sourceSets.main.resources.srcDir("src/${loader}/resources")
 
-// Fabric API renamed the class holding the client-command builders - ClientCommandManager through
-// 1.21.11, ClientCommands from 26.1 - so the shim that wraps those two methods splits on the same
-// boundary as ChatOut. A rename in a library, rather than in Minecraft, but the handling is the
-// same shape.
+// Fabric API renamed two classes at 26.1 - ClientCommandManager to ClientCommands, and
+// KeyBindingHelper to KeyMappingHelper - so the shims wrapping them split on the same boundary as
+// ChatOut. A rename in a library, rather than in Minecraft, but the handling is the same shape.
 if (loader == 'fabric') {
-    sourceSets.main.java.srcDir(legacy ? 'src/versions/cmd-mc121/java' : 'src/versions/cmd-mc26/java')
+    sourceSets.main.java.srcDir(legacy ? 'src/versions/fabricapi-mc121/java' : 'src/versions/fabricapi-mc26/java')
 }
 
 // THE GAMETEST'S OWN SOURCE, named rather than inherited: Gradle's `test` source set defaults to

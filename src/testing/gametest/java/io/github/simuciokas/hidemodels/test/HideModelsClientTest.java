@@ -18,8 +18,12 @@ package io.github.simuciokas.hidemodels.test;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.ParseResults;
 import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.blaze3d.platform.InputConstants;
+import io.github.simuciokas.hidemodels.HiddenListScreen;
 import io.github.simuciokas.hidemodels.HideModels;
+import io.github.simuciokas.hidemodels.Keys;
 import io.github.simuciokas.hidemodels.NearbyModels;
+import net.minecraft.client.KeyMapping;
 import io.github.simuciokas.hidemodels.fabric.Cmd;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import io.github.simuciokas.hidemodels.mixin.ItemDisplayAccessor;
@@ -587,6 +591,47 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                             + ", not 16");
                 }
                 System.out.println("[hidemodels-gametest] settings tab: toggles and radius written");
+            });
+            context.waitTicks(5);
+
+            // 13. THE KEY. It ships unbound, so it is bound here first; the press then goes
+            //     through the real keyboard handler and the client tick, which is the whole path.
+            context.runOnClient(client -> {
+                try {
+                    ((Screen) screenOf(client)).onClose();
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not close the screen", e);
+                }
+            });
+            context.waitTicks(5);
+            final KeyMapping[] openKey = {null};
+            context.runOnClient(client -> {
+                for (KeyMapping k : client.options.keyMappings) {
+                    if (Keys.OPEN.equals(k.getName())) {
+                        openKey[0] = k;
+                    }
+                }
+                if (openKey[0] == null) {
+                    throw new AssertionError("the open key is not in Controls - it never registered");
+                }
+                openKey[0].setKey(InputConstants.getKey("key.keyboard.h"));
+                KeyMapping.resetMapping();
+            });
+            context.getInput().pressKey(openKey[0]);
+            context.waitTicks(5);
+            context.runOnClient(client -> {
+                final Object scr;
+                try {
+                    scr = screenOf(client);
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not read the open screen", e);
+                }
+                openKey[0].setKey(InputConstants.UNKNOWN);
+                KeyMapping.resetMapping();
+                if (!(scr instanceof HiddenListScreen)) {
+                    throw new AssertionError("the key opened " + scr + " rather than the screen");
+                }
+                System.out.println("[hidemodels-gametest] key opens the screen");
             });
             context.waitTicks(5);
 

@@ -24,7 +24,7 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 
 /**
- * The two builder methods Fabric's client command API exposes, for 1.21.x. See ../cmd-mc26.
+ * The two builder methods Fabric's client command API exposes, for 1.21.x. See ../fabricapi-mc26.
  *
  * <p>Fabric API's rename, not Minecraft's: ClientCommandManager through 1.21.11, ClientCommands
  * from 26.1. The methods and the source type are identical; only the class name differs.

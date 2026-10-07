@@ -71,7 +71,9 @@ public final class SmokeChecks {
             checkConfigDrivesMatcher();
             checkCommandsEditTheList();
             checkSettingsCommands();
-            report("PASS - component resolved, config drove the matcher, add/remove and settings worked");
+            checkKeyRegistered();
+            report("PASS - component resolved, config drove the matcher, add/remove and settings "
+                    + "worked, key registered");
         } catch (Throwable t) {
             t.printStackTrace(System.err);
             report("FAIL - " + t);
@@ -183,6 +185,20 @@ public final class SmokeChecks {
         HideModels.setFirstPersonOnly(true);
         HideModels.setFirstPersonOnly(false);
         HideModels.remove(id);
+    }
+
+    /**
+     * The open key made it into Controls. Keys.create() returns null rather than throwing when
+     * neither constructor shape matches, so without this a version that moved it would just lose
+     * the key.
+     */
+    private static void checkKeyRegistered() {
+        for (net.minecraft.client.KeyMapping key : Minecraft.getInstance().options.keyMappings) {
+            if (io.github.simuciokas.hidemodels.Keys.OPEN.equals(key.getName())) {
+                return;
+            }
+        }
+        throw new AssertionError("the open key is not in Controls - it never registered");
     }
 
     /**

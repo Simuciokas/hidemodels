@@ -215,6 +215,7 @@ renderer down with it.
 | `/hidemodels` | status: pattern count, on/off, first-person and server-opt-out state |
 | `/hidemodels list [radius]` | every model within the radius, grouped by model, nearest first |
 | `/hidemodels list bones [radius] [model]` | the same, but individual bone ids — `model` narrows it to one model |
+| `/hidemodels gui` | the list, what is hidden, and the settings as a screen down the left — also on a key, unbound until you pick one under Miscellaneous in Controls |
 | `/hidemodels add <id>` | hide it now — writes the line and reloads |
 | `/hidemodels remove <id>` | stop hiding it |
 | `/hidemodels on` / `off` | stop hiding without emptying the list |
