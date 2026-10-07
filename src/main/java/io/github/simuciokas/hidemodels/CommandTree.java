@@ -90,6 +90,13 @@ public final class CommandTree {
                                                 .executes(ctx -> list(
                                                         DoubleArgumentType.getDouble(ctx, "radius"), true,
                                                         StringArgumentType.getString(ctx, "model")))))))
+                // Opening a screen from a command has to wait for the chat screen to close, or
+                // the client replaces it the moment the command finishes.
+                .then(b.literal("gui").executes(ctx -> {
+                    final net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+                    mc.execute(() -> Screens.open(mc, new HiddenListScreen(null)));
+                    return 1;
+                }))
                 .then(b.literal("add")
                         // greedyString: an id is one token today, but a pattern is a free-form
                         // fragment and nothing stops someone pasting one with a space in it.
