@@ -37,6 +37,6 @@ public abstract class ClientCommonPacketListenerMixin {
     @Inject(method = "handleCustomPayload(Lnet/minecraft/network/protocol/common/ClientboundCustomPayloadPacket;)V",
             at = @At("HEAD"))
     private void hidemodels$serverControl(ClientboundCustomPayloadPacket packet, CallbackInfo ci) {
-        HideModels.onServerChannel(packet.payload().type().id().toString());
+        HideModels.onServerChannel(HideModels.channelId(packet.payload().type()));
     }
 }

@@ -105,7 +105,7 @@ public final class HideModels {
     private static DataComponentType<?> findComponent(String... ids) {
         for (final String want : ids) {
             for (final DataComponentType<?> type : BuiltInRegistries.DATA_COMPONENT_TYPE) {
-                if (want.equals(String.valueOf(BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(type)))) {
+                if (want.equals(registryId(BuiltInRegistries.DATA_COMPONENT_TYPE, type))) {
                     return type;
                 }
             }
@@ -113,13 +113,133 @@ public final class HideModels {
         return null;
     }
 
+    /**
+     * A registry key as a string, and the channel id of a custom payload.
+     *
+     * <p>Both return the type that is {@code ResourceLocation} up to 1.21.10 and {@code Identifier}
+     * from 1.21.11. Neither caller wants the object, only its toString - but naming it in a
+     * descriptor splits the NeoForge jar at that version, where official names are what run.
+     *
+     * <p>Candidates are checked against every supported version by tools/verify_targets.py.
+     */
+    // An entry with no owner is a member name only: the runtime takes the part after the '#' and
+    // the owner would be a second intermediary name to keep correct for nothing.
+    private static final String[] REGISTRY_GET_KEY = {
+        "net.minecraft.core.Registry#getKey(java.lang.Object)",
+        "#method_10221",                       // intermediary, 1.20.5 through 1.21.11
+    };
+    private static final String[] PAYLOAD_TYPE_ID = {
+        "net.minecraft.network.protocol.common.custom.CustomPacketPayload$Type#id()",
+        "#comp_2242",                          // intermediary, a record component
+    };
+
+    private static java.lang.reflect.Method registryGetKey;
+    private static java.lang.reflect.Method payloadTypeId;
+
+    private static String registryId(Object registry, Object value) {
+        if (registryGetKey == null) {
+            registryGetKey = findMethod(registry.getClass(), REGISTRY_GET_KEY, Object.class);
+        }
+        return invokeToString(registryGetKey, registry, value);
+    }
+
+    /** The plugin channel a custom payload arrived on. Called from the packet mixin. */
+    public static String channelId(Object payloadType) {
+        if (payloadTypeId == null) {
+            payloadTypeId = findMethod(payloadType.getClass(), PAYLOAD_TYPE_ID);
+        }
+        return invokeToString(payloadTypeId, payloadType);
+    }
+
+    private static java.lang.reflect.Method findMethod(Class<?> owner, String[] candidates,
+                                                       Class<?>... params) {
+        for (String candidate : candidates) {
+            // The parameter list is for the verifier, which uses it to pin an overload;
+            // reflection wants the bare name.
+            String name = candidate.substring(candidate.indexOf('#') + 1);
+            final int args = name.indexOf('(');
+            if (args >= 0) {
+                name = name.substring(0, args);
+            }
+            for (Class<?> c = owner; c != null; c = c.getSuperclass()) {
+                try {
+                    return c.getMethod(name, params);
+                } catch (NoSuchMethodException | RuntimeException ignored) {
+                    // the other namespace, or declared further up
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String invokeToString(java.lang.reflect.Method m, Object target, Object... args) {
+        if (m == null) {
+            return "";
+        }
+        try {
+            return String.valueOf(m.invoke(target, args));
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return "";
+        }
+    }
+
     public static String modelIdOf(net.minecraft.world.item.ItemStack stack) {
         final DataComponentType<?> type = modelComponent();
         if (type == null || stack == null || stack.isEmpty()) {
             return null;
         }
-        final Object value = stack.get(type);
+        final Object value = componentValue(stack, type);
         return (value == null) ? null : value.toString();
+    }
+
+    /**
+     * {@code ItemStack.get(DataComponentType)}, by name because the name is what moves.
+     *
+     * <p>Its intermediary name is method_57824 up to 1.21.4 and method_58694 from 1.21.5, so a
+     * direct call bakes one of them into the jar and splits an otherwise identical build in two.
+     * The parameter type can be named - only the method cannot.
+     *
+     * <p>Resolved once. The candidates are checked against every supported version by
+     * tools/verify_targets.py, which fails the build if a version calls it something else.
+     */
+    private static final String[] COMPONENT_GET = {
+        "net.minecraft.world.item.ItemStack#get(net.minecraft.core.component.DataComponentType)",
+        "net.minecraft.class_1799#method_57824",
+        "net.minecraft.class_1799#method_58694",
+    };
+
+    private static java.lang.reflect.Method componentGet;
+    private static boolean componentGetResolved;
+
+    private static Object componentValue(net.minecraft.world.item.ItemStack stack,
+                                         DataComponentType<?> type) {
+        if (!componentGetResolved) {
+            for (String candidate : COMPONENT_GET) {
+                // The parameter list is for the verifier, which uses it to pin an overload;
+            // reflection wants the bare name.
+            String name = candidate.substring(candidate.indexOf('#') + 1);
+            final int args = name.indexOf('(');
+            if (args >= 0) {
+                name = name.substring(0, args);
+            }
+                try {
+                    componentGet = net.minecraft.world.item.ItemStack.class
+                            .getMethod(name, DataComponentType.class);
+                    break;
+                } catch (NoSuchMethodException ignored) {
+                    // the other namespace, or the other side of the rename
+                }
+            }
+            componentGetResolved = true;
+        }
+        if (componentGet == null) {
+            return null;
+        }
+        try {
+            return componentGet.invoke(stack, type);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return null;
+        }
     }
 
     /**
