@@ -327,6 +327,8 @@ public final class HideModels {
                 .withStyle(ChatFormatting.GRAY));
         NearbyModels.say(Component.literal("  /hidemodels list bones [radius] [model]  - individual "
                 + "bone ids (or click a piece count)").withStyle(ChatFormatting.GRAY));
+        NearbyModels.say(Component.literal("  /hidemodels gui  - the list and settings as a screen "
+                + "(or bind a key in Controls)").withStyle(ChatFormatting.GRAY));
         NearbyModels.say(Component.literal("  /hidemodels add <id>  - hide it now (or click an id in the list)")
                 .withStyle(ChatFormatting.GRAY));
         NearbyModels.say(Component.literal("  /hidemodels remove <id>  - stop hiding it")

@@ -17,10 +17,12 @@ package io.github.simuciokas.hidemodels.fabric;
 
 import io.github.simuciokas.hidemodels.CommandTree;
 import io.github.simuciokas.hidemodels.HideModels;
+import io.github.simuciokas.hidemodels.Keys;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.minecraft.client.KeyMapping;
 
 /**
  * What the mod needs from the loader, on Fabric.
@@ -37,9 +39,17 @@ public final class HideModelsFabric implements ClientModInitializer {
         ClientCommandRegistrationCallback.EVENT.register(
                 (dispatcher, registryAccess) -> dispatcher.register(CommandTree.build(Cmd.INSTANCE)));
 
+        final KeyMapping open = Keys.create();
+        if (open != null) {
+            KeyRegistration.register(open);
+        }
+
         // The config poll. Once a tick rather than once per model piece per frame - see
         // HideModels.tick.
-        ClientTickEvents.END_CLIENT_TICK.register(client -> HideModels.tick());
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            HideModels.tick();
+            Keys.tick();
+        });
 
         // A server's opt-out lasts for one connection.
         ClientPlayConnectionEvents.DISCONNECT.register(
