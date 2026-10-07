@@ -15,21 +15,48 @@
  */
 package io.github.simuciokas.hidemodels;
 
+import java.lang.reflect.Method;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.screens.Screen;
 
 /**
  * Opening a screen, for 26.x. See ../screen-mc121 for the other copy.
  *
- * <p>{@code Minecraft.setScreen} is gone from 26.2 and {@code setScreenAndShow} does not exist
- * before 26.1, so neither spelling covers the range.
+ * <p>THE ORDINARY WAY: Minecraft.setScreen up to 26.1.2, Gui.setScreen from 26.2. Found by name,
+ * which 26.x keeps at runtime, because the jar covers both. The one spelling all of 26.x shares,
+ * setScreenAndShow, also renders a frame on the spot with the world left out of it, and that frame
+ * shows as a flash across the whole screen.
  */
 public final class Screens {
+
+    private static final Method GUI_SET = method(Gui.class);
+    private static final Method MINECRAFT_SET = method(Minecraft.class);
 
     private Screens() {
     }
 
     public static void open(Minecraft mc, Screen screen) {
+        try {
+            if (GUI_SET != null) {
+                GUI_SET.invoke(mc.gui, screen);
+                return;
+            }
+            if (MINECRAFT_SET != null) {
+                MINECRAFT_SET.invoke(mc, screen);
+                return;
+            }
+        } catch (ReflectiveOperationException e) {
+            // the call below exists on every 26.x
+        }
         mc.setScreenAndShow(screen);
+    }
+
+    private static Method method(Class<?> owner) {
+        try {
+            return owner.getMethod("setScreen", Screen.class);
+        } catch (NoSuchMethodException e) {
+            return null;
+        }
     }
 }
