@@ -202,6 +202,27 @@ preset would be wrong everywhere but one server.
 riding and looking ahead, visible again the moment you pull the camera out to look at it. The
 camera is read live on each render check, so pressing F5 takes effect on the next frame.
 
+**Profiles** are saved lists in the same file. A line in square brackets starts one, and the lines
+under it, up to the next heading, apply while it is on; `off` after the brackets keeps it saved but
+not applied. The lines above the first heading always apply — the screen calls them unsaved:
+
+```
+some_mount/head         # unsaved: always applies
+
+[Mounts]
+modelengine:some_mount/
+[PvP] off
+modelengine:wings/
+```
+
+Any number can be on at once, and a model is hidden if any of them hides it. A name is anything
+without a square bracket, and two names that differ only in case are the same profile. Directives
+belong to the whole file wherever they are written; the screen writes them above the first heading.
+
+**Profiles cost nothing per frame.** When the file loads, the unsaved lines and every profile that is
+on are merged into the one list the render check already reads, so the render hook never sees a
+profile at all, and switching one is a reload rather than a lookup.
+
 **When the config loads.** There is no entrypoint, so nothing happens at startup. The file is read
 lazily from the render hook — the first time any `item_display` comes up for a render check. If it
 doesn't exist by then, the mod writes a documented default and loads that. After that it's a
@@ -211,7 +232,7 @@ renderer down with it.
 
 ## In game
 
-`/hidemodels` opens the screen, and so does a key: unbound until you pick one, under Miscellaneous
+`/hidemodels` opens the screen, and so does a key: unbound until you pick one, under Hide Models
 in Controls. There is nothing else to type.
 
 The screen is a panel in the top left, leaving the rest of the view clear so you can watch a model
@@ -219,19 +240,28 @@ go as you click it. It has three tabs:
 
 | tab | what it holds |
 |---|---|
-| Nearby | every model within the list radius, nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head; a model with some bones hidden is marked orange, and clicking it hides the rest, then shows all of it again |
-| Hidden | the lines in your config; unhiding one keeps its row until the tab is reopened, so a misclick is one click to undo |
+| Nearby | every model within the list radius, nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head; a model with some bones hidden is marked orange, and clicking it hides the rest, then shows all of it again. A model a profile hides opens that profile instead |
+| Hidden | your lists: Unsaved, then each profile. Click a profile to switch it on or off, its count to open it, and `+` beside it to add the unsaved lines to it. In an open list a click takes a line out and keeps its row until the list is opened again, so a misclick is one click to undo; an open profile is also where it is renamed, by typing into its name, and deleted |
 | Settings | hiding on or off, first person only, the list radius, and where the panel sits: either top corner, or Move panel to put it anywhere |
 
 Hovering over a row says more: a model's piece count and how far away it is, how many of its pieces
-single-bone lines hide, and which line hides it. When that line is broader than the model's own id, clicking the row cannot remove it, and the
-box says to unhide it from the Hidden tab instead.
+single-bone lines hide, and which line or profile hides it. When that line is broader than the
+model's own id, clicking the row cannot remove it, and the box says to unhide it from the Hidden tab
+instead.
 
-**Everything the screen changes is a line in the config.** Hiding a model appends its id,
-unhiding removes that exact line, and each setting is one of the directives above, so the file
-stays the one description of what the mod is doing and editing it by hand works just as well.
-Appending leaves your comments and directives where you put them, and a change from the screen
-applies at once rather than waiting for the poll.
+**Profiles** keep sets of hidden models you switch between, rather than one list you keep editing.
+What you hide by clicking goes into Unsaved, which always applies; *Save unsaved as a profile*
+moves those lines into a new profile, switched on, so nothing changes on screen until you switch it
+off. Switching a profile off brings its models back without forgetting them. A profile only changes
+from inside it, which is why clicking one of its models in Nearby opens it: a click that quietly
+edited a saved list would be easy to make and hard to notice.
+
+**Everything the screen changes is a line in the config.** Hiding a model appends its id to the
+unsaved lines, unhiding removes that exact line, a profile is its heading and the lines under it,
+and each setting is one of the directives above, so the file stays the one description of what the
+mod is doing and editing it by hand works just as well. Appending leaves your comments and
+directives where you put them, and a change from the screen applies at once rather than waiting for
+the poll.
 
 The command is handled entirely on the client and is **not** forwarded to the server.
 
