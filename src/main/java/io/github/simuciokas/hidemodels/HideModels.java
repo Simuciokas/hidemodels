@@ -19,6 +19,7 @@ import io.github.simuciokas.hidemodels.mixin.ItemDisplayAccessor;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -93,6 +94,7 @@ public final class HideModels {
 
     private static long lastCheck;
     private static long lastModified = -1;
+    private static long lastSize = -1;
 
     private HideModels() {
     }
@@ -751,8 +753,11 @@ public final class HideModels {
     /** Re-reads the config at once, so a change from the screen shows on the next frame. */
     private static void reloadNow() {
         try {
-            lastModified = Files.isRegularFile(CONFIG)
-                    ? Files.getLastModifiedTime(CONFIG).toMillis() : 0;
+            if (Files.isRegularFile(CONFIG)) {
+                changedSinceRead();
+            } else {
+                lastModified = 0;
+            }
             lastCheck = System.currentTimeMillis();
             load();
         } catch (IOException e) {
@@ -829,15 +834,28 @@ public final class HideModels {
                 }
                 return;
             }
-            final long mtime = Files.getLastModifiedTime(CONFIG).toMillis();
-            if (mtime == lastModified) {
-                return;
+            if (changedSinceRead()) {
+                load();
             }
-            lastModified = mtime;
-            load();
         } catch (IOException e) {
             // A broken config must never take the renderer down: keep the previous list.
         }
+    }
+
+    /**
+     * Whether the config's modified time or size differs from when it was last read, taking the
+     * new values as read. The size as well, because file times come from a clock that can hold
+     * one value for ~16 ms: a rewrite that soon after the last one keeps the time, rarely the size.
+     */
+    private static boolean changedSinceRead() throws IOException {
+        final BasicFileAttributes file = Files.readAttributes(CONFIG, BasicFileAttributes.class);
+        final long mtime = file.lastModifiedTime().toMillis();
+        if (mtime == lastModified && file.size() == lastSize) {
+            return false;
+        }
+        lastModified = mtime;
+        lastSize = file.size();
+        return true;
     }
 
     /** A line naming models: not blank, not a comment, not a directive. */

@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import net.minecraft.client.Minecraft;
 
 /**
@@ -195,13 +196,19 @@ public final class SmokeChecks {
      * Profiles, through the calls the screen makes: the unsaved lines saved as one, which then
      * hides only while it is on; more added to it; renamed; deleted with its lines. A comment and
      * a profile nobody touched must come through all of it as they were.
+     *
+     * <p>The file is written with the modified time it already had, as a rewrite within one tick
+     * of the file system's clock leaves it - here, straight after the mod's own last write.
      */
     private static void checkProfiles() throws IOException, InterruptedException {
         final String a = "hidemodels:profile_a";
         final String b = "hidemodels:profile_b";
+        final FileTime before = Files.getLastModifiedTime(CONFIG);
         write("# kept by the smoke test" + System.lineSeparator()
                 + "[Untouched] off" + System.lineSeparator() + "hidemodels:untouched");
-        waitUntil(() -> HideModels.profiles().size() == 1, "a profile heading was not read");
+        Files.setLastModifiedTime(CONFIG, before);
+        waitUntil(() -> HideModels.profiles().size() == 1,
+                  "a profile heading was not read from a rewrite that kept its modified time");
         if (HideModels.hidden("hidemodels:untouched")) {
             throw new AssertionError("a profile that is off still hides its lines");
         }
