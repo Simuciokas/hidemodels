@@ -54,11 +54,11 @@ public final class HiddenListScreen extends ClearScreen {
     private static final int NEARBY = 0;
     private static final int HIDDEN = 1;
     private static final int SETTINGS = 2;
-    private static final String[] TABS = {"nearby", "hidden", "settings"};
+    private static final String[] TABS = {"Nearby", "Hidden", "Settings"};
 
-    private static final String PREV = "◀ prev";
-    private static final String NEXT = "next ▶";
-    private static final String CLOSE = "close";
+    private static final String PREV = "◀ Prev";
+    private static final String NEXT = "Next ▶";
+    private static final String CLOSE = "Close";
 
     private final Screen parent;
     private final List<Row> rows = new ArrayList<>();
@@ -235,26 +235,26 @@ public final class HiddenListScreen extends ClearScreen {
     /** Each writes the config exactly as its command does, so the screen and the file agree. */
     private int settings(int y, int w) {
         final boolean enabled = HideModels.isEnabled();
-        toggle(y, w, "hiding", "off keeps the list but hides nothing", enabled,
+        toggle(y, w, "Hiding", "Off keeps the list but hides nothing", enabled,
                 () -> HideModels.setEnabled(!enabled));
         y += ROW + GAP;
         final boolean firstPerson = HideModels.isFirstPersonOnly();
-        toggle(y, w, "first person only", "hide only while the camera is in first person",
+        toggle(y, w, "First person only", "Hide only while the camera is in first person",
                 firstPerson, () -> HideModels.setFirstPersonOnly(!firstPerson));
         y += ROW + GAP;
 
         final int sideW = measure("+") + PAD * 2;
         chrome(left, y, sideW, "-", () -> stepRadius(-1));
-        final Row radius = row(left + sideW + GAP, y, w - 2 * (sideW + GAP), "list radius");
+        final Row radius = row(left + sideW + GAP, y, w - 2 * (sideW + GAP), "List radius");
         radius.value = Integer.toString((int) HideModels.listRadius());
-        radius.hint = "how far the nearby tab looks, in blocks";
+        radius.hint = "How far the Nearby tab looks, in blocks";
         chrome(left + w - sideW, y, sideW, "+", () -> stepRadius(1));
         y += ROW + GAP;
 
         // The panel moves the moment this is clicked, so the row leaves the cursor behind.
-        final Row side = row(left, y, w, "panel side");
-        side.value = onRight ? "right" : "left";
-        side.hint = "which edge of the screen this panel sits against";
+        final Row side = row(left, y, w, "Panel side");
+        side.value = onRight ? "Right" : "Left";
+        side.hint = "Which edge of the screen this panel sits against";
         hit(side, () -> {
             HideModels.setGuiOnRight(!onRight);
             rebuildWidgets();
@@ -265,7 +265,7 @@ public final class HiddenListScreen extends ClearScreen {
     private void toggle(int y, int w, String label, String hint, boolean on, Runnable action) {
         final Row row = row(left, y, w, label);
         row.hint = hint;
-        row.value = on ? "on" : "off";
+        row.value = on ? "On" : "Off";
         row.on = on;
         hit(row, () -> {
             action.run();
@@ -330,7 +330,7 @@ public final class HiddenListScreen extends ClearScreen {
             if (row.value != null) {
                 final int vw = p.textWidth(row.value);
                 p.text(row.value, row.x + row.w - PAD - vw, ty,
-                        on ? ACCENT : "off".equals(row.value) ? DIM : TEXT);
+                        on ? ACCENT : "Off".equals(row.value) ? DIM : TEXT);
                 room -= vw + PAD;
             }
             p.text(fit(p, row.label, room), row.x + PAD, ty, row.muted ? DIM : TEXT);
@@ -356,11 +356,11 @@ public final class HiddenListScreen extends ClearScreen {
         final String covering = HideModels.coveredBy(row.id);
         if (tab == HIDDEN) {
             if (covering == null) {
-                return List.of("no longer hidden - click to hide again");
+                return List.of("No longer hidden - click to hide again");
             }
             final int pieces = NearbyModels.piecesMatching(radius, row.id);
-            return List.of(pieces == 0 ? "hides nothing" + within
-                                       : "hides " + pieces + (pieces == 1 ? " piece" : " pieces") + within);
+            return List.of(pieces == 0 ? "Hides nothing" + within
+                                       : "Hides " + pieces + (pieces == 1 ? " piece" : " pieces") + within);
         }
         final List<String> lines = new ArrayList<>();
         for (NearbyModels.Nearby n : around) {
@@ -370,13 +370,13 @@ public final class HiddenListScreen extends ClearScreen {
             }
         }
         if (covering == null) {
-            lines.add("click to hide");
+            lines.add("Click to hide");
         } else if (covering.equals(row.id.toLowerCase(Locale.ROOT))) {
-            lines.add("hidden - click to unhide");
+            lines.add("Hidden - click to unhide");
         } else {
             // A click would try to remove a line that is not there; say which one is.
-            lines.add("hidden by '" + covering + "'");
-            lines.add("unhide it from the hidden tab");
+            lines.add("Hidden by '" + covering + "'");
+            lines.add("Unhide it from the Hidden tab");
         }
         return lines;
     }
@@ -423,16 +423,16 @@ public final class HiddenListScreen extends ClearScreen {
     private String header(int total, int pages) {
         if (tab == SETTINGS) {
             return HideModels.isServerDisabled()
-                    ? "this server has hiding off"
+                    ? "This server has hiding off"
                     : "config/" + HideModels.MOD_ID + ".txt";
         }
         final String page = pages > 1 ? "    " + (this.page + 1) + "/" + pages : "";
         if (tab == HIDDEN) {
-            return (total == 0 ? "nothing hidden" : total + " hidden") + page;
+            return (total == 0 ? "Nothing hidden" : total + " hidden") + page;
         }
         final int radius = (int) HideModels.listRadius();
         if (total == 0) {
-            return "nothing within " + radius + " blocks";
+            return "Nothing within " + radius + " blocks";
         }
         return total + " models within " + radius + page;
     }
