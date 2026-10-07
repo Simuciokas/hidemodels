@@ -184,19 +184,42 @@ public final class NearbyModels {
         return found;
     }
 
+    public record Nearby(String id, int pieces, double distance) {
+    }
+
+    /** Models within the radius, nearest first. */
+    public static List<Nearby> nearby(double radius) {
+        final List<Nearby> out = new ArrayList<>();
+        for (Map.Entry<String, Group> e : scan(radius, false).entrySet()) {
+            out.add(new Nearby(e.getKey(), e.getValue().pieces, Math.sqrt(e.getValue().nearestSq)));
+        }
+        out.sort(Comparator.comparingDouble(Nearby::distance));
+        return out;
+    }
+
     /** Model ids within the radius, nearest first - the completion for {@code /hidemodels add}. */
     public static List<String> nearbyIds(double radius) {
-        final List<Map.Entry<String, Group>> rows = new ArrayList<>(scan(radius, false).entrySet());
-        rows.sort(Comparator.comparingDouble(x -> x.getValue().nearestSq));
-        final List<String> out = new ArrayList<>(rows.size());
-        for (Map.Entry<String, Group> row : rows) {
-            out.add(row.getKey());
+        final List<String> out = new ArrayList<>();
+        for (Nearby n : nearby(radius)) {
+            out.add(n.id());
         }
         return out;
     }
 
+    /** Pieces within the radius that one config line hides, matched the way the hide list matches. */
+    public static int piecesMatching(double radius, String pattern) {
+        final String fragment = pattern.toLowerCase(Locale.ROOT);
+        int pieces = 0;
+        for (Map.Entry<String, Group> e : scan(radius, true).entrySet()) {
+            if (e.getKey().toLowerCase(Locale.ROOT).contains(fragment)) {
+                pieces += e.getValue().pieces;
+            }
+        }
+        return pieces;
+    }
+
     /** One decimal, without dragging in String.format's locale surprises. */
-    private static String fmt(double v) {
+    static String fmt(double v) {
         return Double.toString(Math.round(v * 10.0) / 10.0);
     }
 

@@ -318,6 +318,11 @@ public final class HideModels {
         return matches(itemModelId);
     }
 
+    /** The config line that hides this id, which may be broader than the id; null if none does. */
+    public static String coveredBy(String itemModelId) {
+        return itemModelId == null ? null : coveringPattern(itemModelId.toLowerCase(Locale.ROOT));
+    }
+
     public static void status() {
         NearbyModels.say(Component.literal("hidemodels " + version() + "- " + patterns.length
                 + " pattern(s), " + (enabled ? "on" : "off")

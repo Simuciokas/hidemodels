@@ -17,6 +17,7 @@ package io.github.simuciokas.hidemodels;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -89,6 +90,10 @@ public final class HiddenListScreen extends ClearScreen {
         String label;
         /** Drawn against the right edge, for a setting's current value. */
         String value;
+        /** The model or config line the row stands for, which the hover box describes. */
+        String id;
+        /** What the hover box says for a setting. */
+        String hint;
         boolean on;
         boolean muted;
         boolean clickable;
@@ -166,6 +171,7 @@ public final class HiddenListScreen extends ClearScreen {
 
         for (String id : shown) {
             final Row row = row(X, y, rowWidth, id);
+            row.id = id;
             row.on = HideModels.listed(id);
             hit(row, () -> {
                 if (HideModels.listed(id)) {
@@ -223,23 +229,26 @@ public final class HiddenListScreen extends ClearScreen {
     /** Each writes the config exactly as its command does, so the screen and the file agree. */
     private int settings(int y, int w) {
         final boolean enabled = HideModels.isEnabled();
-        toggle(y, w, "hiding", enabled, () -> HideModels.setEnabled(!enabled));
+        toggle(y, w, "hiding", "off keeps the list but hides nothing", enabled,
+                () -> HideModels.setEnabled(!enabled));
         y += ROW + GAP;
         final boolean firstPerson = HideModels.isFirstPersonOnly();
-        toggle(y, w, "first person only", firstPerson,
-                () -> HideModels.setFirstPersonOnly(!firstPerson));
+        toggle(y, w, "first person only", "hide only while the camera is in first person",
+                firstPerson, () -> HideModels.setFirstPersonOnly(!firstPerson));
         y += ROW + GAP;
 
         final int sideW = measure("+") + PAD * 2;
         chrome(X, y, sideW, "-", () -> stepRadius(-1));
         final Row radius = row(X + sideW + GAP, y, w - 2 * (sideW + GAP), "list radius");
         radius.value = Integer.toString((int) HideModels.listRadius());
+        radius.hint = "how far the nearby tab looks, in blocks";
         chrome(X + w - sideW, y, sideW, "+", () -> stepRadius(1));
         return y + ROW + GAP;
     }
 
-    private void toggle(int y, int w, String label, boolean on, Runnable action) {
+    private void toggle(int y, int w, String label, String hint, boolean on, Runnable action) {
         final Row row = row(X, y, w, label);
+        row.hint = hint;
         row.value = on ? "on" : "off";
         row.on = on;
         hit(row, () -> {
@@ -280,13 +289,23 @@ public final class HiddenListScreen extends ClearScreen {
         final int bottom = rows.isEmpty() ? Y + 28 : rows.get(rows.size() - 1).y + ROW;
         p.fill(X - 4, Y - 6, panelWidth + 8, bottom - Y + 12, PANEL);
 
-        final int total = source().size();
+        final double radius = HideModels.listRadius();
+        final List<NearbyModels.Nearby> around =
+                tab == NEARBY ? NearbyModels.nearby(radius) : List.of();
+        final int total = tab == HIDDEN ? hiddenSnapshot.size() : around.size();
         p.text(header(total, pageCount(total)), X, Y, DIM);
 
+        Row hovered = null;
         for (Row row : rows) {
-            final boolean hover = row.clickable && inside(row, mouseX, mouseY);
+            final boolean over = inside(row, mouseX, mouseY);
+            if (over) {
+                hovered = row;
+            }
+            final boolean hover = row.clickable && over;
             p.fill(row.x, row.y, row.w, ROW, hover ? ROW_HOVER : ROW_BG);
-            if (row.on) {
+            // Read live for a model, so a hand edit to the config shows without reopening.
+            final boolean on = row.id != null ? HideModels.listed(row.id) : row.on;
+            if (on) {
                 // A bar down the left edge rather than a tick: it reads at a glance down a column.
                 p.fill(row.x, row.y, 2, ROW, ACCENT);
             }
@@ -295,10 +314,71 @@ public final class HiddenListScreen extends ClearScreen {
             if (row.value != null) {
                 final int vw = p.textWidth(row.value);
                 p.text(row.value, row.x + row.w - PAD - vw, ty,
-                        row.on ? ACCENT : row.clickable ? DIM : TEXT);
+                        on ? ACCENT : row.clickable ? DIM : TEXT);
                 room -= vw + PAD;
             }
             p.text(fit(p, row.label, room), row.x + PAD, ty, row.muted ? DIM : TEXT);
+        }
+
+        if (hovered != null) {
+            final List<String> lines = detail(hovered, around, radius);
+            if (!lines.isEmpty()) {
+                tip(p, hovered, lines);
+            }
+        }
+    }
+
+    /** What the hover box says about a row. Tabs and chrome get nothing: they say it already. */
+    private List<String> detail(Row row, List<NearbyModels.Nearby> around, double radius) {
+        if (row.hint != null) {
+            return List.of(row.hint);
+        }
+        if (row.id == null) {
+            return List.of();
+        }
+        final String within = " within " + (int) radius + " blocks";
+        final String covering = HideModels.coveredBy(row.id);
+        if (tab == HIDDEN) {
+            if (covering == null) {
+                return List.of("no longer hidden - click to hide again");
+            }
+            final int pieces = NearbyModels.piecesMatching(radius, row.id);
+            return List.of(pieces == 0 ? "hides nothing" + within
+                                       : "hides " + pieces + (pieces == 1 ? " piece" : " pieces") + within);
+        }
+        final List<String> lines = new ArrayList<>();
+        for (NearbyModels.Nearby n : around) {
+            if (n.id().equals(row.id)) {
+                lines.add(n.pieces() + (n.pieces() == 1 ? " piece, " : " pieces, nearest ")
+                        + NearbyModels.fmt(n.distance()) + " blocks away");
+            }
+        }
+        if (covering == null) {
+            lines.add("click to hide");
+        } else if (covering.equals(row.id.toLowerCase(Locale.ROOT))) {
+            lines.add("hidden - click to unhide");
+        } else {
+            // A click would try to remove a line that is not there; say which one is.
+            lines.add("hidden by '" + covering + "'");
+            lines.add("unhide it from the hidden tab");
+        }
+        return lines;
+    }
+
+    /** Beside the panel, level with the row, and pulled back in if it would leave the screen. */
+    private void tip(Painter p, Row row, List<String> lines) {
+        int w = 0;
+        for (String line : lines) {
+            w = Math.max(w, p.textWidth(line));
+        }
+        w += PAD * 2;
+        final int lineH = p.lineHeight() + 2;
+        final int h = lines.size() * lineH + 6;
+        final int x = Math.max(0, Math.min(X + panelWidth + 8, width - w - 4));
+        final int y = Math.max(0, Math.min(row.y, height - h - 4));
+        p.fill(x, y, w, h, PANEL);
+        for (int i = 0; i < lines.size(); i++) {
+            p.text(lines.get(i), x + PAD, y + 4 + i * lineH, i == 0 ? TEXT : DIM);
         }
     }
 
