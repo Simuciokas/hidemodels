@@ -210,6 +210,12 @@ tasks.register('testModJar', Jar) {
 // runClientGameTest, and build.gradle defines smokeTest against its run task - registering the
 // same names here would collide. The standalone gametest further down is the legacy-only half.
 if (!legacy) {
+    // ONE BACKGROUND WORKER, on every 26.x launch below. 26.x compiles its shader pipelines in
+    // parallel on that pool while loading resources, and AMD's driver for Polaris cards (the RX 580
+    // these run on) crashes in its shader compiler doing so, on OpenGL and Vulkan alike. Loading
+    // takes a few seconds longer; nothing a test or the demo does leans on that pool.
+    def oneWorker = '-Dmax.bg.threads=1'
+
     tasks.register('runSmokeTest26', JavaExec) {
         group = 'verification'
         description = "Starts the ${mc} client with the mod and the smoke test, offline."
@@ -244,6 +250,7 @@ if (!legacy) {
                 // that very file in the directory listing. Launchers set both; so does this.
                 "-Dorg.lwjgl.librarypath=${nativesDir}".toString(),
                 '-Dhidemodels.smoketest=true',
+                oneWorker,
                 // Fabric reports a bad mod set in a modal dialog and waits for a click that will never
                 // come in CI - the run would hang until the job timed out, with no output.
                 '-Djava.awt.headless=true',
@@ -316,6 +323,7 @@ if (!legacy) {
                 "-Djava.library.path=${nativesDir}".toString(),
                 "-Dorg.lwjgl.librarypath=${nativesDir}".toString(),
                 '-Dfabric.client.gametest',
+                oneWorker,
                 '-Djava.awt.headless=true',
         ]
         args = [
@@ -364,11 +372,7 @@ if (!legacy) {
                 "-Djava.library.path=${nativesDir}".toString(),
                 "-Dorg.lwjgl.librarypath=${nativesDir}".toString(),
                 '-Dhidemodels.demo=true',
-                // ONE BACKGROUND WORKER. 26.x compiles its shader pipelines in parallel on that pool
-                // while loading resources, and AMD's driver for Polaris cards (the RX 580 here)
-                // crashes in its shader compiler doing so, on OpenGL and Vulkan alike. Loading
-                // takes a few seconds longer; nothing else in a demo leans on that pool.
-                '-Dmax.bg.threads=1',
+                oneWorker,
         ]
         args = [
                 '--gameDir', demoDir.absolutePath,
