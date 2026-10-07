@@ -70,6 +70,8 @@ public final class HiddenListScreen extends ClearScreen {
     private static final String MOVING = "Click to place, Esc cancels";
     private static final String RADIUS_LABEL = "List radius";
     private static final String OPEN = " ▶";
+    /** Before the model you were looking at when the screen opened. */
+    private static final String LOOKING = "» ";
     private static final String UNSAVED = "Unsaved";
     private static final String SAVE_UNSAVED = "Save unsaved as a profile";
     private static final String DELETE = "Delete profile";
@@ -77,6 +79,8 @@ public final class HiddenListScreen extends ClearScreen {
     private static final String NAME = "Name  ";
 
     private final Screen parent;
+    /** The model in front of you as the screen opened, listed first; null if there was none. */
+    private final String lookedAt;
     private final List<Row> rows = new ArrayList<>();
     private int page;
     private int tab = NEARBY;
@@ -162,6 +166,7 @@ public final class HiddenListScreen extends ClearScreen {
     public HiddenListScreen(Screen parent) {
         super(Component.literal("Hide Models"));
         this.parent = parent;
+        this.lookedAt = NearbyModels.lookedAt(HideModels.listRadius());
     }
 
     private int perPage() {
@@ -233,7 +238,22 @@ public final class HiddenListScreen extends ClearScreen {
             return List.of();
         }
         final double radius = HideModels.listRadius();
-        return bonesOf == null ? NearbyModels.nearby(radius) : NearbyModels.bones(radius, bonesOf);
+        if (bonesOf != null) {
+            return NearbyModels.bones(radius, bonesOf);
+        }
+        final List<NearbyModels.Nearby> models = new ArrayList<>(NearbyModels.nearby(radius));
+        for (int i = 0; i < models.size(); i++) {
+            if (models.get(i).id().equals(lookedAt)) {
+                models.add(0, models.remove(i));
+                break;
+            }
+        }
+        return models;
+    }
+
+    /** The row of the model you were looking at, in the models list. */
+    private boolean isLookedAt(String id) {
+        return tab == NEARBY && bonesOf == null && id != null && id.equals(lookedAt);
     }
 
     private void build() {
@@ -285,7 +305,8 @@ public final class HiddenListScreen extends ClearScreen {
             }
         }
         for (String id : shown) {
-            content = Math.max(content, measure(id) + (opensUp(id) ? GAP + cellW : 0));
+            content = Math.max(content, measure((isLookedAt(id) ? LOOKING : "") + id)
+                    + (opensUp(id) ? GAP + cellW : 0));
         }
         // The lists: each profile's name with its cells beside it, and the fixed rows above.
         final int unsavedCount = HideModels.unsaved().size();
@@ -352,7 +373,8 @@ public final class HiddenListScreen extends ClearScreen {
         for (int i = 0; i < shown.size(); i++) {
             final String id = shown.get(i);
             final boolean opens = opensUp(id);
-            final Row row = row(left, y, opens ? rowWidth - cellW - GAP : rowWidth, id);
+            final Row row = row(left, y, opens ? rowWidth - cellW - GAP : rowWidth,
+                    (isLookedAt(id) ? LOOKING : "") + id);
             row.id = id;
             row.on = tab == HIDDEN ? inOpenList(id) : HideModels.listed(id);
             hit(row, () -> {
@@ -820,6 +842,9 @@ public final class HiddenListScreen extends ClearScreen {
                                        : "Hides " + pieces + (pieces == 1 ? " piece" : " pieces") + within);
         }
         final List<String> lines = new ArrayList<>();
+        if (isLookedAt(row.id)) {
+            lines.add("In front of you");
+        }
         for (NearbyModels.Nearby n : around) {
             if (n.id().equals(row.id)) {
                 lines.add(n.pieces() + (n.pieces() == 1 ? " piece, " : " pieces, nearest ")

@@ -67,9 +67,7 @@ public final class NearbyModels {
             if (dSq > r2) {
                 continue;
             }
-            // Everything up to the last '/' is the fragment the config wants.
-            final int cut = id.lastIndexOf('/');
-            final String key = (bones || cut < 0) ? id : id.substring(0, cut + 1);
+            final String key = bones ? id : modelOf(id);
             final Group g = found.computeIfAbsent(key, k -> new Group());
             g.pieces++;
             if (dSq < g.nearestSq) {
@@ -79,7 +77,86 @@ public final class NearbyModels {
         return found;
     }
 
+    /** Everything up to the last '/' is the fragment the config wants for the whole model. */
+    static String modelOf(String id) {
+        final int cut = id.lastIndexOf('/');
+        return cut < 0 ? id : id.substring(0, cut + 1);
+    }
+
     public record Nearby(String id, int pieces, double distance) {
+    }
+
+    /** How far off the line of sight a model can be and still be the one looked at. */
+    private static final double LOOK_CONE_DEGREES = 15.0;
+    /**
+     * How far above a piece the model is taken to reach. Plugins often stand every piece of a model
+     * on its base and lift each bone by its display transform, so the piece's own position can sit
+     * well below what you are looking at.
+     */
+    private static final double MODEL_HEIGHT = 3.0;
+    /** Degrees a block of distance counts for, so the nearer of two models in line wins. */
+    private static final double DEGREES_PER_BLOCK = 0.2;
+    /**
+     * Nearer than this, a point gives no direction worth reading: the mount you ride stands where
+     * you do, and would seem to be ahead of you whichever way you faced.
+     */
+    private static final double LOOK_MIN_DISTANCE = 1.0;
+
+    /**
+     * The model the player is looking at, within the radius: the one closest to the line of sight
+     * and no more than LOOK_CONE_DEGREES off it. Null when nothing is.
+     *
+     * <p>From yaw, pitch and coordinates rather than the view and position vectors - the same
+     * reason scan measures against the player entity: those keep one name across the 1.21.x jar.
+     */
+    public static String lookedAt(double radius) {
+        final Minecraft mc = Minecraft.getInstance();
+        final ClientLevel level = mc.level;
+        final Entity player = mc.player;
+        if (level == null || player == null) {
+            return null;
+        }
+        final double yaw = Math.toRadians(player.getYRot());
+        final double pitch = Math.toRadians(player.getXRot());
+        final double dx = -Math.sin(yaw) * Math.cos(pitch);
+        final double dy = -Math.sin(pitch);
+        final double dz = Math.cos(yaw) * Math.cos(pitch);
+        final double eyeX = player.getX();
+        final double eyeY = player.getEyeY();
+        final double eyeZ = player.getZ();
+        final double r2 = radius * radius;
+        String best = null;
+        double bestScore = Double.MAX_VALUE;
+        for (Entity e : level.entitiesForRendering()) {
+            final String id = HideModels.modelIdOfEntity(e);
+            if (id == null || e.distanceToSqr(player) > r2) {
+                continue;
+            }
+            final double vx = e.getX() - eyeX;
+            final double vz = e.getZ() - eyeZ;
+            // The point of the piece's column nearest the line of sight, in a few steps up it.
+            double nearest = Double.MAX_VALUE;
+            double length = 0;
+            for (int step = 0; step <= 6; step++) {
+                final double vy = e.getY() + MODEL_HEIGHT * step / 6 - eyeY;
+                final double len = Math.sqrt(vx * vx + vy * vy + vz * vz);
+                if (len < LOOK_MIN_DISTANCE) {
+                    continue;
+                }
+                final double cos = Math.max(-1, Math.min(1, (vx * dx + vy * dy + vz * dz) / len));
+                final double angle = Math.toDegrees(Math.acos(cos));
+                if (angle < nearest) {
+                    nearest = angle;
+                    length = len;
+                }
+            }
+            final double score = nearest + length * DEGREES_PER_BLOCK;
+            if (nearest <= LOOK_CONE_DEGREES && score < bestScore) {
+                bestScore = score;
+                best = modelOf(id);
+            }
+        }
+        return best;
     }
 
     /** Models within the radius, nearest first. */

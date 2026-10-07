@@ -253,7 +253,7 @@ go as you click it. It has three tabs:
 
 | tab | what it holds |
 |---|---|
-| Nearby | every model within the list radius, nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head; a model with some bones hidden is marked orange, and clicking it hides the rest, then shows all of it again. A model a profile hides opens that profile instead |
+| Nearby | every model within the list radius: the one in front of you first, marked `»`, then nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head; a model with some bones hidden is marked orange, and clicking it hides the rest, then shows all of it again. A model a profile hides opens that profile instead |
 | Hidden | your lists: Unsaved, then each profile. Click a profile to switch it on or off, its count to open it, and `+` beside it to add the unsaved lines to it. In an open list a click takes a line out and keeps its row until the list is opened again, so a misclick is one click to undo; an open profile is also where it is renamed, by typing into its name, and deleted |
 | Settings | hiding on or off, first person only, the list radius, and where the panel sits: either top corner, or Move panel to put it anywhere |
 

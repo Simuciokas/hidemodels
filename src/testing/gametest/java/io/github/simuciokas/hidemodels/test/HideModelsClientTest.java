@@ -918,6 +918,43 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             });
             context.takeScreenshot("demo-scene");
 
+            //     The model in front of you, whichever way you turn: the golem stands 4.5 right and
+            //     6 ahead, the statue 2.5 left and 5 ahead, the dragon straight on. Facing the
+            //     golem, the screen lists it first, so its row is the first button after the tabs.
+            final Object[][] looks = {
+                    {Math.toDegrees(Math.atan2(4.5, 6.0)), "hidemodels_demo:golem/"},
+                    {Math.toDegrees(Math.atan2(-2.5, 5.0)), "hidemodels_demo:statue/"},
+                    {0.0, "hidemodels_demo:dragon/"},
+                    {180.0, null}};
+            for (Object[] look : looks) {
+                context.runOnClient(client -> {
+                    client.player.setYRot((float) (at[3] + (double) look[0]));
+                    client.player.setXRot(0f);
+                    final String seen = NearbyModels.lookedAt(16.0);
+                    if (!java.util.Objects.equals(seen, look[1])) {
+                        throw new AssertionError("turned " + look[0] + " degrees, the model in front "
+                                + "was " + seen + " rather than " + look[1]);
+                    }
+                });
+            }
+            context.runOnClient(client -> {
+                client.player.setYRot((float) (at[3] + (double) looks[0][0]));
+                io.github.simuciokas.hidemodels.Screens.open(client, new HiddenListScreen(null));
+            });
+            context.waitTicks(5);
+            hoverFirstRow(context);
+            context.takeScreenshot("looked-at");
+            context.runOnClient(client -> {
+                press(4);
+                if (!HideModels.listed("hidemodels_demo:golem/")) {
+                    throw new AssertionError("the first row was not the golem in front of you");
+                }
+                HideModels.removeModel("hidemodels_demo:golem/");
+                client.player.setYRot((float) at[3]);
+                System.out.println("[hidemodels-gametest] nearby: the model in front of you is "
+                        + "found whichever way you face, and listed first");
+            });
+
             // Kept for a human to look at when a run fails; asserts nothing by itself, because a
             // screenshot comparison would fail on every unrelated resource-pack or lighting change.
             context.takeScreenshot("hidemodels-after-hide");
