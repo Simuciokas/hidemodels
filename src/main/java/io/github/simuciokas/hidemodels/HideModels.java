@@ -432,9 +432,8 @@ public final class HideModels {
             ConfigText.append(text.top(), pattern);
             return true;
         })) {
-            NearbyModels.say(Component.literal("hidemodels: hiding '" + pattern + "' ("
-                    + patterns.length + " pattern" + (patterns.length == 1 ? "" : "s") + ")")
-                    .withStyle(ChatFormatting.GREEN));
+            confirm("hiding '" + pattern + "' (" + patterns.length + " pattern"
+                    + (patterns.length == 1 ? "" : "s") + ")", true);
         }
     }
 
@@ -490,10 +489,9 @@ public final class HideModels {
             }
             return;
         }
-        NearbyModels.say(Component.literal("hidemodels: stopped hiding '" + pattern + "'"
-                + (withBones && removed[0] > 1 ? " and its bones" : "") + " ("
-                + patterns.length + " pattern" + (patterns.length == 1 ? "" : "s") + " left)")
-                .withStyle(ChatFormatting.GREEN));
+        confirm("stopped hiding '" + pattern + "'"
+                + (withBones && removed[0] > 1 ? " and its bones" : "") + " (" + patterns.length
+                + " pattern" + (patterns.length == 1 ? "" : "s") + " left)", true);
     }
 
     /**
@@ -507,7 +505,7 @@ public final class HideModels {
         if (moved == 0) {
             return null;
         }
-        say("saved " + moved + " line" + (moved == 1 ? "" : "s") + " as the profile '" + name + "'",
+        confirm("saved " + moved + " line" + (moved == 1 ? "" : "s") + " as the profile '" + name + "'",
                 true);
         return name;
     }
@@ -515,7 +513,7 @@ public final class HideModels {
     public static void addUnsavedToProfile(String name) {
         final int moved = moveUnsaved(text -> text.profile(name));
         if (moved > 0) {
-            say("added " + moved + " line" + (moved == 1 ? "" : "s") + " to '" + name + "'", true);
+            confirm("added " + moved + " line" + (moved == 1 ? "" : "s") + " to '" + name + "'", true);
         }
     }
 
@@ -531,7 +529,7 @@ public final class HideModels {
             return true;
         });
         if (changed[0]) {
-            say("profile '" + name + "' " + (on ? "on" : "off"), true);
+            confirm("profile '" + name + "' " + (on ? "on" : "off"), true);
         }
     }
 
@@ -563,7 +561,7 @@ public final class HideModels {
         final boolean[] gone = {false};
         edit(text -> gone[0] = text.sections.remove(text.profile(name)));
         if (gone[0]) {
-            say("deleted the profile '" + name + "'", true);
+            confirm("deleted the profile '" + name + "'", true);
         }
     }
 
@@ -655,19 +653,19 @@ public final class HideModels {
      */
     public static void setEnabled(boolean on) {
         directive(on ? null : "off", "off", "disabled");
-        say("hiding " + (on ? "on" : "off"), on || patterns.length == 0);
+        confirm("hiding " + (on ? "on" : "off"), on || patterns.length == 0);
     }
 
     public static void setFirstPersonOnly(boolean only) {
         directive(only ? "first-person-only" : null,
                   "first-person-only", "firstperson", "first-person");
-        say("first person only: " + (only ? "on" : "off"), true);
+        confirm("first person only: " + (only ? "on" : "off"), true);
     }
 
     public static void setListRadius(double blocks) {
         final double clamped = Math.min(Math.max(blocks, 1.0), MAX_LIST_RADIUS);
         directive("list-radius " + fmt(clamped), "list-radius");
-        say("list radius: " + fmt(clamped) + " blocks", true);
+        confirm("list radius: " + fmt(clamped) + " blocks", true);
     }
 
     /** Each clamped to 0..1. The top left is the default, so placing it there removes the line. */
@@ -676,7 +674,7 @@ public final class HideModels {
         final double cy = parseFraction(Double.toString(y), 0);
         final String at = fraction(cx) + " " + fraction(cy);
         directive(cx == 0 && cy == 0 ? null : "gui-position " + at, "gui-position");
-        say("gui position: " + at, true);
+        confirm("gui position: " + at, true);
     }
 
     /** Three decimals at most; one would make a placed panel jump by a tenth of the screen. */
@@ -735,9 +733,20 @@ public final class HideModels {
                                                : Double.toString(rounded);
     }
 
-    private static void say(String what, boolean good) {
-        NearbyModels.say(Component.literal("hidemodels: " + what)
-                .withStyle(good ? ChatFormatting.GREEN : ChatFormatting.YELLOW));
+    /**
+     * Whether a change also says so in chat. The screen shows every change it makes, so only a
+     * debugging run does: -Dhidemodels.debug=true, or -Pdebug on the demo. Warnings always do,
+     * since they explain a click that changed nothing.
+     */
+    public static boolean debug() {
+        return Boolean.getBoolean(MOD_ID + ".debug");
+    }
+
+    private static void confirm(String what, boolean good) {
+        if (debug()) {
+            NearbyModels.say(Component.literal("hidemodels: " + what)
+                    .withStyle(good ? ChatFormatting.GREEN : ChatFormatting.YELLOW));
+        }
     }
 
     private static String coveringPattern(String id) {

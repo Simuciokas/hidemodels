@@ -323,6 +323,10 @@ To try it without a server, `./gradlew runDemo -Pminecraft_version=26.3` starts 
 that places a few sample models in front of you whenever you join a single-player world (26.x only;
 there are no sounds, as the launch skips the asset download).
 
+**Chat stays quiet.** The screen shows every change it makes, so the mod writes to chat only to say
+why a click changed nothing. A run with `-Dhidemodels.debug=true` — or `runDemo -Pdebug` — also
+confirms each change there.
+
 ## License
 
 **LGPL-3.0-only.** The full text is in [LICENSE](LICENSE); LGPLv3 is written as a set of additional

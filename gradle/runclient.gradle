@@ -372,6 +372,7 @@ if (!legacy) {
                 "-Djava.library.path=${nativesDir}".toString(),
                 "-Dorg.lwjgl.librarypath=${nativesDir}".toString(),
                 '-Dhidemodels.demo=true',
+                "-Dhidemodels.debug=${project.hasProperty('debug')}".toString(),
                 oneWorker,
         ]
         args = [
