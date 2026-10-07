@@ -196,6 +196,7 @@ preset would be wrong everywhere but one server.
 | `off` | disable without emptying the list |
 | `first-person-only` | hide only while the camera is in first person, so the model reappears in third person (F5) |
 | `list-radius 32` | default radius for `/hidemodels list` |
+| `gui-side right` | `/hidemodels gui` on the right edge rather than the left |
 
 `first-person-only` is the one to use for a mount whose head fills your screen: hidden while you're
 riding and looking ahead, visible again the moment you pull the camera out to look at it. The
@@ -215,15 +216,16 @@ renderer down with it.
 | `/hidemodels` | status: pattern count, on/off, first-person and server-opt-out state |
 | `/hidemodels list [radius]` | every model within the radius, grouped by model, nearest first |
 | `/hidemodels list bones [radius] [model]` | the same, but individual bone ids — `model` narrows it to one model |
-| `/hidemodels gui` | the list, what is hidden, and the settings as a screen down the left — also on a key, unbound until you pick one under Miscellaneous in Controls |
+| `/hidemodels gui` | the list, what is hidden, and the settings as a screen down one side — also on a key, unbound until you pick one under Miscellaneous in Controls |
 | `/hidemodels add <id>` | hide it now — writes the line and reloads |
 | `/hidemodels remove <id>` | stop hiding it |
 | `/hidemodels on` / `off` | stop hiding without emptying the list |
 | `/hidemodels first-person on` / `off` | hide only while the camera is in first person |
 | `/hidemodels radius <blocks>` | the default radius for `list` |
+| `/hidemodels gui-side left` / `right` | which side of the screen the gui sits on |
 
-**Every setting is also a command, and every command edits the config.** The three directives below
-can be typed into the file or set in game, and both routes write the same file and reload it — so
+**Every setting is also a command, and every command edits the config.** The directives can be
+typed into the file or set in game, and both routes write the same file and reload it — so
 there is no second place where state could live and disagree.
 
 Each row shows the piece count, the id, and the distance to the nearest piece; ids your config

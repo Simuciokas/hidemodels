@@ -69,6 +69,9 @@ public final class HideModels {
     /** Default radius for /hidemodels list, in blocks. */
     private static volatile double listRadius = DEFAULT_LIST_RADIUS;
 
+    /** Which edge of the screen the /hidemodels gui panel sits against. */
+    private static volatile boolean guiOnRight;
+
     /** Set while the current server has opted out. Cleared on disconnect, never persisted. */
     private static volatile boolean serverDisabled;
 
@@ -344,6 +347,8 @@ public final class HideModels {
                 + "the camera is in first person").withStyle(ChatFormatting.GRAY));
         NearbyModels.say(Component.literal("  /hidemodels radius <blocks>  - default radius for list")
                 .withStyle(ChatFormatting.GRAY));
+        NearbyModels.say(Component.literal("  /hidemodels gui-side left | right  - which side of the "
+                + "screen the gui sits on").withStyle(ChatFormatting.GRAY));
         NearbyModels.say(Component.literal("  config/" + MOD_ID
                 + ".txt holds the list and the directives (default radius " + listRadius + ")")
                 .withStyle(ChatFormatting.DARK_GRAY));
@@ -362,6 +367,11 @@ public final class HideModels {
     public static boolean isFirstPersonOnly() {
         maybeReload();
         return firstPersonOnly;
+    }
+
+    public static boolean isGuiOnRight() {
+        maybeReload();
+        return guiOnRight;
     }
 
     public static String[] patterns() {
@@ -459,7 +469,7 @@ public final class HideModels {
     }
 
     /**
-     * The three directives, as commands.
+     * The directives, as commands.
      *
      * <p>Each edits the config, so a setting changed in game and one typed into the file cannot
      * disagree. Written in the canonical spelling even where the parser also accepts an alias.
@@ -481,6 +491,11 @@ public final class HideModels {
         say("list radius: " + fmt(clamped) + " blocks", true);
     }
 
+    public static void setGuiOnRight(boolean right) {
+        directive(right ? "gui-side right" : null, "gui-side");
+        say("gui side: " + (right ? "right" : "left"), true);
+    }
+
     /**
      * Rewrites one directive in the config: removes every spelling of it, then appends the new one.
      *
@@ -500,10 +515,11 @@ public final class HideModels {
                 final String trimmed = existing.trim().toLowerCase(Locale.ROOT);
                 boolean drop = false;
                 for (String spelling : spellings) {
-                    // "list-radius 32" is a prefix match; "off" must match the whole line, or a
-                    // pattern containing the word would be eaten.
-                    if (spelling.equals("list-radius") ? trimmed.startsWith(spelling)
-                                                       : trimmed.equals(spelling)) {
+                    // A directive with a value ("list-radius 32") is a prefix match; "off" must
+                    // match the whole line, or a pattern containing the word would be eaten.
+                    final boolean takesValue = spelling.equals("list-radius")
+                            || spelling.equals("gui-side");
+                    if (takesValue ? trimmed.startsWith(spelling) : trimmed.equals(spelling)) {
                         drop = true;
                         break;
                     }
@@ -650,6 +666,7 @@ public final class HideModels {
         boolean on = true;
         boolean fp = false;
         double radius = DEFAULT_LIST_RADIUS;
+        boolean right = false;
         for (String raw : Files.readAllLines(CONFIG)) {
             String line = raw.trim();
             if (line.isEmpty() || line.startsWith("#")) {
@@ -672,12 +689,17 @@ public final class HideModels {
                 }
                 continue;                   // a malformed value keeps the default, never a pattern
             }
+            if (line.toLowerCase(Locale.ROOT).startsWith("gui-side")) {
+                right = line.substring("gui-side".length()).trim().equalsIgnoreCase("right");
+                continue;
+            }
             pats.add(line.toLowerCase(Locale.ROOT));
         }
         patterns = pats.toArray(new String[0]);
         enabled = on;
         firstPersonOnly = fp;
         listRadius = radius;
+        guiOnRight = right;
         System.out.println("[" + MOD_ID + "] loaded " + patterns.length + " pattern(s), enabled=" + enabled
                 + ", firstPersonOnly=" + firstPersonOnly + ", listRadius=" + listRadius);
     }
@@ -719,6 +741,7 @@ public final class HideModels {
                 #                         want a mount out of your view but still want to see it
                 #                                              (/hidemodels first-person on)
                 #     list-radius 32      default radius for /hidemodels list (/hidemodels radius 32)
+                #     gui-side right      /hidemodels gui on the right edge   (/hidemodels gui-side right)
                 #
                 # IN GAME: /hidemodels list [radius] prints every model around you with its piece
                 # count and distance, marking the ones this file already hides - so the ids can be
