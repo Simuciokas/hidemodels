@@ -15,19 +15,16 @@
  */
 package io.github.simuciokas.hidemodels.fabric;
 
-import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.arguments.ArgumentType;
 import io.github.simuciokas.hidemodels.CommandTree;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
-import com.mojang.brigadier.builder.RequiredArgumentBuilder;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 
 /**
- * The two builder methods Fabric's client command API exposes, for 26.x. See ../fabricapi-mc121.
+ * Fabric's client-command literal(), for 26.x. See ../fabricapi-mc121.
  *
  * <p>Fabric API's rename, not Minecraft's: ClientCommandManager through 1.21.11, ClientCommands
- * from 26.1. The methods and the source type are identical; only the class name differs.
+ * from 26.1. The method and the source type are identical; only the class name differs.
  */
 public final class Cmd implements CommandTree.Builders<FabricClientCommandSource> {
 
@@ -39,16 +36,5 @@ public final class Cmd implements CommandTree.Builders<FabricClientCommandSource
     @Override
     public LiteralArgumentBuilder<FabricClientCommandSource> literal(String name) {
         return ClientCommands.literal(name);
-    }
-
-    @Override
-    public <T> RequiredArgumentBuilder<FabricClientCommandSource, T> argument(
-            String name, ArgumentType<T> type) {
-        return ClientCommands.argument(name, type);
-    }
-
-    /** The live client-command dispatcher, for the gametest's tab-completion check. */
-    public static CommandDispatcher<FabricClientCommandSource> dispatcher() {
-        return ClientCommands.getActiveDispatcher();
     }
 }

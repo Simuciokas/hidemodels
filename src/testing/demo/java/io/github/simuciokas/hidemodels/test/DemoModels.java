@@ -66,7 +66,7 @@ public final class DemoModels implements ClientModInitializer {
                 final float yaw = mc.player.getYRot();
                 server.execute(() -> place(server, x, y, z, yaw));
                 mc.execute(() -> NearbyModels.say(Component.literal("hidemodels demo: a dragon, a "
-                        + "golem, a statue and a lantern are in front of you. Open /hidemodels gui, "
+                        + "golem, a statue and a lantern are in front of you. Open /hidemodels, "
                         + "or bind Open Hide Models under Controls > Miscellaneous.")
                         .withStyle(ChatFormatting.AQUA)));
             }

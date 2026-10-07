@@ -21,27 +21,19 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.Style;
 import net.minecraft.world.entity.Entity;
 
 /**
- * The {@code /hidemodels list} report: every item_model id within a radius, so the ids you need for
- * the config can be read off the screen instead of guessed.
+ * The models around you, as the screen lists them: every item_model id within a radius, grouped by
+ * MODEL - {@code modelengine:some_mount/} - because that is what goes in the config.
  *
- * <p>Grouped by MODEL by default - {@code modelengine:some_mount/} - because that is what goes in
- * the config; {@code list bones} prints the individual bone ids for hiding just one piece.
- *
- * <p>Nothing here runs on a timer: it is a one-shot scan of the level's render list, triggered by
- * the command, so it costs nothing when unused.
+ * <p>Nothing here runs on a timer: it is a scan of the level's render list, made while the screen
+ * is open, so it costs nothing otherwise.
  */
 public final class NearbyModels {
-
-    /** Chat gets unreadable long before this; the tail is summarised instead. */
-    private static final int MAX_LINES = 40;
 
     private NearbyModels() {
     }
@@ -51,103 +43,8 @@ public final class NearbyModels {
         double nearestSq = Double.MAX_VALUE;
     }
 
-    /** Runs the scan and prints it. {@code bones} lists full ids rather than grouping by model. */
-    public static void report(double radius, boolean bones) {
-        report(radius, bones, null);
-    }
-
-    /**
-     * As above, restricted to ids under one model.
-     *
-     * <p>This is what the piece count links to: a model row says "x7", and clicking it asks for
-     * those seven bones and nothing else. Unfiltered {@code list bones} prints every bone of every
-     * model in range, which near a couple of mounts is more lines than chat will show - the filter
-     * is what makes "see the mount, pick its head" a two-click job rather than a squint.
-     */
-    public static void report(double radius, boolean bones, String filter) {
-        final Minecraft mc = Minecraft.getInstance();
-        final ClientLevel level = mc.level;
-        if (level == null || mc.player == null) {
-            say(Component.literal("hidemodels: not in a world").withStyle(ChatFormatting.RED));
-            return;
-        }
-        final Map<String, Group> found = scan(radius, bones, filter);
-        int scanned = 0;
-        for (Group g : found.values()) {
-            scanned += g.pieces;
-        }
-
-        if (found.isEmpty()) {
-            say(Component.literal("hidemodels: no models"
-                    + (filter == null ? "" : " under '" + filter + "'")
-                    + " within " + fmt(radius) + " blocks")
-                    .withStyle(ChatFormatting.YELLOW));
-            return;
-        }
-
-        final List<Map.Entry<String, Group>> rows = new ArrayList<>(found.entrySet());
-        rows.sort(Comparator.comparingDouble(x -> x.getValue().nearestSq));
-
-        say(Component.literal("hidemodels: " + found.size() + (bones ? " bone" : " model")
-                + (found.size() == 1 ? "" : "s")
-                + (filter == null ? "" : " of " + filter)
-                + " within " + fmt(radius) + " blocks"
-                + " (" + scanned + " piece" + (scanned == 1 ? "" : "s") + ")")
-                .withStyle(ChatFormatting.AQUA));
-
-        final int shown = Math.min(rows.size(), MAX_LINES);
-        for (int i = 0; i < shown; i++) {
-            final Map.Entry<String, Group> row = rows.get(i);
-            final Group g = row.getValue();
-            final boolean listed = HideModels.listed(row.getKey());
-
-            // Removal is deliberately not wired to a click: undoing by clicking where you just
-            // clicked is how people hide things by accident.
-            final Component id = listed
-                    ? Component.literal(row.getKey()).withStyle(ChatFormatting.GREEN)
-                    : Component.literal(row.getKey()).withStyle(
-                            ClickRun.style("/" + HideModels.MOD_ID + " add " + row.getKey())
-                                    .withColor(ChatFormatting.WHITE)
-                                    .withUnderlined(true));
-
-            // The count opens the model up. Not in bones mode, where the row already IS a piece,
-            // and not on a slashless id, which has nothing underneath it.
-            final boolean drillable = !bones && row.getKey().endsWith("/");
-            final Style countStyle = drillable
-                    ? ClickRun.style("/" + HideModels.MOD_ID + " list bones " + fmt(radius)
-                            + " " + row.getKey()).withColor(ChatFormatting.GRAY)
-                    : Style.EMPTY.withColor(ChatFormatting.DARK_GRAY);
-
-            final Component line = Component.literal("  x" + g.pieces + "  ")
-                    .withStyle(countStyle)
-                    .append(id)
-                    .append(Component.literal("  " + fmt(Math.sqrt(g.nearestSq)) + "m")
-                            .withStyle(ChatFormatting.DARK_GRAY))
-                    .append(listed ? Component.literal("  hidden").withStyle(ChatFormatting.GREEN)
-                                   : Component.literal("  click to hide")
-                                             .withStyle(ChatFormatting.DARK_GRAY));
-            say(line);
-        }
-        if (rows.size() > shown) {
-            say(Component.literal("  ... " + (rows.size() - shown) + " more (narrow the radius)")
-                    .withStyle(ChatFormatting.DARK_GRAY));
-        }
-    }
-
-    /**
-     * One pass over the render list, grouped the way the config wants it.
-     *
-     * <p>Shared with the command's tab completion, which suggests exactly what this report prints -
-     * the ids around you. Two scans that could disagree about what is nearby would be a small but
-     * infuriating bug: completion offering an id the list does not show, or the reverse.
-     */
+    /** One pass over the render list, grouped by model, or by bone when {@code bones} is set. */
     static Map<String, Group> scan(double radius, boolean bones) {
-        return scan(radius, bones, null);
-    }
-
-    /** As above, keeping only ids under {@code filter} - the model a piece count was clicked on. */
-    static Map<String, Group> scan(double radius, boolean bones, String filter) {
-        final String prefix = (filter == null) ? null : filter.toLowerCase(Locale.ROOT);
         final Map<String, Group> found = new HashMap<>();
         final Minecraft mc = Minecraft.getInstance();
         final ClientLevel level = mc.level;
@@ -165,11 +62,6 @@ public final class NearbyModels {
             // range compiles to the same bytes.
             final double dSq = e.distanceToSqr(mc.player);
             if (dSq > r2) {
-                continue;
-            }
-            // From the start, not as a substring the way the hide list matches: a substring would
-            // pull in another model that merely contains the same word.
-            if (prefix != null && !id.toLowerCase(Locale.ROOT).startsWith(prefix)) {
                 continue;
             }
             // Everything up to the last '/' is the fragment the config wants.
@@ -197,7 +89,7 @@ public final class NearbyModels {
         return out;
     }
 
-    /** Model ids within the radius, nearest first - the completion for {@code /hidemodels add}. */
+    /** Model ids within the radius, nearest first: the Nearby tab's rows. */
     public static List<String> nearbyIds(double radius) {
         final List<String> out = new ArrayList<>();
         for (Nearby n : nearby(radius)) {

@@ -15,17 +15,12 @@
  */
 package io.github.simuciokas.hidemodels.test;
 
-import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.ParseResults;
-import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.blaze3d.platform.InputConstants;
 import io.github.simuciokas.hidemodels.HiddenListScreen;
 import io.github.simuciokas.hidemodels.HideModels;
 import io.github.simuciokas.hidemodels.Keys;
 import io.github.simuciokas.hidemodels.NearbyModels;
 import net.minecraft.client.KeyMapping;
-import io.github.simuciokas.hidemodels.fabric.Cmd;
-import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import io.github.simuciokas.hidemodels.mixin.ItemDisplayAccessor;
 import net.fabricmc.fabric.api.client.gametest.v1.FabricClientGameTest;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
@@ -45,7 +40,7 @@ import net.minecraft.world.entity.Entity;
  * targets resolve against each version's client jar, and the jar loads to the main menu. None of
  * that exercises a single line of the mod's own logic, and the two things most likely to break
  * across versions are exactly the lines a compiler cannot judge - the component looked up by id
- * from the registry, and the command intercepted on its way to the server.
+ * from the registry, and the screen the whole mod is driven from.
  *
  * <p>NO ModelEngine AND NO SERVER NEEDED. The mod keys on a vanilla component carried by a vanilla
  * entity, so a summoned item_display reproduces the real condition exactly. That is what makes this
@@ -73,29 +68,11 @@ public final class HideModelsClientTest implements FabricClientGameTest {
     }
 
     /**
-     * Is this the method a clicked run_command ends up calling?
-     *
-     * <p>By signature, not by name: the standalone launcher runs intermediary-named mods against
-     * the obfuscated jar, where this answers to something like {@code method_54650}.
-     *
-     * <p>{@code void (String, Screen)} is the only such method on the connection across this range.
-     */
-    private static boolean isUnattendedCommandSend(Method m) {
-        if (m.getParameterCount() != 2 || m.getReturnType() != void.class) {
-            return false;
-        }
-        final Class<?>[] params = m.getParameterTypes();
-        if (params[0] != String.class || !Screen.class.isAssignableFrom(params[1])) {
-            return false;
-        }
-        return true;
-    }
-
-    /**
      * The render hook itself: {@code shouldRender}, whichever shape this version declares.
      *
-     * <p>By shape, not by name, for the same reason as the clicked-command lookup below. Entity
-     * first, three doubles, and on 26.3 a trailing float; nothing else on the dispatcher matches.
+     * <p>By shape, not by name: the standalone launcher runs intermediary-named mods against the
+     * obfuscated jar, where it has a method_ name. Entity first, three doubles, and on 26.3 a
+     * trailing float; nothing else on the dispatcher matches.
      */
     private static Method findShouldRender(Class<?> type) {
         for (Method m : type.getMethods()) {
@@ -237,9 +214,8 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
             });
 
-            // 1b. THE GROUPING THE DRILL-DOWN RESTS ON: a piece count is only clickable on rows
-            //     whose key ends in a slash, so grouping that stopped trimming there would make
-            //     the link vanish rather than break.
+            // 1b. THE GROUPING THE NEARBY TAB RESTS ON: it lists models, not bones, so two bones
+            //     of one model must come back as a single row ending in a slash.
             singleplayer.getServer().runCommand(
                     "summon item_display ~ ~1 ~ {item:{id:\"stone\",components:"
                             + "{\"minecraft:item_model\":\"hidemodels:rig/head\"}}}");
@@ -252,20 +228,33 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 final java.util.List<String> ids = NearbyModels.nearbyIds(32.0);
                 if (!ids.contains("hidemodels:rig/")) {
                     throw new AssertionError("two bones of one model did not group into "
-                            + "'hidemodels:rig/' - the piece count would not be clickable. Got "
+                            + "'hidemodels:rig/' - the Nearby tab would list them apart. Got "
                             + ids);
                 }
             });
 
-            // 2. THE REGISTERED COMMAND. Sent through the client's own connection on purpose:
+            // 2. THE COMMAND OPENS THE SCREEN. Sent through the client's own connection on purpose:
             //    that is the path Fabric API's client command layer intercepts, and running it
             //    server-side would bypass the very thing being tested.
-            context.runOnClient(client -> client.getConnection().sendCommand("hidemodels help"));
+            context.runOnClient(client -> client.getConnection().sendCommand(HideModels.MOD_ID));
             context.waitTicks(10);
+            context.runOnClient(client -> {
+                try {
+                    final Object scr = screenOf(client);
+                    if (!(scr instanceof HiddenListScreen)) {
+                        throw new AssertionError("/hidemodels opened " + scr + ", not the screen");
+                    }
+                    ((Screen) scr).onClose();
+                    System.out.println("[hidemodels-gametest] /hidemodels opens the screen");
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not read the open screen", e);
+                }
+            });
+            context.waitTicks(5);
 
-            // 3. THE MATCHER, fed by the FILE rather than by the add command - both routes exist
-            //    and both are checked: this one covers the mtime poll that picks up a hand edit,
-            //    step 4 below covers the command that writes and reloads immediately.
+            // 3. THE MATCHER, fed by the FILE rather than by the screen - both routes exist and
+            //    both are checked: this one covers the mtime poll that picks up a hand edit, step 4
+            //    below covers the write a click makes, which reloads immediately.
             writeConfig(TEST_MODEL);
 
             //    waitFor rather than a fixed sleep: each call to hidden() is what drives the
@@ -280,95 +269,15 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
             });
 
-            // 4. TAB COMPLETION, asked of the real dispatcher rather than of our own provider.
-            //    The suggestions are the whole reason the command was worth registering properly,
-            //    and "it is wired up" is not the same claim as "the client gets the list" - the
-            //    provider could be attached to the wrong node, or never reached at all.
-            //
-            //    A null source is safe here and only here: these nodes declare no requirement, so
-            //    brigadier never touches it, and neither provider reads the context.
-            context.runOnClient(client -> {
-                final CommandDispatcher<FabricClientCommandSource> dispatcher = Cmd.dispatcher();
-                if (dispatcher == null) {
-                    throw new AssertionError("no client command dispatcher - the command never registered");
-                }
-                final Suggestions suggestions = dispatcher.getCompletionSuggestions(
-                        dispatcher.parse(HideModels.MOD_ID + " remove ",
-                                         (FabricClientCommandSource) null)).join();
-                final boolean offered = suggestions.getList().stream()
-                        .anyMatch(s -> TEST_MODEL.equals(s.getText()));
-                if (!offered) {
-                    throw new AssertionError("/hidemodels remove did not suggest the hidden id "
-                            + TEST_MODEL + " - got " + suggestions.getList());
-                }
-                System.out.println("[hidemodels-gametest] remove suggested "
-                        + suggestions.getList().size() + " id(s)");
+            // 4. ADDING AND REMOVING, the calls a click in the screen makes: the id is hidden at
+            //    once and shown again at once, without waiting for the poll.
+            final String added = "hidemodels:added_in_game";
+            context.runOnClient(client -> HideModels.add(added));
+            context.waitFor(client -> HideModels.hidden(added));
+            context.runOnClient(client -> HideModels.remove(added));
+            context.waitFor(client -> !HideModels.hidden(added));
 
-                // THE DRILL-DOWN PARSES. A model row's piece count links to this exact shape, and
-                // the click is unattended: if the node arrangement is wrong the user gets a red
-                // parse error in chat with no way to tell it came from a link they clicked rather
-                // than from something they typed. Parsing is the whole assertion - running it needs
-                // a world with models in it, which the earlier checks already cover.
-                final String drill = HideModels.MOD_ID + " list bones 32.0 modelengine:some_mount/";
-                final ParseResults<FabricClientCommandSource> parsed =
-                        dispatcher.parse(drill, (FabricClientCommandSource) null);
-                // Both halves matter: an unknown argument shows up as an exception, but a tree that
-                // simply has nowhere to put the model name parses the prefix happily and leaves the
-                // rest unread - which would run the UNFILTERED list and look like it worked.
-                if (!parsed.getExceptions().isEmpty() || parsed.getReader().canRead()) {
-                    throw new AssertionError("the clickable piece count builds a command the tree "
-                            + "does not fully accept: " + drill + " - unread '"
-                            + parsed.getReader().getRemaining() + "', " + parsed.getExceptions());
-                }
-            });
-
-            // 5. THE COMMANDS THAT EDIT THE LIST, asserted the way a user would: type it, and the
-            //    thing is hidden without touching a file or waiting.
-            final String byCommand = "hidemodels:added_by_command";
-            context.runOnClient(client ->
-                    client.getConnection().sendCommand(HideModels.MOD_ID + " add " + byCommand));
-            context.waitFor(client -> HideModels.hidden(byCommand));
-
-            context.runOnClient(client ->
-                    client.getConnection().sendCommand(HideModels.MOD_ID + " remove " + byCommand));
-            context.waitFor(client -> !HideModels.hidden(byCommand));
-
-            // 6. THE CLICKED PATH, on the versions that have one: from 1.21.6 a clicked
-            //    run_command calls sendUnattendedCommand rather than sendCommand. Losing it sends
-            //    the command to the server, where it reads as a typo rather than a bug here.
-            //
-            //    Reflection because this source also compiles for 1.21.4, where the method does
-            //    not exist.
-            final String byClick = "hidemodels:added_by_click";
-            final boolean[] clickable = {false};
-            context.runOnClient(client -> {
-                final Object connection = client.getConnection();
-                for (Method m : connection.getClass().getMethods()) {
-                    if (!isUnattendedCommandSend(m)) {
-                        continue;
-                    }
-                    clickable[0] = true;
-                    try {
-                        // null screen: the mod cancels at HEAD, so nothing ever reads it.
-                        m.invoke(connection, HideModels.MOD_ID + " add " + byClick, null);
-                    } catch (ReflectiveOperationException e) {
-                        throw new AssertionError("could not drive the clicked-command path", e);
-                    }
-                    break;
-                }
-            });
-            // Printed, because "the test passed" otherwise reads the same whether the clicked
-            // path ran or was skipped.
-            System.out.println("[hidemodels-gametest] clicked-command path "
-                    + (clickable[0] ? "exercised" : "absent on this version (pre-1.21.6)"));
-            if (clickable[0]) {
-                context.waitFor(client -> HideModels.hidden(byClick));
-                context.runOnClient(client -> client.getConnection()
-                        .sendCommand(HideModels.MOD_ID + " remove " + byClick));
-                context.waitFor(client -> !HideModels.hidden(byClick));
-            }
-
-            // 7. THE OTHER SHAPE A MODEL ARRIVES IN: an armor stand wearing the piece on its
+            // 5. THE OTHER SHAPE A MODEL ARRIVES IN: an armor stand wearing the piece on its
             //    head, which is what the older plugins and the legacy modes of the newer ones
             //    produce. Same component, same config line, different entity class - and a type
             //    check naming only Display.ItemDisplay would silently ignore all of it.
@@ -404,7 +313,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.waitFor(client -> HideModels.hidden(standModel));
             System.out.println("[hidemodels-gametest] armor stand shape hidden");
 
-            // 8. THE RENDER HOOK IS ACTUALLY APPLIED. Everything above tests the matcher, not
+            // 6. THE RENDER HOOK IS ACTUALLY APPLIED. Everything above tests the matcher, not
             //    the mixin that acts on it - which only became worth checking when 26.3 forced
             //    both injectors to require = 0, where matching nothing is silent.
             //
@@ -444,22 +353,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                         + shouldRender.getParameterCount() + "-arg shouldRender)");
             });
 
-            // 9. THE CLICK EVENT RESOLVES. ClickRun builds it reflectively, so nothing at compile
-            //    time proves the names are right - and a failure returns Style.EMPTY, which looks
-            //    like plain text rather than an error. This is the only check that it worked, and
-            //    it has to run in production mode too: dev keeps official names, while a released
-            //    1.21.x jar runs against intermediary and takes the other candidate.
-            context.runOnClient(client -> {
-                final net.minecraft.network.chat.Style styled =
-                        io.github.simuciokas.hidemodels.ClickRun.style("/hidemodels help");
-                if (net.minecraft.network.chat.Style.EMPTY.equals(styled)) {
-                    throw new AssertionError("ClickRun produced no click event - neither the modern "
-                            + "nor the legacy ClickEvent shape resolved on this version");
-                }
-                System.out.println("[hidemodels-gametest] click event resolved");
-            });
-
-            // 10. THE SERVER OPT-OUT'S REFLECTIVE HALF. HideModels.channelId reads the id off a
+            // 7. THE SERVER OPT-OUT'S REFLECTIVE HALF. HideModels.channelId reads the id off a
             //     payload type by reflection, because that id is ResourceLocation up to 1.21.10 and
             //     Identifier after - naming it would split the NeoForge jar.
             //
@@ -501,7 +395,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 writeConfig("modelengine:mount_3/");
                 context.waitTicks(30);
                 context.runOnClient(client ->
-                        client.getConnection().sendCommand("hidemodels gui"));
+                        client.getConnection().sendCommand(HideModels.MOD_ID));
                 context.waitTicks(20);
 
                 // One capture at whatever scale the client is on, which is all a production-mode
@@ -559,15 +453,15 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 context.runOnClient(client -> client.options.guiScale().set(0));
             }
 
-            // 11. THE HIDDEN TAB, and the one rule that makes it usable: unhiding edits the
+            // 8. THE HIDDEN TAB, and the one rule that makes it usable: unhiding edits the
             //     config but leaves the row where it is. A row that vanished under the cursor
             //     would make undoing a misclick impossible - the list is a snapshot, re-read only
             //     when the tab is.
             writeConfig("meg:ghost/");
             context.waitTicks(10);
-            context.runOnClient(client -> client.getConnection().sendCommand("hidemodels add meg:spectre/"));
+            context.runOnClient(client -> HideModels.add("meg:spectre/"));
             context.waitTicks(10);
-            context.runOnClient(client -> client.getConnection().sendCommand("hidemodels gui"));
+            context.runOnClient(client -> client.getConnection().sendCommand(HideModels.MOD_ID));
             context.waitTicks(20);
             // Buttons in the order the screen adds them: the three tabs, then the rows.
             context.runOnClient(client -> press(2));
@@ -590,10 +484,10 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             });
             context.waitTicks(5);
 
-            // 12. THE SETTINGS TAB, which must leave the config exactly as the matching command
-            //     would. Buttons there: the tabs, hiding, first person only, radius -, radius +,
+            // 9. THE SETTINGS TAB, which must leave the config exactly as the matching directive
+            //     typed into the file would. Buttons there: the tabs, hiding, first person only, radius -, radius +,
             //     position, move panel.
-            context.runOnClient(client -> client.getConnection().sendCommand("hidemodels radius 30"));
+            context.runOnClient(client -> HideModels.setListRadius(30));
             context.waitTicks(10);
             context.runOnClient(client -> press(3));
             context.waitTicks(10);
@@ -687,7 +581,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             });
             context.waitTicks(5);
 
-            // 13. THE KEY. It ships unbound, so it is bound here first; the press then goes
+            // 10. THE KEY. It ships unbound, so it is bound here first; the press then goes
             //     through the real keyboard handler and the client tick, which is the whole path.
             context.runOnClient(client -> {
                 try {
@@ -728,7 +622,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             });
             context.waitTicks(5);
 
-            // 14. WHAT THE HOVER BOX IS BUILT FROM: a model's piece count, the line that covers
+            // 11. WHAT THE HOVER BOX IS BUILT FROM: a model's piece count, the line that covers
             //     it, and how much a line hides. The box itself is only looked at.
             writeConfig("hidemodels:rig/");
             context.waitFor(client -> HideModels.hidden("hidemodels:rig/head"));
@@ -765,7 +659,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             hoverFirstRow(context);
             context.takeScreenshot("hover-detail");
 
-            // 15. THE DEMO SCENE that runDemo places, checked model by model: its summons fail
+            // 12. THE DEMO SCENE that runDemo places, checked model by model: its summons fail
             //     silently, and a broken one would only show as an empty world in the demo.
             final double[] at = new double[4];
             context.runOnClient(client -> {

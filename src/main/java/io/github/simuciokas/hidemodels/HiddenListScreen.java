@@ -23,7 +23,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 /**
- * {@code /hidemodels list} as a screen: the models around you, each row hiding or unhiding one.
+ * The mod's screen, opened by /hidemodels or its key: the models around you, each row hiding or
+ * unhiding one.
  *
  * <p>A PANEL, in the top left unless moved, leaving the rest of the screen clear and unblurred.
  * The point of a screen rather than a chat list is that the world is still there behind it -

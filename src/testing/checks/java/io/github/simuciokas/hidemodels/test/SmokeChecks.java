@@ -33,8 +33,8 @@ import net.minecraft.client.Minecraft;
  * one copy serve a ClientModInitializer on Fabric and a @Mod constructor on NeoForge. It drives
  * itself from a watcher thread rather than a tick event for the same reason.
  *
- * <p>WHAT IT CANNOT COVER. There is no world and no player, so the render hook, the registered
- * command and ChatOut are out of reach; the gametest covers those where it can run.
+ * <p>WHAT IT CANNOT COVER. There is no world and no player, so the render hook, the screen, the
+ * registered command and ChatOut are out of reach; the gametest covers those where it can run.
  */
 public final class SmokeChecks {
 
@@ -69,8 +69,8 @@ public final class SmokeChecks {
             waitForClient();
             checkComponentResolves();
             checkConfigDrivesMatcher();
-            checkCommandsEditTheList();
-            checkSettingsCommands();
+            checkAddAndRemove();
+            checkSettings();
             checkKeyRegistered();
             report("PASS - component resolved, config drove the matcher, add/remove and settings "
                     + "worked, key registered");
@@ -133,53 +133,50 @@ public final class SmokeChecks {
     }
 
     /**
-     * The add and remove commands, which are the only part of them that works without a world.
-     *
-     * <p>Calls add/remove directly rather than through the command, because a client command
-     * needs a connection and there is no server here. What it covers is what they do: writing the
-     * config and forcing the reload.
+     * Adding and removing, as a click in the screen does it: writing the config and forcing the
+     * reload, which is the part that works without a world.
      */
-    private static void checkCommandsEditTheList() throws IOException, InterruptedException {
-        final String id = "hidemodels:smoke_command";
+    private static void checkAddAndRemove() throws IOException, InterruptedException {
+        final String id = "hidemodels:smoke_added";
         write("# cleared by the smoke test");
         waitUntil(() -> !HideModels.hidden(id), "the pattern list never started empty");
 
         HideModels.add(id);
         waitUntil(() -> HideModels.hidden(id),
-                  "/hidemodels add wrote nothing the matcher picked up");
+                  "add() wrote nothing the matcher picked up");
 
         HideModels.remove(id);
         waitUntil(() -> !HideModels.hidden(id),
-                  "/hidemodels remove left the id hidden");
+                  "remove() left the id hidden");
     }
 
     /**
-     * The directives, driven the way the commands drive them.
+     * The directives, driven the way the Settings tab drives them.
      *
      * <p>Each writes the config and reloads, and the observable effect is the point: off means
      * hidden() stops saying yes even though the pattern is still listed, and on brings it back.
      * That distinction - disabled versus empty - is the whole reason the directive exists.
      */
-    private static void checkSettingsCommands() throws IOException, InterruptedException {
+    private static void checkSettings() throws IOException, InterruptedException {
         final String id = "hidemodels:smoke_setting";
         write("# cleared by the smoke test");
         HideModels.add(id);
         waitUntil(() -> HideModels.hidden(id), "the id was not hidden before testing the switch");
 
         HideModels.setEnabled(false);
-        waitUntil(() -> !HideModels.hidden(id), "/hidemodels off did not stop the hiding");
+        waitUntil(() -> !HideModels.hidden(id), "turning hiding off did not stop it");
         if (!HideModels.listed(id)) {
             throw new AssertionError("off emptied the list - it should only stop it being applied");
         }
 
         HideModels.setEnabled(true);
-        waitUntil(() -> HideModels.hidden(id), "/hidemodels on did not resume the hiding");
+        waitUntil(() -> HideModels.hidden(id), "turning hiding back on did not resume it");
 
         // These two have no effect visible without a camera or a world, so what is checked is that
         // they write something the parser reads back - a silent no-op is the likely failure.
         HideModels.setListRadius(48.0);
         waitUntil(() -> HideModels.listRadius() == 48.0,
-                  "/hidemodels radius did not change the configured radius");
+                  "setting the radius did not change it");
         HideModels.setListRadius(32.0);
 
         HideModels.setFirstPersonOnly(true);
@@ -187,7 +184,7 @@ public final class SmokeChecks {
 
         HideModels.setGuiPosition(1, 0.5);
         waitUntil(() -> HideModels.guiX() == 1.0 && HideModels.guiY() == 0.5,
-                  "/hidemodels gui-position 1 0.5 did not stick");
+                  "a screen position of 1 0.5 did not stick");
         HideModels.setGuiPosition(0, 0);
         HideModels.remove(id);
     }
