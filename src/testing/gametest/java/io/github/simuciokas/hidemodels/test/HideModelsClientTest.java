@@ -453,22 +453,25 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 context.runOnClient(client -> client.options.guiScale().set(0));
             }
 
-            // 8. THE HIDDEN TAB, and the one rule that makes it usable: unhiding edits the
-            //     config but leaves the row where it is. A row that vanished under the cursor
-            //     would make undoing a misclick impossible - the list is a snapshot, re-read only
-            //     when the tab is.
+            // 8. THE HIDDEN TAB, and the one rule that makes a list usable: taking a line out
+            //     edits the config but leaves the row where it is. A row that vanished under the
+            //     cursor would make undoing a misclick impossible - an open list is a snapshot,
+            //     re-read only when it is opened again.
             writeConfig("meg:ghost/");
             context.waitTicks(10);
             context.runOnClient(client -> HideModels.add("meg:spectre/"));
             context.waitTicks(10);
             context.runOnClient(client -> client.getConnection().sendCommand(HideModels.MOD_ID));
             context.waitTicks(20);
-            // Buttons in the order the screen adds them: the three tabs, then the rows.
+            // Buttons in the order the screen adds them: the three tabs, then the rows. The Hidden
+            // tab's front page is Unsaved, its cell, Save; opening Unsaved shows back, then lines.
             context.runOnClient(client -> press(2));
-            context.waitTicks(15);
+            context.waitTicks(10);
+            context.runOnClient(client -> press(4));
+            context.waitTicks(10);
             context.runOnClient(client -> {
                 final int before = childCount();
-                press(4);
+                press(5);
                 final int after = childCount();
                 if (before != after) {
                     throw new AssertionError("the row went away when unhidden: " + before
@@ -481,6 +484,61 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                     throw new AssertionError("unhiding from the hidden tab did not edit the config");
                 }
                 System.out.println("[hidemodels-gametest] hidden tab: config edited, row kept");
+            });
+            context.waitTicks(5);
+
+            //     PROFILES from the same tab: the unsaved lines saved as one, which then hides only
+            //     while it is on, and opened to take a line out and put it back. On the front
+            //     page with nothing unsaved: Unsaved, its cell, then the profile and its count.
+            context.runOnClient(client -> HideModels.add("hidemodels:rig/"));
+            context.waitTicks(5);
+            context.runOnClient(client -> {
+                press(2);
+                press(6);
+                if (HideModels.profiles().size() != 1 || !HideModels.unsaved().isEmpty()) {
+                    throw new AssertionError("Save unsaved as a profile left " + HideModels.unsaved()
+                            + " unsaved and " + HideModels.profiles().size() + " profile(s)");
+                }
+            });
+            context.waitTicks(5);
+            context.takeScreenshot("profiles-lists");
+            context.runOnClient(client -> {
+                press(6);
+                if (HideModels.profiles().get(0).on() || HideModels.listed("hidemodels:rig/")) {
+                    throw new AssertionError("clicking the profile did not switch it off");
+                }
+                press(6);
+                if (!HideModels.listed("hidemodels:rig/")) {
+                    throw new AssertionError("clicking it again did not switch it back on");
+                }
+                press(7);
+                final int before = childCount();
+                final String line = HideModels.profiles().get(0).patterns().get(0);
+                press(6);
+                if (HideModels.profiles().get(0).patterns().contains(line) || childCount() != before) {
+                    throw new AssertionError("taking a line out of the profile did not edit it, "
+                            + "or the row went away");
+                }
+                press(6);
+                if (!HideModels.profiles().get(0).patterns().contains(line)) {
+                    throw new AssertionError("clicking the line again did not put it back");
+                }
+            });
+            context.waitTicks(5);
+            context.takeScreenshot("profile-open");
+            //     + beside a profile adds the unsaved lines to it. With something unsaved the front
+            //     page is Unsaved, its cell, Save, then the profile, its +, its count.
+            context.runOnClient(client -> {
+                press(4);
+                HideModels.add("meg:plus/");
+                press(2);
+                press(8);
+                if (!HideModels.unsaved().isEmpty()
+                        || !HideModels.profiles().get(0).patterns().contains("meg:plus/")) {
+                    throw new AssertionError("+ did not move the unsaved line into the profile");
+                }
+                System.out.println("[hidemodels-gametest] profiles: saved, switched, opened, edited, "
+                        + "added to");
             });
             context.waitTicks(5);
 
@@ -753,6 +811,26 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
                 System.out.println("[hidemodels-gametest] bone view: one bone of three hidden, "
                         + "then all of it, then none");
+            });
+            //     A model a profile hides opens that profile when clicked, rather than editing it -
+            //     shown by deleting the profile from there: in Nearby the same buttons would only
+            //     have opened the model's bones.
+            context.runOnClient(client -> {
+                HideModels.add("hidemodels:beast/");
+                HideModels.saveUnsavedAsProfile();
+            });
+            context.waitTicks(5);
+            context.runOnClient(client -> client.getConnection().sendCommand(HideModels.MOD_ID));
+            context.waitTicks(10);
+            context.runOnClient(client -> {
+                press(4);
+                press(5);
+                press(5);
+                if (!HideModels.profiles().isEmpty() || HideModels.listed("hidemodels:beast/")) {
+                    throw new AssertionError("clicking a model hidden by a profile did not open it "
+                            + "- the profile is still there: " + HideModels.profiles());
+                }
+                System.out.println("[hidemodels-gametest] nearby: a profile's model opens the profile");
             });
 
             // 13. THE DEMO SCENE that runDemo places, checked model by model: its summons fail

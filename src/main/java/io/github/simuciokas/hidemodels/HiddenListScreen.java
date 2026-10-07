@@ -69,19 +69,32 @@ public final class HiddenListScreen extends ClearScreen {
     private static final String MOVING = "Click to place, Esc cancels";
     private static final String RADIUS_LABEL = "List radius";
     private static final String OPEN = " ▶";
+    private static final String UNSAVED = "Unsaved";
+    private static final String SAVE_UNSAVED = "Save unsaved as a profile";
+    private static final String DELETE = "Delete profile";
+    private static final String DELETE_SURE = "Click again to delete";
 
     private final Screen parent;
     private final List<Row> rows = new ArrayList<>();
     private int page;
     private int tab = NEARBY;
     /**
-     * The hide list as it was when this tab was opened.
-     *
-     * <p>TAKEN ONCE, not read live: unhiding something removes it from the config, and a row that
-     * vanished under the cursor would make undoing a misclick impossible. The row stays, its accent
-     * goes, and the list is only re-read when the tab is.
+     * The list the Hidden tab has open: "" for the unsaved lines, a profile's name, or null while
+     * the tab shows the lists themselves.
      */
-    private List<String> hiddenSnapshot = List.of();
+    private String openList;
+    /**
+     * The open list's lines as they were when it was opened.
+     *
+     * <p>TAKEN ONCE, not read live: removing a line edits the config, and a row that vanished
+     * under the cursor would make undoing a misclick impossible. The row stays, its accent goes,
+     * and the lines are only re-read when the list is opened again.
+     */
+    private List<String> openLines = List.of();
+    /** The page of lists to go back to from an open one. */
+    private int listsPage;
+    /** Set by the first click on Delete profile; the second deletes. */
+    private boolean confirmDelete;
     /** The model whose bones the Nearby tab lists, or null while it lists models. */
     private String bonesOf;
     /** The models page to go back to from a model's bones. */
@@ -137,15 +150,61 @@ public final class HiddenListScreen extends ClearScreen {
     }
 
     private int perPage() {
-        // Room kept for the header and the chrome rows: the tabs, the pager, close, and the way
-        // back when a model's bones are showing.
-        final int chrome = 3 + (showingBones() ? 1 : 0);
+        // Room kept for the header and the chrome rows: the tabs, the pager, close, the way back
+        // when a model's bones are showing, and the Hidden tab's rows above its list.
+        final int chrome = 3 + (showingBones() ? 1 : 0) + hiddenFixedRows();
         final int usable = height - Y - 14 - chrome * (ROW + GAP) - BOTTOM_MARGIN;
         return Math.max(1, usable / (ROW + GAP));
     }
 
     private boolean showingBones() {
         return tab == NEARBY && bonesOf != null;
+    }
+
+    /** Back and Delete above an open list; Unsaved and Save above the profiles. */
+    private int hiddenFixedRows() {
+        if (tab != HIDDEN) {
+            return 0;
+        }
+        if (openList != null) {
+            return openList.isEmpty() ? 1 : 2;
+        }
+        return HideModels.unsaved().isEmpty() ? 1 : 2;
+    }
+
+    private static HideModels.Profile profileNamed(String name) {
+        for (HideModels.Profile p : HideModels.profiles()) {
+            if (p.name().equalsIgnoreCase(name)) {
+                return p;
+            }
+        }
+        return null;
+    }
+
+    /** Whether a line is still in the open list - what the accent on its row shows. */
+    private boolean inOpenList(String line) {
+        if (openList == null) {
+            return false;
+        }
+        if (openList.isEmpty()) {
+            return HideModels.unsaved().contains(line);
+        }
+        final HideModels.Profile p = profileNamed(openList);
+        return p != null && p.patterns().contains(line);
+    }
+
+    /** Opens a list in the Hidden tab, from wherever the screen is. */
+    private void openList(String list) {
+        listsPage = tab == HIDDEN && openList == null ? page : 0;
+        tab = HIDDEN;
+        bonesOf = null;
+        openList = list;
+        final HideModels.Profile p = list.isEmpty() ? null : profileNamed(list);
+        openLines = List.copyOf(list.isEmpty() ? HideModels.unsaved()
+                : p == null ? List.of() : p.patterns());
+        confirmDelete = false;
+        page = 0;
+        rebuildWidgets();
     }
 
     private int pageCount(int total) {
@@ -165,8 +224,12 @@ public final class HiddenListScreen extends ClearScreen {
         rows.clear();
         final List<NearbyModels.Nearby> found = nearbyRows();
         final List<String> source = new ArrayList<>();
-        if (tab == HIDDEN) {
-            source.addAll(hiddenSnapshot);
+        if (tab == HIDDEN && openList == null) {
+            for (HideModels.Profile p : HideModels.profiles()) {
+                source.add(p.name());
+            }
+        } else if (tab == HIDDEN) {
+            source.addAll(openLines);
         }
         for (NearbyModels.Nearby n : found) {
             source.add(n.id());
@@ -177,7 +240,7 @@ public final class HiddenListScreen extends ClearScreen {
         page = Math.min(page, pages - 1);
 
         final int from = page * perPage;
-        final List<String> shown = source.subList(from, Math.min(source.size(), from + perPage));
+        List<String> shown = source.subList(from, Math.min(source.size(), from + perPage));
 
         final int[] tabW = new int[TABS.length];
         int strip = -GAP;
@@ -207,6 +270,31 @@ public final class HiddenListScreen extends ClearScreen {
         }
         for (String id : shown) {
             content = Math.max(content, measure(id) + (opensUp(id) ? GAP + cellW : 0));
+        }
+        // The lists: each profile's name with its cells beside it, and the fixed rows above.
+        final int unsavedCount = HideModels.unsaved().size();
+        final int plusW = measure("+") + PAD * 2;
+        int listCellW = 0;
+        if (tab == HIDDEN && openList == null) {
+            listCellW = measure(unsavedCount + OPEN) + PAD * 2;
+            for (String name : shown) {
+                final HideModels.Profile p = profileNamed(name);
+                listCellW = Math.max(listCellW,
+                        measure((p == null ? 0 : p.patterns().size()) + OPEN) + PAD * 2);
+            }
+            content = Math.max(content, measure(UNSAVED) + GAP + listCellW);
+            if (unsavedCount > 0) {
+                content = Math.max(content, measure(SAVE_UNSAVED));
+            }
+            for (String name : shown) {
+                content = Math.max(content, measure(name) + GAP + listCellW
+                        + (unsavedCount > 0 ? plusW + GAP : 0));
+            }
+        } else if (tab == HIDDEN) {
+            content = Math.max(content, measure("◀ " + (openList.isEmpty() ? UNSAVED : openList)));
+            if (!openList.isEmpty()) {
+                content = Math.max(content, measure(DELETE_SURE));
+            }
         }
         final int prevW = measure(PREV) + PAD * 2;
         final int nextW = measure(NEXT) + PAD * 2;
@@ -238,15 +326,33 @@ public final class HiddenListScreen extends ClearScreen {
             y += ROW + GAP;
         }
 
+        if (tab == HIDDEN && openList == null) {
+            y = lists(y, rowWidth, shown, listCellW, plusW);
+            shown = List.of();
+        } else if (tab == HIDDEN) {
+            y = openListHead(y, rowWidth);
+        }
+
         for (int i = 0; i < shown.size(); i++) {
             final String id = shown.get(i);
             final boolean opens = opensUp(id);
             final Row row = row(left, y, opens ? rowWidth - cellW - GAP : rowWidth, id);
             row.id = id;
-            row.on = HideModels.listed(id);
-            // A model hides whole; unhiding it takes its bones' lines too, so a model that had
-            // single bones hidden goes all hidden on one click and all shown on the next.
+            row.on = tab == HIDDEN ? inOpenList(id) : HideModels.listed(id);
             hit(row, () -> {
+                if (tab == HIDDEN) {
+                    toggleOpenLine(id);
+                    rebuildWidgets();
+                    return;
+                }
+                // A profile is changed by opening it, so a stray click here never edits one.
+                final String list = HideModels.hidingList(id);
+                if (list != null && !list.isEmpty()) {
+                    openList(list);
+                    return;
+                }
+                // A model hides whole; unhiding it takes its bones' lines too, so a model that
+                // had single bones hidden goes all hidden on one click and all shown on the next.
                 if (!HideModels.listed(id)) {
                     HideModels.add(id);
                 } else if (opens) {
@@ -314,6 +420,110 @@ public final class HiddenListScreen extends ClearScreen {
         return Math.max(0, height - BOTTOM_MARGIN - Y - panelHeight);
     }
 
+    /**
+     * The Hidden tab's front page: the unsaved lines, the way to save them, then this page of
+     * profiles - each switched on or off by a click, with + to add the unsaved lines to it and
+     * its count to open it.
+     */
+    private int lists(int y, int w, List<String> names, int cellW, int plusW) {
+        final int unsavedCount = HideModels.unsaved().size();
+        final Row unsaved = row(left, y, w - cellW - GAP, UNSAVED);
+        unsaved.hint = "Hidden by a click and in no profile, so always applied";
+        hit(unsaved, () -> openList(""));
+        final Row unsavedCell = row(left + w - cellW, y, cellW, unsavedCount + OPEN);
+        unsavedCell.muted = true;
+        unsavedCell.hint = "Show its lines";
+        hit(unsavedCell, () -> openList(""));
+        y += ROW + GAP;
+
+        if (unsavedCount > 0) {
+            final Row save = row(left, y, w, SAVE_UNSAVED);
+            save.hint = "Moves the " + unsavedCount + " unsaved line" + (unsavedCount == 1 ? "" : "s")
+                    + " into a new profile, switched on";
+            hit(save, () -> {
+                HideModels.saveUnsavedAsProfile();
+                rebuildWidgets();
+            });
+            y += ROW + GAP;
+        }
+
+        for (String name : names) {
+            final HideModels.Profile p = profileNamed(name);
+            if (p == null) {
+                continue;
+            }
+            final int cells = cellW + (unsavedCount > 0 ? plusW + GAP : 0);
+            final Row row = row(left, y, w - cells - GAP, name);
+            row.on = p.on();
+            row.hint = p.on() ? "On - click to switch it off" : "Off - click to switch it on";
+            hit(row, () -> {
+                HideModels.setProfileOn(name, !p.on());
+                rebuildWidgets();
+            });
+            int x = left + w - cells;
+            if (unsavedCount > 0) {
+                final Row plus = row(x, y, plusW, "+");
+                plus.muted = true;
+                plus.hint = "Add the " + unsavedCount + " unsaved line"
+                        + (unsavedCount == 1 ? "" : "s") + " to this profile";
+                hit(plus, () -> {
+                    HideModels.addUnsavedToProfile(name);
+                    rebuildWidgets();
+                });
+                x += plusW + GAP;
+            }
+            final Row open = row(x, y, cellW, p.patterns().size() + OPEN);
+            open.muted = true;
+            open.hint = "Show its lines";
+            hit(open, () -> openList(name));
+            y += ROW + GAP;
+        }
+        return y;
+    }
+
+    /** Above an open list: the way back, and for a profile, Delete - which asks twice. */
+    private int openListHead(int y, int w) {
+        chrome(left, y, w, "◀ " + (openList.isEmpty() ? UNSAVED : openList), () -> {
+            openList = null;
+            confirmDelete = false;
+            page = listsPage;
+            rebuildWidgets();
+        });
+        y += ROW + GAP;
+        if (!openList.isEmpty()) {
+            final Row delete = row(left, y, w, confirmDelete ? DELETE_SURE : DELETE);
+            delete.muted = !confirmDelete;
+            delete.hint = "Deletes the profile and every line in it";
+            hit(delete, () -> {
+                if (confirmDelete) {
+                    HideModels.deleteProfile(openList);
+                    openList = null;
+                    page = listsPage;
+                }
+                confirmDelete = !confirmDelete;
+                rebuildWidgets();
+            });
+            y += ROW + GAP;
+        }
+        return y;
+    }
+
+    /** Takes a line out of the open list, or puts it back. */
+    private void toggleOpenLine(String line) {
+        final boolean in = inOpenList(line);
+        if (openList.isEmpty()) {
+            if (in) {
+                HideModels.remove(line);
+            } else {
+                HideModels.add(line);
+            }
+        } else if (in) {
+            HideModels.removeFromProfile(openList, line);
+        } else {
+            HideModels.addToProfile(openList, line);
+        }
+    }
+
     /** Only a model can be opened, and only one whose id has bones under it. */
     private boolean opensUp(String id) {
         return tab == NEARBY && bonesOf == null && id.endsWith("/");
@@ -338,13 +548,14 @@ public final class HiddenListScreen extends ClearScreen {
         row.action = action;
     }
 
-    /** Switching re-reads the hide list and goes back to page one. */
+    /** Switching goes back to page one, and to the lists rather than one of them. */
     private void tabButton(int x, int y, int w, int which) {
         final Row row = row(x, y, w, TABS[which]);
         row.muted = tab != which;
         hit(row, () -> {
             tab = which;
-            hiddenSnapshot = List.of(HideModels.patterns());
+            openList = null;
+            confirmDelete = false;
             bonesOf = null;
             page = 0;
             rebuildWidgets();
@@ -455,9 +666,6 @@ public final class HiddenListScreen extends ClearScreen {
 
     @Override
     protected void init() {
-        if (hiddenSnapshot.isEmpty()) {
-            hiddenSnapshot = List.of(HideModels.patterns());
-        }
         build();
     }
 
@@ -473,7 +681,8 @@ public final class HiddenListScreen extends ClearScreen {
 
         final double radius = HideModels.listRadius();
         final List<NearbyModels.Nearby> around = nearbyRows();
-        final int total = tab == HIDDEN ? hiddenSnapshot.size() : around.size();
+        final int total = tab != HIDDEN ? around.size()
+                : openList == null ? HideModels.profiles().size() : openLines.size();
         p.text(moving ? MOVING : header(total, pageCount(total)), left + ox, top + oy,
                 moving ? TEXT : DIM);
 
@@ -488,8 +697,10 @@ public final class HiddenListScreen extends ClearScreen {
             final int x = row.x + ox;
             final int y = row.y + oy;
             p.fill(x, y, row.w, ROW, over && row.action != null ? ROW_HOVER : ROW_BG);
-            // Read live for a model, so a hand edit to the config shows without reopening.
-            final boolean on = row.id != null ? HideModels.listed(row.id) : row.on;
+            // Read live, so a hand edit to the config shows without reopening. In an open list
+            // the bar means the line is still in it; elsewhere, that something hides the model.
+            final boolean on = row.id == null ? row.on
+                    : tab == HIDDEN ? inOpenList(row.id) : HideModels.listed(row.id);
             if (on || (row.id != null && partly.contains(row.id))) {
                 // A bar down the left edge rather than a tick: it reads at a glance down a column.
                 p.fill(x, y, 2, ROW, on ? ACCENT : PARTIAL);
@@ -526,8 +737,12 @@ public final class HiddenListScreen extends ClearScreen {
         final String within = " within " + (int) radius + " blocks";
         final String covering = HideModels.coveredBy(row.id);
         if (tab == HIDDEN) {
-            if (covering == null) {
-                return List.of("No longer hidden - click to hide again");
+            if (!inOpenList(row.id)) {
+                return List.of("Taken out - click to put it back");
+            }
+            final HideModels.Profile profile = openList.isEmpty() ? null : profileNamed(openList);
+            if (profile != null && !profile.on()) {
+                return List.of("Hides nothing while the profile is off");
             }
             final int pieces = NearbyModels.piecesMatching(radius, row.id);
             return List.of(pieces == 0 ? "Hides nothing" + within
@@ -554,8 +769,12 @@ public final class HiddenListScreen extends ClearScreen {
                 lines.add(hidden + " of its " + pieces + " pieces hidden");
             }
         }
+        final String list = HideModels.hidingList(row.id);
         if (covering == null) {
             lines.add(hidden > 0 ? "Click to hide all of it" : "Click to hide");
+        } else if (list != null && !list.isEmpty()) {
+            lines.add("Hidden by the profile '" + list + "'");
+            lines.add("Click to open it");
         } else if (covering.equals(row.id.toLowerCase(Locale.ROOT))) {
             lines.add("Hidden - click to unhide");
         } else {
@@ -613,8 +832,21 @@ public final class HiddenListScreen extends ClearScreen {
                     : "config/" + HideModels.MOD_ID + ".txt";
         }
         final String page = pages > 1 ? "    " + (this.page + 1) + "/" + pages : "";
+        if (tab == HIDDEN && openList == null) {
+            final List<HideModels.Profile> all = HideModels.profiles();
+            int on = 0;
+            for (HideModels.Profile p : all) {
+                on += p.on() ? 1 : 0;
+            }
+            return HideModels.unsaved().size() + " unsaved" + (all.isEmpty() ? ""
+                    : ", " + on + " of " + all.size() + " profile" + (all.size() == 1 ? "" : "s")
+                      + " on") + page;
+        }
         if (tab == HIDDEN) {
-            return (total == 0 ? "Nothing hidden" : total + " hidden") + page;
+            final HideModels.Profile profile = openList.isEmpty() ? null : profileNamed(openList);
+            return (openList.isEmpty() ? UNSAVED : openList) + ": " + total
+                    + (total == 1 ? " line" : " lines")
+                    + (profile == null ? "" : profile.on() ? ", on" : ", off") + page;
         }
         final int radius = (int) HideModels.listRadius();
         if (total == 0) {
