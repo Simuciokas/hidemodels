@@ -18,6 +18,7 @@ package io.github.simuciokas.hidemodels;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -52,6 +53,8 @@ public final class HiddenListScreen extends ClearScreen {
     private static final int ROW_BG = 0xFF1C1C24;
     private static final int ROW_HOVER = 0xFF3A3A48;
     private static final int ACCENT = 0xFF6FCF6F;
+    /** A model with some of its bones hidden, but not all of it. */
+    private static final int PARTIAL = 0xFFE8A33D;
     private static final int TEXT = 0xFFE8E8E8;
     private static final int DIM = 0xFF9A9AA4;
 
@@ -235,11 +238,15 @@ public final class HiddenListScreen extends ClearScreen {
             final Row row = row(left, y, opens ? rowWidth - cellW - GAP : rowWidth, id);
             row.id = id;
             row.on = HideModels.listed(id);
+            // A model hides whole; unhiding it takes its bones' lines too, so a model that had
+            // single bones hidden goes all hidden on one click and all shown on the next.
             hit(row, () -> {
-                if (HideModels.listed(id)) {
-                    HideModels.remove(id);
-                } else {
+                if (!HideModels.listed(id)) {
                     HideModels.add(id);
+                } else if (opens) {
+                    HideModels.removeModel(id);
+                } else {
+                    HideModels.remove(id);
                 }
                 rebuildWidgets();
             });
@@ -450,6 +457,8 @@ public final class HiddenListScreen extends ClearScreen {
         p.text(moving ? MOVING : header(total, pageCount(total)), left + ox, top + oy,
                 moving ? TEXT : DIM);
 
+        final Set<String> partly = tab == NEARBY && bonesOf == null
+                ? NearbyModels.withHiddenBones(radius) : Set.of();
         Row hovered = null;
         for (Row row : rows) {
             final boolean over = !moving && inside(row, mouseX, mouseY);
@@ -461,9 +470,9 @@ public final class HiddenListScreen extends ClearScreen {
             p.fill(x, y, row.w, ROW, over && row.action != null ? ROW_HOVER : ROW_BG);
             // Read live for a model, so a hand edit to the config shows without reopening.
             final boolean on = row.id != null ? HideModels.listed(row.id) : row.on;
-            if (on) {
+            if (on || (row.id != null && partly.contains(row.id))) {
                 // A bar down the left edge rather than a tick: it reads at a glance down a column.
-                p.fill(x, y, 2, ROW, ACCENT);
+                p.fill(x, y, 2, ROW, on ? ACCENT : PARTIAL);
             }
             final int ty = y + (ROW - p.lineHeight()) / 2 + 1;
             int room = row.w - PAD * 2;
@@ -509,10 +518,10 @@ public final class HiddenListScreen extends ClearScreen {
                         + NearbyModels.fmt(n.distance()) + " blocks away");
             }
         }
-        // Hiding single bones leaves a model's own row unmarked, so say how much of it is gone.
+        // Hiding single bones only marks a model's row orange, so say how much of it is gone.
+        int hidden = 0;
         if (covering == null && opensUp(row.id)) {
             int pieces = 0;
-            int hidden = 0;
             for (NearbyModels.Nearby bone : NearbyModels.bones(radius, row.id)) {
                 pieces += bone.pieces();
                 if (HideModels.listed(bone.id())) {
@@ -524,7 +533,7 @@ public final class HiddenListScreen extends ClearScreen {
             }
         }
         if (covering == null) {
-            lines.add("Click to hide");
+            lines.add(hidden > 0 ? "Click to hide all of it" : "Click to hide");
         } else if (covering.equals(row.id.toLowerCase(Locale.ROOT))) {
             lines.add("Hidden - click to unhide");
         } else {

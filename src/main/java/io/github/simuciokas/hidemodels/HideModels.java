@@ -407,6 +407,19 @@ public final class HideModels {
      * covers the id is reported rather than touched.
      */
     public static void remove(String raw) {
+        remove(raw, false);
+    }
+
+    /**
+     * Unhides a whole model: its own line, and the line of every one of its bones - the ones the
+     * screen writes when single bones are hidden. A broader line that also covers it is left
+     * alone and reported, as for a single id.
+     */
+    public static void removeModel(String model) {
+        remove(model, true);
+    }
+
+    private static void remove(String raw, boolean withBones) {
         final String pattern = raw.trim().toLowerCase(Locale.ROOT);
         if (pattern.isEmpty()) {
             NearbyModels.say(Component.literal("hidemodels: remove what?").withStyle(ChatFormatting.RED));
@@ -421,7 +434,8 @@ public final class HideModels {
             final List<String> kept = new ArrayList<>();
             int removed = 0;
             for (String line : Files.readAllLines(CONFIG)) {
-                if (line.trim().toLowerCase(Locale.ROOT).equals(pattern)) {
+                final String trimmed = line.trim().toLowerCase(Locale.ROOT);
+                if (trimmed.equals(pattern) || (withBones && trimmed.startsWith(pattern))) {
                     removed++;
                     continue;
                 }
@@ -441,7 +455,8 @@ public final class HideModels {
             }
             Files.write(CONFIG, kept);
             reloadNow();
-            NearbyModels.say(Component.literal("hidemodels: stopped hiding '" + pattern + "' ("
+            NearbyModels.say(Component.literal("hidemodels: stopped hiding '" + pattern + "'"
+                    + (withBones && removed > 1 ? " and its bones" : "") + " ("
                     + patterns.length + " pattern" + (patterns.length == 1 ? "" : "s") + " left)")
                     .withStyle(ChatFormatting.GREEN));
         } catch (IOException e) {
