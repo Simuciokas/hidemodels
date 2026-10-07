@@ -133,15 +133,24 @@ public final class CommandTree {
                                             DoubleArgumentType.getDouble(ctx, "blocks"));
                                     return 1;
                                 })))
-                .then(b.literal("gui-side")
+                // left and right keep the height, so they only move the panel across.
+                .then(b.literal("gui-position")
                         .then(b.literal("left").executes(ctx -> {
-                            HideModels.setGuiOnRight(false);
+                            HideModels.setGuiPosition(0, HideModels.guiY());
                             return 1;
                         }))
                         .then(b.literal("right").executes(ctx -> {
-                            HideModels.setGuiOnRight(true);
+                            HideModels.setGuiPosition(1, HideModels.guiY());
                             return 1;
-                        })))
+                        }))
+                        .then(b.argument("x", DoubleArgumentType.doubleArg(0.0, 1.0))
+                                .then(b.argument("y", DoubleArgumentType.doubleArg(0.0, 1.0))
+                                        .executes(ctx -> {
+                                            HideModels.setGuiPosition(
+                                                    DoubleArgumentType.getDouble(ctx, "x"),
+                                                    DoubleArgumentType.getDouble(ctx, "y"));
+                                            return 1;
+                                        }))))
                 .then(b.literal("remove")
                         .then(b.argument("id", StringArgumentType.greedyString())
                                 .suggests(listed)

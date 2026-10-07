@@ -543,14 +543,14 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                     hoverFirstRow(context);
                     context.takeScreenshot("sweep-scale" + scale + "-hover");
                     context.runOnClient(client -> {
-                        HideModels.setGuiOnRight(true);
+                        HideModels.setGuiPosition(1, 0);
                         press(1);
                     });
                     context.waitTicks(3);
                     hoverFirstRow(context, true);
                     context.takeScreenshot("sweep-scale" + scale + "-right");
                     context.runOnClient(client -> {
-                        HideModels.setGuiOnRight(false);
+                        HideModels.setGuiPosition(0, 0);
                         press(1);
                     });
                     context.getInput().setCursorPos(0, 0);
@@ -591,7 +591,8 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.waitTicks(5);
 
             // 12. THE SETTINGS TAB, which must leave the config exactly as the matching command
-            //     would. Buttons there: the tabs, hiding, first person only, radius -, radius +.
+            //     would. Buttons there: the tabs, hiding, first person only, radius -, radius +,
+            //     position, move panel.
             context.runOnClient(client -> client.getConnection().sendCommand("hidemodels radius 30"));
             context.waitTicks(10);
             context.runOnClient(client -> press(3));
@@ -626,19 +627,63 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                             + ", not 16");
                 }
                 press(8);
-                if (!HideModels.isGuiOnRight()) {
-                    throw new AssertionError("the panel side row did not move the panel right");
+                if (HideModels.guiX() != 1.0 || HideModels.guiY() != 0.0) {
+                    throw new AssertionError("Position did not go to the top right corner");
                 }
             });
             context.waitTicks(5);
             context.takeScreenshot("settings-right");
             context.runOnClient(client -> {
                 press(8);
-                if (HideModels.isGuiOnRight()) {
-                    throw new AssertionError("the panel side row did not move the panel back left");
+                if (HideModels.guiX() != 0.0 || HideModels.guiY() != 0.0) {
+                    throw new AssertionError("Position did not go back to the top left corner");
                 }
-                System.out.println("[hidemodels-gametest] settings tab: toggles, radius and side "
-                        + "written");
+            });
+            context.waitTicks(5);
+
+            //     Move panel the way a user does it: pick it up, carry it into the bottom right
+            //     corner, click. Picked up with the cursor in the window's top left, so the carry
+            //     overshoots and the drop is clamped to 1 1 whatever the panel's size.
+            context.getInput().setCursorPos(0, 0);
+            context.waitTicks(2);
+            context.runOnClient(client -> press(9));
+            context.waitTicks(2);
+            final double[] corner = new double[2];
+            context.runOnClient(client -> {
+                final double scale = client.getWindow().getGuiScale();
+                corner[0] = (client.getWindow().getGuiScaledWidth() - 1) * scale;
+                corner[1] = (client.getWindow().getGuiScaledHeight() - 1) * scale;
+            });
+            context.getInput().setCursorPos(corner[0], corner[1]);
+            context.waitTicks(3);
+            context.takeScreenshot("moving");
+            context.runOnClient(client -> {
+                if (childCount() != 1) {
+                    throw new AssertionError("a moving panel should leave one click target, not "
+                            + childCount());
+                }
+                press(1);
+                if (HideModels.guiX() != 1.0 || HideModels.guiY() != 1.0) {
+                    throw new AssertionError("the panel was put down at " + HideModels.guiX() + " "
+                            + HideModels.guiY() + ", not in the bottom right corner");
+                }
+            });
+            context.waitTicks(5);
+            context.takeScreenshot("placed-bottom-right");
+            //     Esc while carrying it cancels the move; onClose is what Esc calls.
+            context.runOnClient(client -> {
+                press(9);
+                try {
+                    ((Screen) screenOf(client)).onClose();
+                    if (!(screenOf(client) instanceof HiddenListScreen) || childCount() == 1) {
+                        throw new AssertionError("Esc while moving closed the screen or kept moving");
+                    }
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not read the open screen", e);
+                }
+                HideModels.setGuiPosition(0, 0);
+                System.out.println("[hidemodels-gametest] settings tab: toggles, radius, position "
+                        + "and move written");
             });
             context.waitTicks(5);
 

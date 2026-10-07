@@ -185,9 +185,10 @@ public final class SmokeChecks {
         HideModels.setFirstPersonOnly(true);
         HideModels.setFirstPersonOnly(false);
 
-        HideModels.setGuiOnRight(true);
-        waitUntil(HideModels::isGuiOnRight, "/hidemodels gui-side right did not stick");
-        HideModels.setGuiOnRight(false);
+        HideModels.setGuiPosition(1, 0.5);
+        waitUntil(() -> HideModels.guiX() == 1.0 && HideModels.guiY() == 0.5,
+                  "/hidemodels gui-position 1 0.5 did not stick");
+        HideModels.setGuiPosition(0, 0);
         HideModels.remove(id);
     }
 
