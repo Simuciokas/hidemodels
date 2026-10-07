@@ -811,10 +811,13 @@ processResources {
     inputs.property 'loader', loader
     inputs.property 'fabricApiDep', fabricApiDep
 
-    // NeoForge states its ranges in Maven notation rather than Fabric's semver predicates: exactly
-    // this Minecraft version, and this NeoForge build or newer within it.
+    // NeoForge states its ranges in Maven notation rather than Fabric's semver predicates. Its floor
+    // is the NeoForge build for the group's LOWEST Minecraft version, as with the Fabric API floor:
+    // each Minecraft version has its own NeoForge line, so the build this jar was compiled against
+    // would refuse every version in the group below the one it was built on.
     def mcRange = (groupLow == groupHigh) ? "[${groupLow}]" : "[${groupLow},${groupHigh}]"
-    def neoForgeRange = neoForgeVersion == null ? "" : "[${neoForgeVersion},)"
+    def neoForgeFloor = NEOFORGE[groupLow]
+    def neoForgeRange = neoForgeFloor == null ? "" : "[${neoForgeFloor},)"
     inputs.property 'mcRange', mcRange
     inputs.property 'neoForgeRange', neoForgeRange
 
