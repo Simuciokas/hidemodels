@@ -69,8 +69,13 @@ public final class HideModels {
     /** Default radius for /hidemodels list, in blocks. */
     private static volatile double listRadius = DEFAULT_LIST_RADIUS;
 
-    /** Which edge of the screen the /hidemodels gui panel sits against. */
-    private static volatile boolean guiOnRight;
+    /**
+     * Where the /hidemodels gui panel sits, as fractions of the room it has to move in: 0 0 is the
+     * top left, 1 0 the top right. Fractions rather than pixels, so the spot survives a different
+     * window size or GUI scale.
+     */
+    private static volatile double guiX;
+    private static volatile double guiY;
 
     /** Set while the current server has opted out. Cleared on disconnect, never persisted. */
     private static volatile boolean serverDisabled;
@@ -347,8 +352,8 @@ public final class HideModels {
                 + "the camera is in first person").withStyle(ChatFormatting.GRAY));
         NearbyModels.say(Component.literal("  /hidemodels radius <blocks>  - default radius for list")
                 .withStyle(ChatFormatting.GRAY));
-        NearbyModels.say(Component.literal("  /hidemodels gui-side left | right  - which side of the "
-                + "screen the gui sits on").withStyle(ChatFormatting.GRAY));
+        NearbyModels.say(Component.literal("  /hidemodels gui-position left | right | <x> <y>  - where "
+                + "the gui sits, 0 0 being the top left").withStyle(ChatFormatting.GRAY));
         NearbyModels.say(Component.literal("  config/" + MOD_ID
                 + ".txt holds the list and the directives (default radius " + listRadius + ")")
                 .withStyle(ChatFormatting.DARK_GRAY));
@@ -369,9 +374,14 @@ public final class HideModels {
         return firstPersonOnly;
     }
 
-    public static boolean isGuiOnRight() {
+    public static double guiX() {
         maybeReload();
-        return guiOnRight;
+        return guiX;
+    }
+
+    public static double guiY() {
+        maybeReload();
+        return guiY;
     }
 
     public static String[] patterns() {
@@ -491,9 +501,28 @@ public final class HideModels {
         say("list radius: " + fmt(clamped) + " blocks", true);
     }
 
-    public static void setGuiOnRight(boolean right) {
-        directive(right ? "gui-side right" : null, "gui-side");
-        say("gui side: " + (right ? "right" : "left"), true);
+    /** Each clamped to 0..1. The top left is the default, so placing it there removes the line. */
+    public static void setGuiPosition(double x, double y) {
+        final double cx = parseFraction(Double.toString(x), 0);
+        final double cy = parseFraction(Double.toString(y), 0);
+        final String at = fraction(cx) + " " + fraction(cy);
+        directive(cx == 0 && cy == 0 ? null : "gui-position " + at, "gui-position");
+        say("gui position: " + at, true);
+    }
+
+    /** Three decimals at most; one would make a placed panel jump by a tenth of the screen. */
+    private static String fraction(double v) {
+        return String.format(Locale.ROOT, "%.3f", v).replaceAll("\\.?0+$", "");
+    }
+
+    /** A fraction from 0 to 1, clamped; anything unreadable gives the fallback. */
+    private static double parseFraction(String raw, double fallback) {
+        try {
+            final double v = Double.parseDouble(raw.trim());
+            return Double.isNaN(v) ? fallback : Math.min(Math.max(v, 0.0), 1.0);
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     /**
@@ -518,7 +547,7 @@ public final class HideModels {
                     // A directive with a value ("list-radius 32") is a prefix match; "off" must
                     // match the whole line, or a pattern containing the word would be eaten.
                     final boolean takesValue = spelling.equals("list-radius")
-                            || spelling.equals("gui-side");
+                            || spelling.equals("gui-position");
                     if (takesValue ? trimmed.startsWith(spelling) : trimmed.equals(spelling)) {
                         drop = true;
                         break;
@@ -666,7 +695,8 @@ public final class HideModels {
         boolean on = true;
         boolean fp = false;
         double radius = DEFAULT_LIST_RADIUS;
-        boolean right = false;
+        double gx = 0;
+        double gy = 0;
         for (String raw : Files.readAllLines(CONFIG)) {
             String line = raw.trim();
             if (line.isEmpty() || line.startsWith("#")) {
@@ -689,8 +719,12 @@ public final class HideModels {
                 }
                 continue;                   // a malformed value keeps the default, never a pattern
             }
-            if (line.toLowerCase(Locale.ROOT).startsWith("gui-side")) {
-                right = line.substring("gui-side".length()).trim().equalsIgnoreCase("right");
+            if (line.toLowerCase(Locale.ROOT).startsWith("gui-position")) {
+                final String[] xy = line.substring("gui-position".length()).trim().split("\\s+");
+                if (xy.length == 2) {
+                    gx = parseFraction(xy[0], gx);
+                    gy = parseFraction(xy[1], gy);
+                }
                 continue;
             }
             pats.add(line.toLowerCase(Locale.ROOT));
@@ -699,7 +733,8 @@ public final class HideModels {
         enabled = on;
         firstPersonOnly = fp;
         listRadius = radius;
-        guiOnRight = right;
+        guiX = gx;
+        guiY = gy;
         System.out.println("[" + MOD_ID + "] loaded " + patterns.length + " pattern(s), enabled=" + enabled
                 + ", firstPersonOnly=" + firstPersonOnly + ", listRadius=" + listRadius);
     }
@@ -741,7 +776,8 @@ public final class HideModels {
                 #                         want a mount out of your view but still want to see it
                 #                                              (/hidemodels first-person on)
                 #     list-radius 32      default radius for /hidemodels list (/hidemodels radius 32)
-                #     gui-side right      /hidemodels gui on the right edge   (/hidemodels gui-side right)
+                #     gui-position 1 0    where /hidemodels gui sits, as fractions of the free space:
+                #                         0 0 top left, 1 0 top right    (/hidemodels gui-position)
                 #
                 # IN GAME: /hidemodels list [radius] prints every model around you with its piece
                 # count and distance, marking the ones this file already hides - so the ids can be

@@ -25,9 +25,9 @@ import net.minecraft.network.chat.Component;
 /**
  * {@code /hidemodels list} as a screen: the models around you, each row hiding or unhiding one.
  *
- * <p>DOWN ONE SIDE, the left unless the settings say otherwise, leaving the rest of the screen
- * clear and unblurred. The point of a screen rather than a chat list is that the world is still
- * there behind it - toggling a row and watching the model go is the whole interaction.
+ * <p>A PANEL, in the top left unless moved, leaving the rest of the screen clear and unblurred.
+ * The point of a screen rather than a chat list is that the world is still there behind it -
+ * toggling a row and watching the model go is the whole interaction.
  *
  * <p>DRAWN RATHER THAN ASSEMBLED FROM WIDGETS. Everything here is rectangles and text through
  * {@link Painter}, so the look is ours and this file is still shared: the only per-version code is
@@ -35,13 +35,16 @@ import net.minecraft.network.chat.Component;
  */
 public final class HiddenListScreen extends ClearScreen {
 
-    /** Gap between the panel and the screen edge it sits against. */
+    /** Gap between the panel and the screen edge it is pushed against. */
     private static final int EDGE = 10;
+    /** The highest the header can sit. */
     private static final int Y = 14;
     private static final int ROW = 16;
     private static final int GAP = 2;
     /** Text inset either side of a label, so a row is never flush against its own edge. */
     private static final int PAD = 7;
+    /** The gutter below the panel, so the last row never sits flush against the screen edge. */
+    private static final int BOTTOM_MARGIN = 12;
     private static final int RADIUS_STEP = 8;
 
     private static final int PANEL = 0xF00C0C10;
@@ -59,6 +62,7 @@ public final class HiddenListScreen extends ClearScreen {
     private static final String PREV = "◀ Prev";
     private static final String NEXT = "Next ▶";
     private static final String CLOSE = "Close";
+    private static final String MOVING = "Click to place, Esc cancels";
 
     private final Screen parent;
     private final List<Row> rows = new ArrayList<>();
@@ -74,12 +78,24 @@ public final class HiddenListScreen extends ClearScreen {
     private List<String> hiddenSnapshot = List.of();
     /** Set by build: the widest row on this page, which is what the panel is drawn around. */
     private int panelWidth;
-    /** Set by build: the panel's left edge, which moves with its width when it sits on the right. */
+    /** Set by build: from the header down to the bottom of the last row. */
+    private int panelHeight;
+    /** Set by build: the header's corner, placed from the saved position. */
     private int left = EDGE;
-    private boolean onRight;
+    private int top = Y;
+    /**
+     * Picked up by Move panel: drawn under the cursor until a click puts it down. The grab is the
+     * point on the panel it was picked up by, so it does not jump to put its corner on the cursor.
+     */
+    private boolean moving;
+    private int grabX;
+    private int grabY;
+    /** The cursor as of the last frame, because a button press does not say where it happened. */
+    private int lastMouseX;
+    private int lastMouseY;
 
     /**
-     * One line: where it is, what it says, and a hit target.
+     * One line: where it is, what it says, and what a click does.
      *
      * <p>THE BUTTON IS NEVER DRAWN. It is added as a child so vanilla routes the click to it, and
      * the row is painted by hand instead. That matters for more than looks: mouseClicked takes
@@ -98,18 +114,15 @@ public final class HiddenListScreen extends ClearScreen {
         String id;
         /** What the hover box says for a setting. */
         String hint;
+        Runnable action;
         boolean on;
         boolean muted;
-        boolean clickable;
     }
 
     public HiddenListScreen(Screen parent) {
         super(Component.literal("Hide Models"));
         this.parent = parent;
     }
-
-    /** The gutter below the panel, so the last row never sits flush against the screen edge. */
-    private static final int BOTTOM_MARGIN = 12;
 
     private int perPage() {
         // Room kept for three rows of chrome - the tabs, the pager and close - plus the header.
@@ -151,7 +164,7 @@ public final class HiddenListScreen extends ClearScreen {
         // the time. Capped at a third of the screen so one absurd id cannot swallow the view it is
         // meant to leave clear - but never narrower than the tabs.
         final int cap = Math.max(strip, width / 3);
-        int content = measure(header(source.size(), pages));
+        int content = Math.max(measure(header(source.size(), pages)), moving ? measure(MOVING) : 0);
         for (String id : shown) {
             content = Math.max(content, measure(id));
         }
@@ -160,9 +173,10 @@ public final class HiddenListScreen extends ClearScreen {
         final int rowWidth = Math.min(cap, Math.max(strip,
                 Math.max(content + PAD * 2, pages > 1 ? prevW + GAP + nextW : 0)));
         panelWidth = rowWidth;
-        onRight = HideModels.isGuiOnRight();
-        left = onRight ? width - EDGE - rowWidth : EDGE;
 
+        // Laid out in the top left, then moved as a whole to where it was put.
+        left = EDGE;
+        top = Y;
         int y = Y + 14;
         int x = left;
         for (int i = 0; i < TABS.length; i++) {
@@ -197,6 +211,40 @@ public final class HiddenListScreen extends ClearScreen {
             y += ROW + GAP;
         }
         chrome(left, y, measure(CLOSE) + PAD * 2, CLOSE, this::onClose);
+        panelHeight = y + ROW - top;
+
+        final int dx = (int) Math.round(HideModels.guiX() * roomX());
+        final int dy = (int) Math.round(HideModels.guiY() * roomY());
+        for (Row row : rows) {
+            row.x += dx;
+            row.y += dy;
+        }
+        left += dx;
+        top += dy;
+
+        if (moving) {
+            // The next click anywhere puts the panel down, so one target covers the screen.
+            addRenderableWidget(Button.builder(Component.empty(), b -> place())
+                    .bounds(0, 0, width, height).build());
+            return;
+        }
+        for (Row row : rows) {
+            if (row.action != null) {
+                final Runnable action = row.action;
+                addRenderableWidget(Button.builder(Component.empty(), b -> action.run())
+                        .bounds(row.x, row.y, row.w, ROW).build());
+            }
+        }
+    }
+
+    /** How far the panel can move across without leaving the screen. */
+    private int roomX() {
+        return Math.max(0, width - 2 * EDGE - panelWidth);
+    }
+
+    /** How far it can move down; none when a long list already fills the height. */
+    private int roomY() {
+        return Math.max(0, height - BOTTOM_MARGIN - Y - panelHeight);
     }
 
     private static int measure(String s) {
@@ -213,11 +261,9 @@ public final class HiddenListScreen extends ClearScreen {
         return row;
     }
 
-    /** An invisible button over the row, so vanilla delivers the click. */
+    /** Its invisible button is added by build, once the panel is where it belongs. */
     private void hit(Row row, Runnable action) {
-        row.clickable = true;
-        addRenderableWidget(Button.builder(Component.empty(), b -> action.run())
-                .bounds(row.x, row.y, row.w, ROW).build());
+        row.action = action;
     }
 
     /** Switching re-reads the hide list and goes back to page one. */
@@ -251,12 +297,25 @@ public final class HiddenListScreen extends ClearScreen {
         chrome(left + w - sideW, y, sideW, "+", () -> stepRadius(1));
         y += ROW + GAP;
 
-        // The panel moves the moment this is clicked, so the row leaves the cursor behind.
-        final Row side = row(left, y, w, "Panel side");
-        side.value = onRight ? "Right" : "Left";
-        side.hint = "Which edge of the screen this panel sits against";
-        hit(side, () -> {
-            HideModels.setGuiOnRight(!onRight);
+        // The two top corners as presets; anywhere else came from Move panel. The panel moves the
+        // moment either row is clicked, so it leaves the cursor behind.
+        final boolean topLeft = HideModels.guiX() == 0 && HideModels.guiY() == 0;
+        final boolean topRight = HideModels.guiX() == 1 && HideModels.guiY() == 0;
+        final Row position = row(left, y, w, "Position");
+        position.value = topLeft ? "Top left" : topRight ? "Top right" : "Moved";
+        position.hint = "Click to switch between the top corners";
+        hit(position, () -> {
+            HideModels.setGuiPosition(topLeft ? 1 : 0, 0);
+            rebuildWidgets();
+        });
+        y += ROW + GAP;
+
+        final Row move = row(left, y, w, "Move panel");
+        move.hint = "Click, then click where the panel should go";
+        hit(move, () -> {
+            moving = true;
+            grabX = lastMouseX - left;
+            grabY = lastMouseY - top;
             rebuildWidgets();
         });
         return y + ROW + GAP;
@@ -292,6 +351,21 @@ public final class HiddenListScreen extends ClearScreen {
         rebuildWidgets();
     }
 
+    /** Puts a moving panel down where the cursor has it, saved as fractions of the room. */
+    private void place() {
+        final int x = clamp(lastMouseX - grabX, EDGE, EDGE + roomX());
+        final int y = clamp(lastMouseY - grabY, Y, Y + roomY());
+        moving = false;
+        HideModels.setGuiPosition(
+                roomX() == 0 ? HideModels.guiX() : (double) (x - EDGE) / roomX(),
+                roomY() == 0 ? HideModels.guiY() : (double) (y - Y) / roomY());
+        rebuildWidgets();
+    }
+
+    private static int clamp(int v, int lo, int hi) {
+        return Math.max(lo, Math.min(hi, v));
+    }
+
     @Override
     protected void init() {
         if (hiddenSnapshot.isEmpty()) {
@@ -302,38 +376,45 @@ public final class HiddenListScreen extends ClearScreen {
 
     @Override
     protected void paint(Painter p, int mouseX, int mouseY, float partial) {
-        final int bottom = rows.isEmpty() ? Y + 28 : rows.get(rows.size() - 1).y + ROW;
-        p.fill(left - 4, Y - 6, panelWidth + 8, bottom - Y + 12, PANEL);
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
+        // A moving panel is drawn where the cursor would put it; nothing is laid out again.
+        final int ox = moving ? clamp(mouseX - grabX, EDGE, EDGE + roomX()) - left : 0;
+        final int oy = moving ? clamp(mouseY - grabY, Y, Y + roomY()) - top : 0;
+
+        p.fill(left - 4 + ox, top - 6 + oy, panelWidth + 8, panelHeight + 12, PANEL);
 
         final double radius = HideModels.listRadius();
         final List<NearbyModels.Nearby> around =
                 tab == NEARBY ? NearbyModels.nearby(radius) : List.of();
         final int total = tab == HIDDEN ? hiddenSnapshot.size() : around.size();
-        p.text(header(total, pageCount(total)), left, Y, DIM);
+        p.text(moving ? MOVING : header(total, pageCount(total)), left + ox, top + oy,
+                moving ? TEXT : DIM);
 
         Row hovered = null;
         for (Row row : rows) {
-            final boolean over = inside(row, mouseX, mouseY);
+            final boolean over = !moving && inside(row, mouseX, mouseY);
             if (over) {
                 hovered = row;
             }
-            final boolean hover = row.clickable && over;
-            p.fill(row.x, row.y, row.w, ROW, hover ? ROW_HOVER : ROW_BG);
+            final int x = row.x + ox;
+            final int y = row.y + oy;
+            p.fill(x, y, row.w, ROW, over && row.action != null ? ROW_HOVER : ROW_BG);
             // Read live for a model, so a hand edit to the config shows without reopening.
             final boolean on = row.id != null ? HideModels.listed(row.id) : row.on;
             if (on) {
                 // A bar down the left edge rather than a tick: it reads at a glance down a column.
-                p.fill(row.x, row.y, 2, ROW, ACCENT);
+                p.fill(x, y, 2, ROW, ACCENT);
             }
-            final int ty = row.y + (ROW - p.lineHeight()) / 2 + 1;
+            final int ty = y + (ROW - p.lineHeight()) / 2 + 1;
             int room = row.w - PAD * 2;
             if (row.value != null) {
                 final int vw = p.textWidth(row.value);
-                p.text(row.value, row.x + row.w - PAD - vw, ty,
+                p.text(row.value, x + row.w - PAD - vw, ty,
                         on ? ACCENT : "Off".equals(row.value) ? DIM : TEXT);
                 room -= vw + PAD;
             }
-            p.text(fit(p, row.label, room), row.x + PAD, ty, row.muted ? DIM : TEXT);
+            p.text(fit(p, row.label, room), x + PAD, ty, row.muted ? DIM : TEXT);
         }
 
         if (hovered != null) {
@@ -393,7 +474,8 @@ public final class HiddenListScreen extends ClearScreen {
         w += PAD * 2;
         final int lineH = p.lineHeight() + 2;
         final int h = lines.size() * lineH + 6;
-        final int x = onRight
+        final boolean towardLeft = left + panelWidth / 2 > width / 2;
+        final int x = towardLeft
                 ? Math.max(0, left - 8 - w)
                 : Math.max(0, Math.min(left + panelWidth + 8, width - w - 4));
         final int y = Math.max(0, Math.min(row.y, height - h - 4));
@@ -450,8 +532,14 @@ public final class HiddenListScreen extends ClearScreen {
         return false;
     }
 
+    /** Esc while moving puts the panel back where it was rather than closing the screen. */
     @Override
     public void onClose() {
+        if (moving) {
+            moving = false;
+            rebuildWidgets();
+            return;
+        }
         Screens.open(minecraft, parent);
     }
 }

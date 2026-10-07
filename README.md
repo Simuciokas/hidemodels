@@ -196,7 +196,7 @@ preset would be wrong everywhere but one server.
 | `off` | disable without emptying the list |
 | `first-person-only` | hide only while the camera is in first person, so the model reappears in third person (F5) |
 | `list-radius 32` | default radius for `/hidemodels list` |
-| `gui-side right` | `/hidemodels gui` on the right edge rather than the left |
+| `gui-position 1 0` | where `/hidemodels gui` sits, as fractions of the free space: `0 0` is the top left (the default), `1 0` the top right, `1 1` the bottom right |
 
 `first-person-only` is the one to use for a mount whose head fills your screen: hidden while you're
 riding and looking ahead, visible again the moment you pull the camera out to look at it. The
@@ -222,7 +222,7 @@ renderer down with it.
 | `/hidemodels on` / `off` | stop hiding without emptying the list |
 | `/hidemodels first-person on` / `off` | hide only while the camera is in first person |
 | `/hidemodels radius <blocks>` | the default radius for `list` |
-| `/hidemodels gui-side left` / `right` | which side of the screen the gui sits on |
+| `/hidemodels gui-position left` / `right` / `<x> <y>` | where the gui sits — `left` and `right` are the top corners, and Move panel in its Settings tab puts it anywhere |
 
 **Every setting is also a command, and every command edits the config.** The directives can be
 typed into the file or set in game, and both routes write the same file and reload it — so
