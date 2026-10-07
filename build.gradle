@@ -490,6 +490,10 @@ if (loader == 'neoforge') {
             compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
             runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.main.output
         }
+        // No sources of its own: the jar run needs a classpath without the mod's compiled classes,
+        // or the copy in mods/ would meet a second copy of the same packages.
+        neoJarRun {
+        }
     }
 }
 
@@ -497,6 +501,8 @@ if (loader == 'neoforge') {
     neoForge {
         version = neoForgeVersion
         validateAccessTransformers = false
+        // The game and NeoForge for the jar run's empty source set, which has nothing else.
+        addModdingDependenciesTo(sourceSets.neoJarRun)
 
         // Both mods come from source sets rather than jars, which is how ModDevGradle runs a dev
         // client: no packaging step between a change and a run.
@@ -518,53 +524,98 @@ if (loader == 'neoforge') {
                 systemProperty 'java.awt.headless', 'true'
                 gameDirectory = layout.buildDirectory.dir("run-neoforge-${project.minecraft_version}")
             }
+            // THE MOD AS A PLAYER INSTALLS IT: the mod's jar and the test mod's jar in mods/, nothing
+            // loaded from a source set, so its packaging - metadata, version ranges, the mixin
+            // config - is what loads. -PmodJar=<file> runs that jar, a published one say, instead
+            // of this build's.
+            smokeTestJar {
+                client()
+                sourceSet = sourceSets.neoJarRun
+                loadedMods = []
+                systemProperty 'hidemodels.smoketest', 'true'
+                systemProperty 'java.awt.headless', 'true'
+                gameDirectory = layout.buildDirectory.dir("run-neoforge-jar-${project.minecraft_version}")
+            }
         }
     }
 
     // The verdict, read the same way the Fabric side reads it - and the task is called smokeTest on
     // both paths, so CI runs one command whichever loader it is testing.
     def neoRunDir = layout.buildDirectory.dir("run-neoforge-${project.minecraft_version}").get().asFile
+    def neoJarRunDir = layout.buildDirectory.dir("run-neoforge-jar-${project.minecraft_version}").get().asFile
+
+    def prepareNeoRun = { File dir ->
+        delete new File(dir, 'smoketest-result.txt')
+        dir.mkdirs()
+        writeTestClientOptions(new File(dir, 'options.txt'))
+
+        // NO EARLY PROGRESS WINDOW. NeoForge opens a GL window of its own before the game's, to
+        // show a loading bar nobody is watching here, and gives itself a fixed deadline to do
+        // it - "Timed out trying to setup the Game Window" then fails the launch outright.
+        // Software GL brings a window up slower than a real driver, which makes that deadline
+        // marginal on a runner: the same job passed one run and failed the next with nothing
+        // changed between them.
+        //
+        // Set through FML's own config rather than a system property, because that is where
+        // FML reads it - -Dfml.earlyprogresswindow=false is widely repeated and had no effect
+        // on any version here, which the log makes obvious by announcing the window anyway.
+        def fml = new File(dir, 'config/fml.toml')
+        fml.parentFile.mkdirs()
+        def cfg = fml.isFile() ? fml.text : ''
+        fml.text = cfg.contains('earlyWindowControl')
+                ? cfg.replaceAll(/earlyWindowControl\s*=\s*true/, 'earlyWindowControl = false')
+                : cfg + System.lineSeparator() + 'earlyWindowControl = false' + System.lineSeparator()
+    }
+    def readVerdict = { File dir, String label ->
+        def f = new File(dir, 'smoketest-result.txt')
+        if (!f.isFile()) {
+            throw new GradleException('the smoke test produced no verdict - the client probably '
+                    + 'died before reaching it; see the output above')
+        }
+        def verdict = f.text.trim()
+        if (!verdict.startsWith('PASS')) {
+            throw new GradleException(verdict)
+        }
+        logger.lifecycle("${label}: ${verdict}")
+    }
+
     tasks.matching { it.name == 'runSmokeTest' }.configureEach {
         ignoreExitValue = true
-        doFirst {
-            delete new File(neoRunDir, 'smoketest-result.txt')
-            neoRunDir.mkdirs()
-            writeTestClientOptions(new File(neoRunDir, 'options.txt'))
-
-            // NO EARLY PROGRESS WINDOW. NeoForge opens a GL window of its own before the game's, to
-            // show a loading bar nobody is watching here, and gives itself a fixed deadline to do
-            // it - "Timed out trying to setup the Game Window" then fails the launch outright.
-            // Software GL brings a window up slower than a real driver, which makes that deadline
-            // marginal on a runner: the same job passed one run and failed the next with nothing
-            // changed between them.
-            //
-            // Set through FML's own config rather than a system property, because that is where
-            // FML reads it - -Dfml.earlyprogresswindow=false is widely repeated and had no effect
-            // on any version here, which the log makes obvious by announcing the window anyway.
-            def fml = new File(neoRunDir, 'config/fml.toml')
-            fml.parentFile.mkdirs()
-            def cfg = fml.isFile() ? fml.text : ''
-            fml.text = cfg.contains('earlyWindowControl')
-                    ? cfg.replaceAll(/earlyWindowControl\s*=\s*true/, 'earlyWindowControl = false')
-                    : cfg + System.lineSeparator() + 'earlyWindowControl = false' + System.lineSeparator()
-        }
+        doFirst { prepareNeoRun(neoRunDir) }
     }
     tasks.register('smokeTest') {
         group = 'verification'
         description = 'Launches the NeoForge client and checks the mod runs on this version.'
         dependsOn 'runSmokeTest'
-        doLast {
-            def f = new File(neoRunDir, 'smoketest-result.txt')
-            if (!f.isFile()) {
-                throw new GradleException('the smoke test produced no verdict - the client probably '
-                        + 'died before reaching it; see the output above')
+        doLast { readVerdict(neoRunDir, 'smoke test') }
+    }
+
+    tasks.register('neoTestJar', Jar) {
+        description = 'Packages the NeoForge smoke-test mod, for the run that loads mods from jars.'
+        archiveFileName = 'hidemodels-test-neoforge.jar'
+        destinationDirectory = layout.buildDirectory.dir('testmod-neoforge')
+        from sourceSets.neoTest.output
+    }
+    tasks.matching { it.name == 'runSmokeTestJar' }.configureEach {
+        dependsOn 'jar', 'neoTestJar'
+        ignoreExitValue = true
+        doFirst {
+            def mods = new File(neoJarRunDir, 'mods')
+            delete mods
+            mods.mkdirs()
+            copy {
+                from(project.hasProperty('modJar') ? file(project.property('modJar')) : tasks.jar.archiveFile)
+                from tasks.named('neoTestJar').get().archiveFile
+                into mods
             }
-            def verdict = f.text.trim()
-            if (!verdict.startsWith('PASS')) {
-                throw new GradleException(verdict)
-            }
-            logger.lifecycle("smoke test: ${verdict}")
+            prepareNeoRun(neoJarRunDir)
         }
+    }
+    tasks.register('smokeTestJar') {
+        group = 'verification'
+        description = 'Launches NeoForge with the mod loaded from its jar, as a player installs it.'
+        dependsOn 'runSmokeTestJar'
+        doLast { readVerdict(neoJarRunDir, 'jar smoke test') }
     }
 }
 
