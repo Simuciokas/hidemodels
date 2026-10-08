@@ -841,6 +841,9 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             });
             singleplayer.getServer().runCommand("kill @e[type=item_display]");
             singleplayer.getServer().runCommand("kill @e[type=armor_stand]");
+            // What was killed would stay listed as gone; this section counts rows from a clean list.
+            context.waitTicks(1);
+            context.runOnClient(client -> forgetGone());
             final String[] beast = {"hidemodels:beast/head", "hidemodels:beast/body",
                                     "hidemodels:beast/tail"};
             for (String bone : beast) {
@@ -942,7 +945,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.runOnClient(client -> {
                 final java.util.Map<String, Integer> placed = new java.util.TreeMap<>();
                 for (NearbyModels.Nearby n : NearbyModels.nearby(16.0)) {
-                    if (n.id().startsWith("hidemodels_demo:")) {
+                    if (!n.gone() && n.id().startsWith("hidemodels_demo:")) {
                         placed.put(n.id(), n.pieces());
                     }
                 }
@@ -993,12 +996,79 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                         + "found whichever way you face, and listed first");
             });
 
+            // 14. MODELS TOLD APART BY A NUMBER, as some servers draw theirs: plain oak boats whose
+            //     custom_model_data picks the model. A line ending in a number matches it whole,
+            //     so #12 is not #1234. Then a model gone before the screen opens - an effect -
+            //     still listed, dimmed, and hidden from there.
+            context.runOnClient(client -> {
+                try {
+                    ((Screen) screenOf(client)).onClose();
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not close the screen", e);
+                }
+            });
+            singleplayer.getServer().runCommand("kill @e[type=item_display]");
+            singleplayer.getServer().runCommand("kill @e[type=armor_stand]");
+            singleplayer.getServer().runCommand("summon item_display ~ ~1 ~ {item:{id:\"oak_boat\","
+                    + "components:{\"minecraft:custom_model_data\":{floats:[1234f]}}}}");
+            writeConfig("minecraft:oak_boat#12");
+            context.waitFor(client -> HideModels.unsaved().contains("minecraft:oak_boat#12"));
+            context.waitTicks(10);
+            context.runOnClient(client -> {
+                String boat = null;
+                for (NearbyModels.Nearby n : NearbyModels.nearby(16.0)) {
+                    if (!n.gone() && n.id().startsWith("minecraft:oak_boat")) {
+                        boat = n.id();
+                    }
+                }
+                if (!"minecraft:oak_boat#1234".equals(boat)) {
+                    throw new AssertionError("an oak boat with custom_model_data 1234 read as "
+                            + boat);
+                }
+                if (HideModels.listed(boat)) {
+                    throw new AssertionError("the line #12 hid #1234");
+                }
+            });
+            writeConfig("minecraft:oak_boat#1234");
+            context.waitFor(client -> HideModels.listed("minecraft:oak_boat#1234"));
+            writeConfig("oak_boat");
+            context.waitFor(client -> HideModels.listed("minecraft:oak_boat#1234"));
+            singleplayer.getServer().runCommand("summon item_display ~2 ~1 ~ {Tags:[\"hm_effect\"],"
+                    + "item:{id:\"stone\",components:{\"minecraft:item_model\":"
+                    + "\"hidemodels:effect/flash\"}}}");
+            context.waitTicks(10);
+            singleplayer.getServer().runCommand("kill @e[tag=hm_effect]");
+            context.waitTicks(10);
+            context.runOnClient(client -> {
+                NearbyModels.Nearby effect = null;
+                for (NearbyModels.Nearby n : NearbyModels.nearby(16.0)) {
+                    if (n.id().equals("hidemodels:effect/")) {
+                        effect = n;
+                    }
+                }
+                if (effect == null || !effect.gone()) {
+                    throw new AssertionError("a model gone a moment ago is listed as " + effect);
+                }
+                io.github.simuciokas.hidemodels.Screens.open(client, new HiddenListScreen(null));
+            });
+            context.waitTicks(5);
+            context.takeScreenshot("recently-seen");
+            context.runOnClient(client -> {
+                // The boat, still here, then what has gone, newest first: the effect and its cell.
+                press(5);
+                if (!HideModels.listed("hidemodels:effect/flash")) {
+                    throw new AssertionError("clicking the gone effect's row did not hide it");
+                }
+                System.out.println("[hidemodels-gametest] model numbers matched whole, and a model "
+                        + "already gone listed and hidden");
+            });
+
             // Kept for a human to look at when a run fails; asserts nothing by itself, because a
             // screenshot comparison would fail on every unrelated resource-pack or lighting change.
             context.takeScreenshot("hidemodels-after-hide");
         }
 
-        // 14. PROFILES FOR A SERVER, on a real one: the harness starts a dedicated server and
+        // 15. PROFILES FOR A SERVER, on a real one: the harness starts a dedicated server and
         //     joins it, the only way to have an address to link to. Joining switches a profile
         //     linked elsewhere off and leaves one switched by hand alone; Use on this server links
         //     one; and only a fresh join switches again, so a hand switch holds until then.
@@ -1062,6 +1132,20 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                             + here[0] + ", linked from the screen, held until the next join");
                 });
             }
+        }
+    }
+
+    /**
+     * Empties the Nearby tab's recently seen list, through its private field rather than API the
+     * mod would carry only for this.
+     */
+    private static void forgetGone() {
+        try {
+            final java.lang.reflect.Field seen = NearbyModels.class.getDeclaredField("seen");
+            seen.setAccessible(true);
+            ((java.util.Map<?, ?>) seen.get(null)).clear();
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("could not clear the recently seen list", e);
         }
     }
 

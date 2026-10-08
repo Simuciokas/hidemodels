@@ -83,7 +83,85 @@ public final class NearbyModels {
         return cut < 0 ? id : id.substring(0, cut + 1);
     }
 
-    public record Nearby(String id, int pieces, double distance) {
+    /** A row of the Nearby tab; {@code goneFor} is how long ago it was last seen, 0 if it is here. */
+    public record Nearby(String id, int pieces, double distance, long goneFor) {
+
+        public boolean gone() {
+            return goneFor > 0;
+        }
+    }
+
+    /**
+     * How long a model that has gone stays listed. Long enough to cast a spell, or watch an effect
+     * play, then open the screen and hide it - by then it has usually gone.
+     */
+    static final long RECENT_MS = 30_000L;
+    /** Ticks between looks at what is around, for the recently seen list. */
+    private static final int SAMPLE_TICKS = 5;
+
+    private static final class Seen {
+        long at;
+        int pieces;
+        double nearestSq;
+    }
+
+    /** By bone id, what the looks found, kept RECENT_MS after the last time each was there. */
+    private static final Map<String, Seen> seen = new HashMap<>();
+    private static Object sampledLevel;
+    private static int sampleTick;
+
+    /**
+     * Notes what is in range, every SAMPLE_TICKS ticks, so the Nearby tab can list a model that
+     * has already gone - an effect that lasts a second is otherwise over before the screen opens.
+     * The same pass as the tab's own, a few times a second; another world starts it afresh.
+     */
+    public static void sample() {
+        if (++sampleTick % SAMPLE_TICKS != 0) {
+            return;
+        }
+        final ClientLevel level = Minecraft.getInstance().level;
+        if (level != sampledLevel) {
+            seen.clear();
+            sampledLevel = level;
+        }
+        if (level == null) {
+            return;
+        }
+        final long now = System.currentTimeMillis();
+        for (Map.Entry<String, Group> e : scan(HideModels.listRadius(), true).entrySet()) {
+            final Seen s = seen.computeIfAbsent(e.getKey(), k -> new Seen());
+            s.at = now;
+            s.pieces = e.getValue().pieces;
+            s.nearestSq = e.getValue().nearestSq;
+        }
+        seen.values().removeIf(s -> now - s.at > RECENT_MS);
+    }
+
+    /**
+     * Rows for what was seen lately but is not here now, newest first: grouped by model, or one
+     * model's bones when {@code model} is given. {@code here} holds the rows already listed.
+     */
+    private static List<Nearby> gone(Map<String, Group> here, String model) {
+        final long now = System.currentTimeMillis();
+        final Map<String, Nearby> rows = new HashMap<>();
+        for (Map.Entry<String, Seen> e : seen.entrySet()) {
+            final String bone = e.getKey();
+            final String key = model == null ? modelOf(bone) : bone;
+            if (here.containsKey(key) || now - e.getValue().at > RECENT_MS
+                    || (model != null && !bone.toLowerCase(Locale.ROOT).startsWith(model))) {
+                continue;
+            }
+            final Seen s = e.getValue();
+            final Nearby was = rows.get(key);
+            final long ago = Math.max(1, now - s.at);
+            final double distance = Math.sqrt(s.nearestSq);
+            rows.put(key, was == null ? new Nearby(key, s.pieces, distance, ago)
+                    : new Nearby(key, was.pieces() + s.pieces, Math.min(was.distance(), distance),
+                                 Math.min(was.goneFor(), ago)));
+        }
+        final List<Nearby> out = new ArrayList<>(rows.values());
+        out.sort(Comparator.comparingLong(Nearby::goneFor));
+        return out;
     }
 
     /** How far off the line of sight a model can be and still be the one looked at. */
@@ -159,28 +237,37 @@ public final class NearbyModels {
         return best;
     }
 
-    /** Models within the radius, nearest first. */
+    /** Models within the radius, nearest first, then those seen lately and gone, newest first. */
     public static List<Nearby> nearby(double radius) {
+        final Map<String, Group> here = scan(radius, false);
         final List<Nearby> out = new ArrayList<>();
-        for (Map.Entry<String, Group> e : scan(radius, false).entrySet()) {
-            out.add(new Nearby(e.getKey(), e.getValue().pieces, Math.sqrt(e.getValue().nearestSq)));
+        for (Map.Entry<String, Group> e : here.entrySet()) {
+            out.add(new Nearby(e.getKey(), e.getValue().pieces,
+                    Math.sqrt(e.getValue().nearestSq), 0));
         }
         out.sort(Comparator.comparingDouble(Nearby::distance));
+        out.addAll(gone(here, null));
         return out;
     }
 
-    /** One model's bones within the radius, nearest first. */
+    /** One model's bones within the radius, nearest first, then its bones seen lately and gone. */
     public static List<Nearby> bones(double radius, String model) {
         // From the start, not as a substring the way the hide list matches: a substring would pull
         // in another model that merely contains the same word.
         final String prefix = model.toLowerCase(Locale.ROOT);
-        final List<Nearby> out = new ArrayList<>();
+        final Map<String, Group> here = new HashMap<>();
         for (Map.Entry<String, Group> e : scan(radius, true).entrySet()) {
             if (e.getKey().toLowerCase(Locale.ROOT).startsWith(prefix)) {
-                out.add(new Nearby(e.getKey(), e.getValue().pieces, Math.sqrt(e.getValue().nearestSq)));
+                here.put(e.getKey(), e.getValue());
             }
         }
+        final List<Nearby> out = new ArrayList<>();
+        for (Map.Entry<String, Group> e : here.entrySet()) {
+            out.add(new Nearby(e.getKey(), e.getValue().pieces,
+                    Math.sqrt(e.getValue().nearestSq), 0));
+        }
         out.sort(Comparator.comparingDouble(Nearby::distance));
+        out.addAll(gone(here, prefix));
         return out;
     }
 
@@ -210,7 +297,7 @@ public final class NearbyModels {
         final String fragment = pattern.toLowerCase(Locale.ROOT);
         int pieces = 0;
         for (Map.Entry<String, Group> e : scan(radius, true).entrySet()) {
-            if (e.getKey().toLowerCase(Locale.ROOT).contains(fragment)) {
+            if (HideModels.covers(e.getKey().toLowerCase(Locale.ROOT), fragment)) {
                 pieces += e.getValue().pieces;
             }
         }

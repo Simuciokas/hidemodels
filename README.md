@@ -8,8 +8,8 @@ It **cancels rendering only**. Entities are never removed, so hitboxes, interact
 server's view of the world are all untouched.
 
 **It keys on the vanilla mechanism, not on any one plugin.** A model piece is an `item_display`
-entity, or an armor stand wearing the piece on its head, whose item carries `item_model` (or
-`custom_model_data` before 1.21.2). That is how [ModelEngine](https://mythiccraft.io/index.php?resources/modelengine.1/),
+entity, or an armor stand wearing the piece on its head, whose item carries `item_model` — or,
+on an item drawn as itself, a `custom_model_data` number the pack picks the model by. That is how [ModelEngine](https://mythiccraft.io/index.php?resources/modelengine.1/),
 [BetterModel](https://modrinth.com/plugin/bettermodel), [Nexo](https://docs.nexomc.com) and
 [Oraxen](https://docs.oraxen.com/creating-content/furniture/display-entities) furniture all render,
 so all of them work without the mod knowing they exist — and so does anything else built the same
@@ -59,8 +59,8 @@ each version's own client jar rather than assumed. CI runs that matrix on every 
 |---|---|---|
 | 26.3, 26.2, 26.1.2, 26.1.1, 26.1 | resolves | the advertised range |
 | 1.21.11 … 1.21.2 | resolves | the advertised range |
-| 1.21.1, 1.21 | resolves | but `item_model` does not exist yet, so the mod falls back to `custom_model_data` — it works, and the ids you write are those values instead |
-| 1.20.6, 1.20.5 | resolves | same `custom_model_data` fallback |
+| 1.21.1, 1.21 | resolves | but `item_model` does not exist yet, so every id is an item and its `custom_model_data` number, like `minecraft:paper#1234` |
+| 1.20.6, 1.20.5 | resolves | the same |
 | 1.20.4 and earlier | **no** | no data components at all — `DataComponentType` and the registry the mod resolves through simply are not there. This is a floor, not a to-do |
 
 Two deliberate choices keep that range on one source path, and both look like something to tidy up:
@@ -187,8 +187,8 @@ identical.
 ## Configuring it
 
 `config/hidemodels.txt`, one `item_model` id fragment per line, and `#` at the start of a line for a
-comment — after an id it would be read as part of it. Matching is a **substring** test, so a
-trailing slash hides a whole model and no slash hides a single bone:
+comment — after an id it is part of the id. Matching is a **substring** test, so a trailing slash
+hides a whole model and no slash hides a single bone:
 
 ```
 # the whole model
@@ -196,6 +196,17 @@ some_mount/
 # just the head, so you can see past it while riding
 some_mount/head
 ```
+
+**Some servers draw models as plain items** and tell them apart by a `custom_model_data` number —
+every spell and pet an oak boat, say. Such a piece's id is the item and its number:
+
+```
+minecraft:oak_boat#1234
+```
+
+A number at the end of a line matches whole, so `#12` does not also hide `#123`. These numbers are
+only what the pack says today: when a server updates its resource pack they can move, and the
+lines need hiding again.
 
 The shipped list is **empty**: which ids exist is entirely up to the server's resource pack, so any
 preset would be wrong everywhere but one server.
@@ -267,7 +278,7 @@ go as you click it. It has three tabs:
 
 | tab | what it holds |
 |---|---|
-| Nearby | every model within the list radius: the one in front of you first, marked `»`, then nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head; a model with some bones hidden is marked orange, and clicking it hides the rest, then shows all of it again. A model a profile hides opens that profile instead |
+| Nearby | every model within the list radius: the one in front of you first, marked `»`, then nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head; a model with some bones hidden is marked orange, and clicking it hides the rest, then shows all of it again. A model a profile hides opens that profile instead. Below them, dimmed, are models seen in the last 30 seconds that have since gone — a spell or an effect is over before the screen opens, and can still be hidden from here |
 | Hidden | your lists: Unsaved, then each profile — this server's first, then those switched by hand, then other servers', dimmed but just as editable. Click a profile to switch it on or off, its count to open it, and `+` beside it to add the unsaved lines to it. In an open list a click takes a line out and keeps its row until the list is opened again, so a misclick is one click to undo; an open profile is also where it is renamed, by typing into its name, tied to the server you are on with *Use on this server*, copied, and deleted. *Paste a profile* adds the ones on your clipboard |
 | Settings | hiding on or off, first person only, the list radius, and where the panel sits: either top corner, or Move panel to put it anywhere |
 

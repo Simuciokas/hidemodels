@@ -334,7 +334,8 @@ public final class HiddenListScreen extends ClearScreen {
         // the time. Capped at a third of the screen so one absurd id cannot swallow the view it is
         // meant to leave clear - but never narrower than the tabs.
         final int cap = Math.max(strip, width / 3);
-        int content = Math.max(measure(header(source.size(), pages)), moving ? measure(MOVING) : 0);
+        int content = Math.max(measure(header(source.size(), goneCount(found), pages)),
+                moving ? measure(MOVING) : 0);
         if (tab == SETTINGS) {
             content = Math.max(content, measure(RADIUS_LABEL) + GAP + stepperWidth());
         }
@@ -425,6 +426,8 @@ public final class HiddenListScreen extends ClearScreen {
                     (isLookedAt(id) ? LOOKING : "") + id);
             row.id = id;
             row.on = tab == HIDDEN ? inOpenList(id) : HideModels.listed(id);
+            // Dimmed: seen lately, and gone - still there to hide before it comes back.
+            row.muted = tab == NEARBY && found.get(from + i).gone();
             hit(row, () -> {
                 if (tab == HIDDEN) {
                     toggleOpenLine(id);
@@ -863,8 +866,8 @@ public final class HiddenListScreen extends ClearScreen {
         final List<NearbyModels.Nearby> around = nearbyRows();
         final int total = tab != HIDDEN ? around.size()
                 : openList == null ? HideModels.profiles().size() : openLines.size();
-        p.text(moving ? MOVING : header(total, pageCount(total)), left + ox, top + oy,
-                moving ? TEXT : DIM);
+        p.text(moving ? MOVING : header(total, goneCount(around), pageCount(total)),
+                left + ox, top + oy, moving ? TEXT : DIM);
 
         final Set<String> partly = tab == NEARBY && bonesOf == null
                 ? NearbyModels.withHiddenBones(radius) : Set.of();
@@ -947,6 +950,9 @@ public final class HiddenListScreen extends ClearScreen {
         }
         for (NearbyModels.Nearby n : around) {
             if (n.id().equals(row.id)) {
+                if (n.gone()) {
+                    lines.add("Gone - last seen " + Math.max(1, n.goneFor() / 1000) + "s ago");
+                }
                 lines.add(n.pieces() + (n.pieces() == 1 ? " piece, " : " pieces, nearest ")
                         + NearbyModels.fmt(n.distance()) + " blocks away");
             }
@@ -1021,7 +1027,16 @@ public final class HiddenListScreen extends ClearScreen {
         return s.substring(0, head) + ".." + s.substring(s.length() - tail);
     }
 
-    private String header(int total, int pages) {
+    private static int goneCount(List<NearbyModels.Nearby> rows) {
+        int gone = 0;
+        for (NearbyModels.Nearby n : rows) {
+            gone += n.gone() ? 1 : 0;
+        }
+        return gone;
+    }
+
+    /** {@code gone} of the {@code total} Nearby rows are models seen lately that have gone. */
+    private String header(int total, int gone, int pages) {
         if (tab == SETTINGS) {
             return HideModels.isServerDisabled()
                     ? "This server has hiding off"
@@ -1045,12 +1060,15 @@ public final class HiddenListScreen extends ClearScreen {
                     + (profile == null ? "" : profile.on() ? ", on" : ", off") + page;
         }
         final int radius = (int) HideModels.listRadius();
-        if (total == 0) {
-            return (showingBones() ? "No bones" : "Nothing") + " within " + radius + " blocks";
+        final int here = total - gone;
+        final String lately = gone > 0 ? ", " + gone + " gone" : "";
+        if (here == 0) {
+            return (showingBones() ? "No bones" : "Nothing") + " within " + radius + " blocks"
+                    + lately + page;
         }
-        final String noun = showingBones() ? (total == 1 ? " bone" : " bones")
-                                           : (total == 1 ? " model" : " models");
-        return total + noun + " within " + radius + page;
+        final String noun = showingBones() ? (here == 1 ? " bone" : " bones")
+                                           : (here == 1 ? " model" : " models");
+        return here + noun + " within " + radius + lately + page;
     }
 
     private static boolean inside(Row row, double mx, double my) {

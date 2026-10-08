@@ -109,20 +109,36 @@ public final class SmokeChecks {
     }
 
     /**
-     * The registry lookup found a component type on this version.
-     *
-     * <p>Asserted through the private field rather than a test-only accessor on HideModels: the
-     * production class should not grow API for the benefit of a test, and this is the mod's own
-     * package. modelIdOf() is called first because the resolution is deliberately lazy.
+     * Ids come out as they should on this version: a plain item as itself, and one told apart by
+     * custom_model_data as the item and its number - read from one int up to 1.21.3 and from a
+     * list of floats after, so the component is built in whichever shape this version has.
      */
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private static void checkComponentResolves() throws Exception {
-        HideModels.modelIdOf(null);                     // triggers the lazy lookup, returns null
-        final Field field = HideModels.class.getDeclaredField("modelComponent");
-        field.setAccessible(true);
-        if (field.get(null) == null) {
-            throw new AssertionError(
-                    "no item_model/custom_model_data component type could be resolved from the "
-                            + "registry - the mod would silently hide nothing on this version");
+        final String stone = HideModels.modelIdOf(
+                new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.STONE));
+        if (!"minecraft:stone".equals(stone)) {
+            throw new AssertionError("a plain stone read as " + stone
+                    + " - the component lookup failed, and the mod would hide nothing");
+        }
+        Object data = null;
+        for (java.lang.reflect.Constructor<?> c : net.minecraft.world.item.component.CustomModelData
+                .class.getConstructors()) {
+            final Class<?>[] p = c.getParameterTypes();
+            if (p.length == 1 && p[0] == int.class) {
+                data = c.newInstance(1234);
+            } else if (p.length == 4) {
+                data = c.newInstance(java.util.List.of(1234f), java.util.List.of(),
+                        java.util.List.of(), java.util.List.of());
+            }
+        }
+        final net.minecraft.world.item.ItemStack boat =
+                new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.OAK_BOAT);
+        boat.set((net.minecraft.core.component.DataComponentType) net.minecraft.core.component
+                .DataComponents.CUSTOM_MODEL_DATA, data);
+        final String id = HideModels.modelIdOf(boat);
+        if (!"minecraft:oak_boat#1234".equals(id)) {
+            throw new AssertionError("an oak boat with custom_model_data 1234 read as " + id);
         }
     }
 

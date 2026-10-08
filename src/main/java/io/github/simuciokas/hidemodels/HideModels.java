@@ -101,11 +101,12 @@ public final class HideModels {
     }
 
     /**
-     * The component type this reads, resolved on FIRST USE and then cached.
+     * The two component types an id is read from, resolved on FIRST USE and then cached.
      *
      * Looked up by id, not named: DataComponents.ITEM_MODEL exists only from 1.21.2, while the
-     * registry has held component types since 1.20.5 and returns null for an id a version lacks -
-     * which is why custom_model_data sits beside item_model.
+     * registry has held component types since 1.20.5 and returns null for an id a version lacks.
+     * custom_model_data is on every version, but holds one number up to 1.21.3 and lists of them
+     * from 1.21.4.
      *
      * Iterated rather than queried by key, because a key is an Identifier, whose class name
      * differs across the range.
@@ -113,15 +114,82 @@ public final class HideModels {
      * Lazy, because a client mixin can load during bootstrap while the registries are still
      * filling; resolving then would cache a null for the whole session.
      */
-    private static DataComponentType<?> modelComponent;
-    private static boolean modelComponentResolved;
+    private static DataComponentType<?> itemModelComponent;
+    private static DataComponentType<?> modelDataComponent;
+    private static boolean componentsResolved;
 
-    private static DataComponentType<?> modelComponent() {
-        if (!modelComponentResolved) {
-            modelComponent = findComponent("minecraft:item_model", "minecraft:custom_model_data");
-            modelComponentResolved = true;
+    private static void resolveComponents() {
+        if (!componentsResolved) {
+            itemModelComponent = findComponent("minecraft:item_model");
+            modelDataComponent = findComponent("minecraft:custom_model_data");
+            componentsResolved = true;
         }
-        return modelComponent;
+    }
+
+    /** An item's registry id, "minecraft:oak_boat", kept per item: it is asked every frame. */
+    private static final java.util.Map<Object, String> ITEM_IDS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    /** Registry.getKey for the item registry, kept apart from registryGetKey: a different class. */
+    private static java.lang.reflect.Method itemGetKey;
+
+    private static String itemId(net.minecraft.world.item.Item item) {
+        return ITEM_IDS.computeIfAbsent(item, i -> {
+            final Object registry = BuiltInRegistries.ITEM;
+            if (itemGetKey == null) {
+                itemGetKey = findMethod(registry.getClass(), REGISTRY_GET_KEY, Object.class);
+            }
+            return invokeToString(itemGetKey, registry, i);
+        });
+    }
+
+    /** A record's accessors in order, per class, since records are read by shape every frame. */
+    private static final ClassValue<java.lang.reflect.Method[]> ACCESSORS = new ClassValue<>() {
+        @Override
+        protected java.lang.reflect.Method[] computeValue(Class<?> type) {
+            final java.lang.reflect.RecordComponent[] parts = type.getRecordComponents();
+            if (parts == null) {
+                return new java.lang.reflect.Method[0];
+            }
+            final java.lang.reflect.Method[] out = new java.lang.reflect.Method[parts.length];
+            for (int i = 0; i < parts.length; i++) {
+                out[i] = parts[i].getAccessor();
+            }
+            return out;
+        }
+    };
+
+    /**
+     * custom_model_data as the number a pack picks a model by: the record's one int up to 1.21.3,
+     * the first of its floats from 1.21.4 - or its first string, for a pack that selects on those.
+     * By the record's shape, since production renames its accessors. Null when it has none.
+     */
+    private static String modelNumber(Object data) {
+        if (data == null) {
+            return null;
+        }
+        String text = null;
+        try {
+            for (java.lang.reflect.Method accessor : ACCESSORS.get(data.getClass())) {
+                final Object value = accessor.invoke(data);
+                if (value instanceof Integer number) {
+                    return Integer.toString(number);
+                }
+                if (value instanceof List<?> list && !list.isEmpty()) {
+                    final Object first = list.get(0);
+                    if (first instanceof Float number) {
+                        final float f = number;
+                        return f == Math.rint(f) && Math.abs(f) < 1e9f
+                               ? Long.toString((long) f) : Float.toString(f);
+                    }
+                    if (first instanceof String s && text == null) {
+                        text = s;
+                    }
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return null;
+        }
+        return text;
     }
 
     private static DataComponentType<?> findComponent(String... ids) {
@@ -205,13 +273,27 @@ public final class HideModels {
         }
     }
 
+    /**
+     * The id a config line is matched against. A model of its own - an item_model naming anything
+     * but the item itself - is that name. An item drawn as itself is its id, and when it carries a
+     * custom_model_data number, that too, since the pack picks the model by it:
+     * minecraft:oak_boat#1234. Before 1.21.2 there is no item_model, so ids always
+     * take the second form.
+     */
     public static String modelIdOf(net.minecraft.world.item.ItemStack stack) {
-        final DataComponentType<?> type = modelComponent();
-        if (type == null || stack == null || stack.isEmpty()) {
+        if (stack == null || stack.isEmpty()) {
             return null;
         }
-        final Object value = componentValue(stack, type);
-        return (value == null) ? null : value.toString();
+        resolveComponents();
+        final String item = itemId(stack.getItem());
+        final Object model = itemModelComponent == null ? null
+                : componentValue(stack, itemModelComponent);
+        if (model != null && !model.toString().equals(item)) {
+            return model.toString();
+        }
+        final String number = modelDataComponent == null ? null
+                : modelNumber(componentValue(stack, modelDataComponent));
+        return number == null ? item : item + "#" + number;
     }
 
     /**
@@ -313,6 +395,7 @@ public final class HideModels {
     public static void tick() {
         maybeReload();
         switchOnJoin();
+        NearbyModels.sample();
     }
 
     /** The connection's ServerData that profiles were last switched for. */
@@ -401,9 +484,31 @@ public final class HideModels {
         final String id = itemModelId.toLowerCase(Locale.ROOT);
         final String[] pats = patterns;
         for (int i = 0; i < pats.length; i++) {
-            if (id.contains(pats[i])) {
+            if (covers(id, pats[i])) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    /**
+     * Whether a config line covers an id: as a substring of it - except that a line ending in a
+     * model number, after '#', ends where the id's number does, so #12 is not also #123.
+     */
+    static boolean covers(String id, String pattern) {
+        int at = id.indexOf(pattern);
+        final int last = pattern.length() - 1;
+        if (at < 0 || last < 0 || !Character.isDigit(pattern.charAt(last))
+                || pattern.indexOf('#') < 0) {
+            return at >= 0;
+        }
+        while (at >= 0) {
+            final int end = at + pattern.length();
+            if (end == id.length()
+                    || !(Character.isDigit(id.charAt(end)) || id.charAt(end) == '.')) {
+                return true;
+            }
+            at = id.indexOf(pattern, at + 1);
         }
         return false;
     }
@@ -478,14 +583,14 @@ public final class HideModels {
         }
         final String id = itemModelId.toLowerCase(Locale.ROOT);
         for (String pattern : unsaved) {
-            if (id.contains(pattern)) {
+            if (covers(id, pattern)) {
                 return "";
             }
         }
         for (Profile profile : profiles) {
             if (profile.on()) {
                 for (String pattern : profile.patterns()) {
-                    if (id.contains(pattern)) {
+                    if (covers(id, pattern)) {
                         return profile.name();
                     }
                 }
@@ -653,9 +758,9 @@ public final class HideModels {
     public record Pasted(List<String> added, List<String> already) {
     }
 
-    /** What an item_model id - or a custom_model_data number - can be made of. */
+    /** What an id can be made of: an item_model name, and a model number after '#'. */
     private static final java.util.regex.Pattern ID =
-            java.util.regex.Pattern.compile("[a-z0-9_.:/-]+");
+            java.util.regex.Pattern.compile("[a-z0-9_.:/#-]+");
 
     /**
      * A profile as text to share: its heading, with the servers it is used on, and its lines. Null
@@ -932,7 +1037,7 @@ public final class HideModels {
     private static String coveringPattern(String id) {
         final String[] pats = patterns;
         for (int i = 0; i < pats.length; i++) {
-            if (id.contains(pats[i])) {
+            if (covers(id, pats[i])) {
                 return pats[i];
             }
         }
