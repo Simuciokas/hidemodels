@@ -112,11 +112,30 @@ public final class SmokeChecks {
      * Ids come out as they should on this version: a plain item as itself, and one told apart by
      * custom_model_data as the item and its number - read from one int up to 1.21.3 and from a
      * list of floats after, so the component is built in whichever shape this version has.
+     *
+     * <p>26.x binds an item's components only once a world loads, so no item can be made here;
+     * it checks that both component types are found, and the gametest reads ids in its world.
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static void checkComponentResolves() throws Exception {
-        final String stone = HideModels.modelIdOf(
-                new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.STONE));
+        final net.minecraft.world.item.ItemStack plain;
+        try {
+            plain = new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.STONE);
+        } catch (RuntimeException notBoundYet) {
+            final java.lang.reflect.Method resolve =
+                    HideModels.class.getDeclaredMethod("resolveComponents");
+            resolve.setAccessible(true);
+            resolve.invoke(null);
+            for (String name : new String[] {"itemModelComponent", "modelDataComponent"}) {
+                final Field field = HideModels.class.getDeclaredField(name);
+                field.setAccessible(true);
+                if (field.get(null) == null) {
+                    throw new AssertionError("the " + name + " type was not found in the registry");
+                }
+            }
+            return;
+        }
+        final String stone = HideModels.modelIdOf(plain);
         if (!"minecraft:stone".equals(stone)) {
             throw new AssertionError("a plain stone read as " + stone
                     + " - the component lookup failed, and the mod would hide nothing");

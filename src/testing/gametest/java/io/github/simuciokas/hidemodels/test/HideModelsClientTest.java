@@ -939,6 +939,9 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 at[2] = client.player.getZ();
                 at[3] = client.player.getYRot();
             });
+            // Only the scene, so what is in front of you below depends on nothing left from above.
+            singleplayer.getServer().runCommand("kill @e[type=item_display]");
+            singleplayer.getServer().runCommand("kill @e[type=armor_stand]");
             singleplayer.getServer().runOnServer(server ->
                     DemoModels.place(server, at[0], at[1], at[2], (float) at[3]));
             context.waitTicks(20);
