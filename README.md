@@ -245,7 +245,7 @@ belong to the whole file wherever they are written; the screen writes them above
 **An `@address` after the brackets ties a profile to a server**, as many as it is used on:
 
 ```
-[Mounts] @play.example.net @mc.example.org
+[Mounts] @play.simuciokas.uk @mc.simuciokas.uk
 modelengine:some_mount/
 ```
 

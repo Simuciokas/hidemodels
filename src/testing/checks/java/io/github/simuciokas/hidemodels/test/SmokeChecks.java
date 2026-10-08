@@ -359,35 +359,37 @@ public final class SmokeChecks {
         final String here = "hidemodels:smoke_here";
         final String there = "hidemodels:smoke_there";
         final String mine = "hidemodels:smoke_mine";
-        write("[Here] off @Play.Example.NET.:25565\n" + here + "\n[There] @mc.other.org\n" + there
-                + "\n[Mine]\n" + mine);
+        write("[Here] off @Play.Simuciokas.UK.:25565\n" + here
+                + "\n[There] @mc.simuciokas.uk\n" + there + "\n[Mine]\n" + mine);
         waitUntil(() -> HideModels.profiles().size() == 3, "the server profiles were not read");
-        if (!HideModels.profiles().get(0).servers().equals(java.util.List.of("play.example.net"))) {
+        if (!HideModels.profiles().get(0).servers()
+                .equals(java.util.List.of("play.simuciokas.uk"))) {
             throw new AssertionError("the address was read as " + HideModels.profiles().get(0));
         }
         if (HideModels.currentServer() != null) {
             throw new AssertionError("on the title screen, the server is "
                     + HideModels.currentServer());
         }
-        HideModels.switchProfilesFor("play.example.net");
+        HideModels.switchProfilesFor("play.simuciokas.uk");
         waitUntil(() -> HideModels.hidden(here) && !HideModels.hidden(there)
                         && HideModels.hidden(mine),
-                  "joining play.example.net did not switch its profile on and the other's off");
-        HideModels.setProfileServer("Mine", "MC.other.org", true);
-        HideModels.switchProfilesFor("mc.other.org");
+                  "joining play.simuciokas.uk did not switch its profile on and the other's off");
+        HideModels.setProfileServer("Mine", "MC.simuciokas.uk", true);
+        HideModels.switchProfilesFor("mc.simuciokas.uk");
         waitUntil(() -> !HideModels.hidden(here) && HideModels.hidden(there)
                         && HideModels.hidden(mine),
-                  "joining mc.other.org did not switch the profiles used there on and the other off");
+                  "joining mc.simuciokas.uk did not switch the profiles used there on and the "
+                          + "other off");
         final String file = Files.readString(CONFIG);
-        if (!file.contains("[Here] off @play.example.net")
-                || !file.contains("[Mine] @mc.other.org")) {
+        if (!file.contains("[Here] off @play.simuciokas.uk")
+                || !file.contains("[Mine] @mc.simuciokas.uk")) {
             throw new AssertionError("the headings were written as:\n" + file);
         }
         final String copied = HideModels.profileText("There");
-        if (!copied.startsWith("[There] @mc.other.org\n")) {
+        if (!copied.startsWith("[There] @mc.simuciokas.uk\n")) {
             throw new AssertionError("a copied profile lost its server: " + copied);
         }
-        HideModels.setProfileServer("Mine", "mc.other.org", false);
+        HideModels.setProfileServer("Mine", "mc.simuciokas.uk", false);
         if (!HideModels.profiles().get(2).servers().isEmpty()) {
             throw new AssertionError("the profile was not unlinked: " + HideModels.profiles().get(2));
         }

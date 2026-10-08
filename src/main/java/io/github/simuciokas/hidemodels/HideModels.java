@@ -1276,7 +1276,7 @@ public final class HideModels {
                 # profile to a server: joining it switches the profile on, joining any other off.
                 #     [Mounts]
                 #     modelengine:some_mount/
-                #     [PvP] off @play.example.net
+                #     [PvP] off @play.simuciokas.uk
                 #     modelengine:wings/
                 #
                 # IN GAME: /hidemodels, or a key you bind under Hide Models in Controls, opens a

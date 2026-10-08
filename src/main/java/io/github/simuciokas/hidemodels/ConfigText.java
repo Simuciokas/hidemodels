@@ -46,8 +46,8 @@ final class ConfigText {
 
     /**
      * A server address as profiles are linked by it: lower case, without spaces, a trailing dot or
-     * the default port - so Play.Example.net. and play.example.net:25565 are one server. Null for
-     * an address with nothing in it.
+     * the default port - so Play.Simuciokas.uk. and play.simuciokas.uk:25565 are one server. Null
+     * for an address with nothing in it.
      */
     static String serverKey(String address) {
         if (address == null) {

@@ -1075,7 +1075,8 @@ public final class HideModelsClientTest implements FabricClientGameTest {
         //     joins it, the only way to have an address to link to. Joining switches a profile
         //     linked elsewhere off and leaves one switched by hand alone; Use on this server links
         //     one; and only a fresh join switches again, so a hand switch holds until then.
-        writeConfig("[Elsewhere] @other.example.net\nhidemodels:elsewhere/\n[Manual]\nhidemodels:manual/");
+        writeConfig("[Elsewhere] @other.simuciokas.uk\nhidemodels:elsewhere/\n"
+                + "[Manual]\nhidemodels:manual/");
         context.waitFor(client -> HideModels.profiles().size() == 2);
         try (var server = context.worldBuilder().createServer()) {
             final String[] here = {null};
