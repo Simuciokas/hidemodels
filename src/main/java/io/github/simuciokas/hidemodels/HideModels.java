@@ -605,7 +605,7 @@ public final class HideModels {
      */
     public static void add(String raw) {
         final String pattern = raw.trim().toLowerCase(Locale.ROOT);
-        if (pattern.isEmpty() || pattern.startsWith("#")) {
+        if (pattern.isEmpty() || isComment(pattern)) {
             NearbyModels.say(Component.literal("hidemodels: '" + raw + "' is not an id")
                     .withStyle(ChatFormatting.RED));
             return;
@@ -1152,17 +1152,57 @@ public final class HideModels {
         return true;
     }
 
+    /** A line that is only a model number - #1234 - which hides that number on any item. */
+    private static final java.util.regex.Pattern ANY_ITEM_NUMBER =
+            java.util.regex.Pattern.compile("#-?[0-9]+(\\.[0-9]+)?");
+
+    /** A comment: '#' at the start - except a line that is only a model number. */
+    static boolean isComment(String trimmed) {
+        return trimmed.startsWith("#") && !ANY_ITEM_NUMBER.matcher(trimmed).matches();
+    }
+
     /** A line naming models: not blank, not a comment, not a directive. */
     static boolean isPattern(String raw) {
         final String line = raw.trim().toLowerCase(Locale.ROOT);
-        return !line.isEmpty() && !line.startsWith("#") && !line.equals("off")
+        return !line.isEmpty() && !isComment(line) && !line.equals("off")
                 && !line.equals("disabled") && !line.equals("first-person-only")
                 && !line.equals("firstperson") && !line.equals("first-person")
                 && !line.startsWith("list-radius") && !line.startsWith("gui-position");
     }
 
+    /**
+     * A line saved before ids took the item#number form on 1.20.5 to 1.21.1, when an id was the
+     * custom_model_data component as printed: CustomModelData[value=1234], or with production's
+     * names, class_9280[comp_2382=1234].
+     */
+    private static final java.util.regex.Pattern OLD_NUMBER_LINE = java.util.regex.Pattern.compile(
+            "^\\s*[a-z0-9_$]+\\[[a-z0-9_]+=(-?[0-9]+)]\\s*$",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Rewrites such lines to #1234, which matches what they always matched - that number on any
+     * item - so models hidden before still are. True if anything changed.
+     */
+    private static boolean rewriteOldNumberLines(ConfigText text) {
+        boolean changed = false;
+        for (ConfigText.Section section : text.sections) {
+            for (int i = 0; i < section.lines.size(); i++) {
+                final java.util.regex.Matcher m = OLD_NUMBER_LINE.matcher(section.lines.get(i));
+                if (m.matches()) {
+                    section.lines.set(i, "#" + m.group(1));
+                    changed = true;
+                }
+            }
+        }
+        return changed;
+    }
+
     private static void load() throws IOException {
         final ConfigText text = ConfigText.parse(Files.readAllLines(CONFIG));
+        if (rewriteOldNumberLines(text)) {
+            Files.write(CONFIG, text.render());
+            changedSinceRead();
+        }
         final java.util.Set<String> effective = new java.util.LinkedHashSet<>();
         final List<String> loose = new ArrayList<>();
         final List<Profile> saved = new ArrayList<>();
@@ -1175,7 +1215,7 @@ public final class HideModels {
             final List<String> pats = new ArrayList<>();
             for (String raw : section.lines) {
                 final String line = raw.trim();
-                if (line.isEmpty() || line.startsWith("#")) {
+                if (line.isEmpty() || isComment(line)) {
                     continue;
                 }
                 // Directives apply to everything, whichever section they are written in.

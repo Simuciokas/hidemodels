@@ -70,6 +70,7 @@ public final class SmokeChecks {
             waitForClient();
             checkComponentResolves();
             checkConfigDrivesMatcher();
+            checkOldNumberLines();
             checkAddAndRemove();
             checkSettings();
             checkProfiles();
@@ -158,6 +159,29 @@ public final class SmokeChecks {
         final String id = HideModels.modelIdOf(boat);
         if (!"minecraft:oak_boat#1234".equals(id)) {
             throw new AssertionError("an oak boat with custom_model_data 1234 read as " + id);
+        }
+    }
+
+    /**
+     * Lines saved by 2.0 on 1.20.5 to 1.21.1, when an id was the custom_model_data component as
+     * printed, are rewritten to #number when the config loads, and hide what they hid: that number
+     * on any item. A line that is only a number is a line, then, while any other '#' line stays
+     * a comment.
+     */
+    private static void checkOldNumberLines() throws IOException, InterruptedException {
+        write("CustomModelData[value=1234]\nclass_9280[comp_2382=77]\n# a comment\n#5");
+        waitUntil(() -> HideModels.listed("minecraft:paper#1234")
+                        && HideModels.listed("minecraft:oak_boat#77")
+                        && HideModels.listed("minecraft:stone#5"),
+                  "lines saved by 2.0 on 1.21.1 no longer hide their models");
+        if (HideModels.listed("minecraft:paper#12345")
+                || !HideModels.unsaved().equals(java.util.List.of("#1234", "#77", "#5"))) {
+            throw new AssertionError("the old lines read as " + HideModels.unsaved());
+        }
+        final String file = Files.readString(CONFIG);
+        if (file.contains("CustomModelData") || file.contains("class_9280")
+                || !file.contains("# a comment")) {
+            throw new AssertionError("the old lines were not rewritten in place:\n" + file);
         }
     }
 

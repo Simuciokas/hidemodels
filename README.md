@@ -59,7 +59,7 @@ each version's own client jar rather than assumed. CI runs that matrix on every 
 |---|---|---|
 | 26.3, 26.2, 26.1.2, 26.1.1, 26.1 | resolves | the advertised range |
 | 1.21.11 … 1.21.2 | resolves | the advertised range |
-| 1.21.1, 1.21 | resolves | but `item_model` does not exist yet, so every id is an item and its `custom_model_data` number, like `minecraft:paper#1234` |
+| 1.21.1, 1.21 | resolves | but `item_model` does not exist yet, so every id is an item and its `custom_model_data` number, like `minecraft:paper#1234`. Lines 2.0 saved here, such as `CustomModelData[value=1234]`, are rewritten to `#1234` when the config loads, and hide what they did |
 | 1.20.6, 1.20.5 | resolves | the same |
 | 1.20.4 and earlier | **no** | no data components at all — `DataComponentType` and the registry the mod resolves through simply are not there. This is a floor, not a to-do |
 
@@ -204,9 +204,10 @@ every spell and pet an oak boat, say. Such a piece's id is the item and its numb
 minecraft:oak_boat#1234
 ```
 
-A number at the end of a line matches whole, so `#12` does not also hide `#123`. These numbers are
-only what the pack says today: when a server updates its resource pack they can move, and the
-lines need hiding again.
+A number at the end of a line matches whole, so `#12` does not also hide `#123`. A line that is only
+a number, `#1234`, hides that number on any item — the one `#` line that is not a comment. These
+numbers are only what the pack says today: when a server updates its resource pack they can move,
+and the lines need hiding again.
 
 The shipped list is **empty**: which ids exist is entirely up to the server's resource pack, so any
 preset would be wrong everywhere but one server.
