@@ -27,9 +27,13 @@ if (!(loader in ['fabric', 'neoforge'])) {
 }
 ext.loader = loader
 
-// NeoForge's own versions, one per Minecraft version, STABLE ONLY. Their numbering tracks
-// Minecraft's: 21.8.x is for 1.21.8, 26.1.2.x for 26.1.2 - tidy, but not derivable, because the
-// build number is theirs.
+// NeoForge's own versions, one per Minecraft version: the FIRST STABLE BUILD of each line. Their
+// numbering tracks Minecraft's: 21.8.x is for 1.21.8, 26.1.2.x for 26.1.2 - tidy, but not
+// derivable, because the build number is theirs.
+//
+// The first, because the jar is built against it and declares it as its floor, so the floor is one
+// it is known to compile on and every stable build of the line installs it. Runs test the newest
+// build instead, with -PneoforgeRun=latest (or a version); the floor still comes from here.
 //
 // SEVEN SUPPORTED MINECRAFT VERSIONS ARE ABSENT HERE, and that is NeoForge's release history
 // rather than an omission: 26.1.1, 1.21.9, 1.21.7, 1.21.6, 1.21.2 and 1.20.5 have only beta
@@ -37,22 +41,37 @@ ext.loader = loader
 // a toolchain its own authors have not called finished.
 // From https://maven.neoforged.net/releases/net/neoforged/neoforge
 def NEOFORGE = [
-        // 26.3 IS A BETA, the one exception to the stable-only rule above. Asked for
-        // deliberately; drop this row and 26.3 from the neoforge groups to go back to the rule.
-        '26.3'   : '26.3.0.1-beta',
-        '26.2'   : '26.2.0.87',
-        '26.1.2' : '26.1.2.109',
-        '1.21.11': '21.11.45',
-        '1.21.10': '21.10.64',
-        '1.21.8' : '21.8.54',
-        '1.21.5' : '21.5.98',
-        '1.21.4' : '21.4.157',
-        '1.21.3' : '21.3.97',
-        '1.21.1' : '21.1.250',
-        '1.21'   : '21.0.167',
-        '1.20.6' : '20.6.141',
+        '26.3'   : '26.3.0.76',
+        '26.2'   : '26.2.0.57',
+        '26.1.2' : '26.1.2.71',
+        '1.21.11': '21.11.42',
+        '1.21.10': '21.10.63',
+        '1.21.8' : '21.8.9',
+        '1.21.5' : '21.5.74',
+        '1.21.4' : '21.4.121',
+        '1.21.3' : '21.3.56',
+        '1.21.1' : '21.1.1',
+        '1.21'   : '21.0.143',
+        // 20.6.115 to .121 publish no Gradle module, so ModDevGradle cannot build against them.
+        '1.20.6' : '20.6.122',
 ]
-ext.neoForgeVersion = NEOFORGE[project.minecraft_version]
+// The newest stable build of a pinned build's line, read from NeoForge's maven.
+def newestNeoForge = { String pinned ->
+    def line = pinned.substring(0, pinned.lastIndexOf('.'))
+    def meta = new URL('https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml')
+            .getText(connectTimeout: 15000, readTimeout: 30000)
+    def stable = (meta =~ /<version>(${java.util.regex.Pattern.quote(line)}\.\d+)<\/version>/)
+            .collect { it[1] }
+    return stable.max { it.tokenize('.').last().toInteger() } ?: pinned
+}
+def neoForgeRun = project.findProperty('neoforgeRun')?.toString()
+ext.neoForgeVersion = NEOFORGE[project.minecraft_version] == null || !neoForgeRun
+        ? NEOFORGE[project.minecraft_version]
+        : neoForgeRun == 'latest' ? newestNeoForge(NEOFORGE[project.minecraft_version]) : neoForgeRun
+if (neoForgeRun && loader == 'neoforge') {
+    logger.lifecycle("NeoForge ${neoForgeVersion} for this run, in place of the pinned "
+            + "${NEOFORGE[project.minecraft_version]}")
+}
 
 // RELEASE GROUPS: which versions share a jar.
 //
@@ -628,6 +647,17 @@ if (loader == 'neoforge') {
         description = 'Launches NeoForge with the mod loaded from its jar, as a player installs it.'
         dependsOn 'runSmokeTestJar'
         doLast { readVerdict(neoJarRunDir, 'jar smoke test') }
+    }
+}
+
+// THE MIXIN THE BYTES ARE COMPILED AGAINST is fixed on NeoForge, as it is on Fabric's 26.x path.
+// sponge-mixin 0.17.4 made @ModifyArg's `at` an array, so a build against a NeoForge shipping it
+// writes that annotation differently from one against a NeoForge that does not: one group would no
+// longer produce one jar, and code reading the old form - MixinExtras 0.5.4, for one - can choke on
+// the new. Every Mixin reads the old form. Running is untouched; NeoForge brings its own Mixin.
+if (loader == 'neoforge') {
+    configurations.named('compileClasspath') {
+        resolutionStrategy.force "net.fabricmc:sponge-mixin:${project.mixin_version}"
     }
 }
 
