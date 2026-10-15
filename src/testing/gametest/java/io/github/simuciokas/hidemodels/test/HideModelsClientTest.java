@@ -1035,8 +1035,9 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             //     Fading with distance: Far draws a model as set within From and fades it to
             //     nothing by To. The dragon's head, about 5.3 blocks off, is part of the way.
             context.runOnClient(client -> {
-                HideModels.setProfileFade("Ghost dragon", 1, 0.5, 8);
-                if (!profile("Ghost dragon").fadesFar()) {
+                HideModels.setProfileFade("Ghost dragon", io.github.simuciokas.hidemodels.DistanceFade.FAR,
+                        0.5, 8);
+                if (profile("Ghost dragon").fade() != io.github.simuciokas.hidemodels.DistanceFade.FAR) {
                     throw new AssertionError("the profile does not fade far: "
                             + profile("Ghost dragon"));
                 }

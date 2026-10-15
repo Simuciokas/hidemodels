@@ -773,21 +773,21 @@ public final class HiddenListScreen extends ClearScreen {
                     + "\nClick or drag"
                     + (HideModels.fadingAvailable() ? "" : "\nThis Minecraft version can only hide");
             y += ROW + GAP;
-            final int mode = profile == null ? ConfigText.FADE_OFF : profile.fade();
-            final double from = profile == null ? 0.5 : profile.fadeFrom();
-            final double to = profile == null ? 8 : profile.fadeTo();
+            final DistanceFade mode = profile == null ? DistanceFade.OFF : profile.fade();
+            final double from = profile == null ? ConfigText.FADE_FROM : profile.fadeFrom();
+            final double to = profile == null ? ConfigText.FADE_TO : profile.fadeTo();
             final Row distance = row(left, y, w, DISTANCE);
-            distance.value = mode == ConfigText.FADE_FAR ? "Far"
-                    : mode == ConfigText.FADE_NEAR ? "Near" : "Off";
-            distance.on = mode != ConfigText.FADE_OFF;
+            distance.value = mode == DistanceFade.FAR ? "Far"
+                    : mode == DistanceFade.NEAR ? "Near" : "Off";
+            distance.on = mode != DistanceFade.OFF;
             distance.hint = "Off: the opacity everywhere"
                     + "\nFar: as set close by, fading out to nothing by To"
                     + "\nNear: nothing close by, fading in to as set by To";
             hit(distance, () -> {
-                HideModels.setProfileFade(list, (mode + 1) % 3, from, to);
+                HideModels.setProfileFade(list, mode.next(), from, to);
                 rebuildWidgets();
             });
-            if (mode != ConfigText.FADE_OFF) {
+            if (mode != DistanceFade.OFF) {
                 distanceRow = distance;
             }
             y += ROW + GAP;
@@ -842,7 +842,7 @@ public final class HiddenListScreen extends ClearScreen {
             return;
         }
         final String list = openList;
-        final int mode = profile.fade();
+        final DistanceFade mode = profile.fade();
         final double from = profile.fadeFrom();
         final double to = profile.fadeTo();
         sideW = Math.max(SIDE_MIN,
@@ -882,7 +882,7 @@ public final class HiddenListScreen extends ClearScreen {
     }
 
     private static String blocksText(double blocks) {
-        return ConfigText.blocks(blocks) + (blocks == 1 ? " block" : " blocks");
+        return ConfigText.number(blocks) + (blocks == 1 ? " block" : " blocks");
     }
 
     /** A server row's label: the server being played on as such, any other by its address. */
@@ -1204,8 +1204,8 @@ public final class HiddenListScreen extends ClearScreen {
         if (covering == null && opacity < 1f && list != null && !list.isEmpty()) {
             lines.add("Drawn at " + Math.round(opacity * 100) + "% by the profile '" + list + "'");
             final HideModels.Profile fading = profileNamed(list);
-            if (fading != null && fading.fade() != ConfigText.FADE_OFF) {
-                lines.add((fading.fadesFar() ? "Fading out" : "Fading in") + " from "
+            if (fading != null && fading.fade() != DistanceFade.OFF) {
+                lines.add((fading.fade() == DistanceFade.FAR ? "Fading out" : "Fading in") + " from "
                         + blocksText(fading.fadeFrom()) + " to " + blocksText(fading.fadeTo()));
             }
             lines.add("Click to open it");

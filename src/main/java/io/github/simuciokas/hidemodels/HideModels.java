@@ -67,7 +67,8 @@ public final class HideModels {
      */
     private static volatile String[] patterns = new String[0];
     /** A line of a profile drawn see-through rather than hidden, and how. */
-    private record FadeLine(String pattern, float opacity, int mode, double from, double to) {
+    private record FadeLine(String pattern, float opacity, DistanceFade mode, double from,
+                            double to) {
     }
 
     /** The lines of the profiles that are on and draw see-through. */
@@ -76,23 +77,14 @@ public final class HideModels {
     private static volatile List<String> unsaved = List.of();
     private static volatile List<Profile> profiles = List.of();
 
-    /** A saved list of lines, applied while it is on. */
-    /** A saved list; {@code servers} are those it switches on for, empty for one switched by hand. */
     /**
-     * A saved list. {@code opacity} is how visible it draws its models, in percent, 0 for hidden;
-     * {@code fade} whether that changes with distance - ConfigText's FADE_ constants - and between
+     * A saved list of lines, applied while it is on. {@code servers} are those it switches on for,
+     * empty for one switched by hand. {@code opacity} is how visible it draws its models, in
+     * percent, 0 for hidden; {@code fade} whether that changes with distance, between
      * {@code fadeFrom} and {@code fadeTo} blocks.
      */
     public record Profile(String name, boolean on, List<String> patterns, List<String> servers,
-                          int opacity, int fade, double fadeFrom, double fadeTo) {
-
-        public boolean fadesFar() {
-            return fade == ConfigText.FADE_FAR;
-        }
-
-        public boolean fadesNear() {
-            return fade == ConfigText.FADE_NEAR;
-        }
+                          int opacity, DistanceFade fade, double fadeFrom, double fadeTo) {
     }
     private static volatile boolean enabled = true;
 
@@ -565,7 +557,7 @@ public final class HideModels {
                 continue;
             }
             float at = line.opacity();
-            if (line.mode() != ConfigText.FADE_OFF) {
+            if (line.mode() != DistanceFade.OFF) {
                 if (distance < 0) {
                     distance = eyeDistance(entity);
                 }
@@ -574,7 +566,7 @@ public final class HideModels {
                 final double past = far > near ? (distance - near) / (far - near)
                                                : (distance >= far ? 1 : 0);
                 final float t = (float) Math.max(0, Math.min(1, past));
-                at *= line.mode() == ConfigText.FADE_FAR ? 1f - t : t;
+                at *= line.mode() == DistanceFade.FAR ? 1f - t : t;
             }
             opacity = Math.min(opacity, at);
         }
@@ -853,7 +845,7 @@ public final class HideModels {
     }
 
     /** Whether a profile's opacity changes with distance, and between which distances. */
-    public static void setProfileFade(String name, int mode, double from, double to) {
+    public static void setProfileFade(String name, DistanceFade mode, double from, double to) {
         edit(text -> {
             final ConfigText.Section s = text.profile(name);
             if (s == null || (s.fade == mode && s.fadeFrom == from && s.fadeTo == to)) {
@@ -945,7 +937,7 @@ public final class HideModels {
      * switched on unless it is used only on other servers. Only headings, with their servers, and
      * the id lines under them are taken: comments, directives and anything that is not an id are
      * dropped, so a paste never changes a setting. A name in use gets a number; a profile already
-     * here with the same lines is not added again.
+     * here with the same lines, drawn the same way, is not added again.
      */
     public static Pasted pasteProfiles(String text) {
         final String here = currentServer();
@@ -971,7 +963,7 @@ public final class HideModels {
                 String name = s.name.replace("[", "").trim();
                 name = name.isEmpty() ? "Pasted" : name.substring(0, Math.min(name.length(), 48));
                 final ConfigText.Section same = config.profile(name);
-                if (same != null && patternsOf(same).equals(lines)) {
+                if (same != null && patternsOf(same).equals(lines) && drawsAlike(same, s)) {
                     already.add(same.name);
                     continue;
                 }
@@ -994,6 +986,13 @@ public final class HideModels {
                                                    : added.size() + " profiles"), true);
         }
         return new Pasted(List.copyOf(added), List.copyOf(already));
+    }
+
+    /** Whether two profiles draw their models alike: hidden, or see-through the same way. */
+    private static boolean drawsAlike(ConfigText.Section a, ConfigText.Section b) {
+        return a.opacity == b.opacity && a.fade == b.fade
+                && (a.fade == DistanceFade.OFF
+                    || (a.fadeFrom == b.fadeFrom && a.fadeTo == b.fadeTo));
     }
 
     private static java.util.Set<String> patternsOf(ConfigText.Section s) {
@@ -1117,8 +1116,8 @@ public final class HideModels {
 
     public static void setListRadius(double blocks) {
         final double clamped = Math.min(Math.max(blocks, 1.0), MAX_LIST_RADIUS);
-        directive("list-radius " + fmt(clamped), "list-radius");
-        confirm("list radius: " + fmt(clamped) + " blocks", true);
+        directive("list-radius " + ConfigText.number(clamped), "list-radius");
+        confirm("list radius: " + ConfigText.number(clamped) + " blocks", true);
     }
 
     /** Each clamped to 0..1. The top left is the default, so placing it there removes the line. */
@@ -1177,13 +1176,6 @@ public final class HideModels {
             }
             return true;
         });
-    }
-
-    /** One decimal at most, so "32" does not print as "32.0" in a config line. */
-    private static String fmt(double v) {
-        final double rounded = Math.round(v * 10.0) / 10.0;
-        return (rounded == Math.rint(rounded)) ? Long.toString((long) rounded)
-                                               : Double.toString(rounded);
     }
 
     /**
@@ -1425,7 +1417,7 @@ public final class HideModels {
                 if (section.on && section.opacity <= 0) {
                     effective.addAll(pats);
                 } else if (section.on
-                        && (section.opacity < 100 || section.fade != ConfigText.FADE_OFF)) {
+                        && (section.opacity < 100 || section.fade != DistanceFade.OFF)) {
                     for (String pat : pats) {
                         faded.add(new FadeLine(pat, section.opacity / 100f, section.fade,
                                 section.fadeFrom, section.fadeTo));

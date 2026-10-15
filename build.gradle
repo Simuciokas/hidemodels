@@ -254,19 +254,25 @@ if (usesLoom) {
         java.srcDirs = ['src/versions/fade-mc121/java', 'src/versions/fade-mc121-intermediary/java']
         compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
     }
-    tasks.named('jar') {
+    // The swap happens in a copy of the jar, the one remapJar takes, so the named jar Loom keeps
+    // in devlibs still has hooks a development workspace can use.
+    def namedJar = tasks.named('jar', Jar)
+    def hooksJar = tasks.register('intermediaryHooksJar', Jar) {
+        archiveClassifier = 'intermediary-hooks'
+        destinationDirectory = layout.buildDirectory.dir('devlibs')
+        dependsOn namedJar
+        manifest.from(namedJar.get().manifest)
+        from(zipTree(namedJar.flatMap { it.archiveFile })) {
+            // FadeTargets goes too: its constants were compiled into the hooks, and nothing loads it.
+            exclude 'io/github/simuciokas/hidemodels/mixin/fade/**',
+                    'io/github/simuciokas/hidemodels/FadeTargets.class', 'META-INF/MANIFEST.MF'
+        }
         from(sourceSets.fadeIntermediary.output) {
             include 'io/github/simuciokas/hidemodels/mixin/fade/**'
         }
-        // FadeTargets goes too: its constants were compiled into the hooks, and nothing loads it.
-        def named = sourceSets.main.output.classesDirs
-        eachFile { file ->
-            if ((file.path.startsWith('io/github/simuciokas/hidemodels/mixin/fade/')
-                    || file.path == 'io/github/simuciokas/hidemodels/FadeTargets.class')
-                    && named.files.any { file.file.toPath().startsWith(it.toPath()) }) {
-                file.exclude()
-            }
-        }
+    }
+    tasks.named('remapJar') {
+        inputFile = hooksJar.flatMap { it.archiveFile }
     }
 }
 

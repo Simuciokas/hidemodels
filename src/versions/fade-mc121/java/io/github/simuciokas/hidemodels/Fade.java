@@ -15,7 +15,6 @@
  */
 package io.github.simuciokas.hidemodels;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -80,24 +79,27 @@ public final class Fade {
             return collector;
         }
         try {
-            return proxy(collectorTypes(collector.getClass()), collector, opacity);
+            return proxy(COLLECTOR_TYPES.get(collector.getClass()), collector, opacity);
         } catch (RuntimeException e) {
             return collector;
         }
     }
 
     /** Every public collector interface the game's collector has, for the stand-in to have too. */
-    private static Class<?>[] collectorTypes(Class<?> type) {
-        final List<Class<?>> out = new ArrayList<>();
-        for (Class<?> c = type; c != null; c = c.getSuperclass()) {
-            for (Class<?> i : c.getInterfaces()) {
-                if (Modifier.isPublic(i.getModifiers()) && takesTints(i) && !out.contains(i)) {
-                    out.add(i);
+    private static final ClassValue<Class<?>[]> COLLECTOR_TYPES = new ClassValue<>() {
+        @Override
+        protected Class<?>[] computeValue(Class<?> type) {
+            final List<Class<?>> out = new ArrayList<>();
+            for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+                for (Class<?> i : c.getInterfaces()) {
+                    if (Modifier.isPublic(i.getModifiers()) && takesTints(i) && !out.contains(i)) {
+                        out.add(i);
+                    }
                 }
             }
+            return out.toArray(new Class<?>[0]);
         }
-        return out.toArray(new Class<?>[0]);
-    }
+    };
 
     /** A collector: it has a method taking an item's tints as an int[]. */
     private static boolean takesTints(Class<?> type) {
@@ -171,46 +173,56 @@ public final class Fade {
         return (alpha << 24) | (argb & 0x00FFFFFF);
     }
 
-    /** Faded copies, made once per model's faces and the tint index added for them. */
+    /**
+     * Faded copies, kept by the face they were copied from and the tint index added for them. The
+     * list of faces is built afresh each frame; the faces in it come from the model and stay.
+     */
     private static final Map<Object, Map<Integer, Object>> FACES = new IdentityHashMap<>();
 
     private static Object fadedFaces(List<?> faces, int addedTint) {
-        if (FACES.size() > 4096) {
+        if (FACES.size() > 16384) {
             FACES.clear();
         }
-        return FACES.computeIfAbsent(faces, k -> new HashMap<>())
-                .computeIfAbsent(addedTint, k -> copyFaces(faces, addedTint));
-    }
-
-    /**
-     * Each face as a copy whose tint index, -1 for none, points at the added tint. A face is a
-     * record in both shapes this range has - its first int is the tint index either way.
-     */
-    private static Object copyFaces(List<?> faces, int addedTint) {
         try {
             final List<Object> out = new ArrayList<>(faces.size());
             for (Object face : faces) {
-                final RecordComponent[] parts = face.getClass().getRecordComponents();
-                final Class<?>[] types = new Class<?>[parts.length];
-                final Object[] values = new Object[parts.length];
-                boolean tint = false;
-                for (int i = 0; i < parts.length; i++) {
-                    types[i] = parts[i].getType();
-                    values[i] = parts[i].getAccessor().invoke(face);
-                    if (!tint && types[i] == int.class) {
-                        tint = true;
-                        if ((Integer) values[i] < 0) {
-                            values[i] = addedTint;
-                        }
-                    }
+                final Map<Integer, Object> byTint =
+                        FACES.computeIfAbsent(face, k -> new HashMap<>());
+                Object made = byTint.get(addedTint);
+                if (made == null) {
+                    made = copyFace(face, addedTint);
+                    byTint.put(addedTint, made);
                 }
-                final Constructor<?> make = face.getClass().getDeclaredConstructor(types);
-                out.add(make.newInstance(values));
+                out.add(made);
             }
             return out;
         } catch (ReflectiveOperationException | RuntimeException e) {
             return faces;
         }
+    }
+
+    /**
+     * A face as a copy whose tint index points at the added tint when it has no tint of its own -
+     * none, or one past the item's. A face is a record in both shapes this range has, and its first
+     * int is the tint index either way.
+     */
+    private static Object copyFace(Object face, int addedTint) throws ReflectiveOperationException {
+        final RecordComponent[] parts = face.getClass().getRecordComponents();
+        final Class<?>[] types = new Class<?>[parts.length];
+        final Object[] values = new Object[parts.length];
+        boolean tint = false;
+        for (int i = 0; i < parts.length; i++) {
+            types[i] = parts[i].getType();
+            values[i] = parts[i].getAccessor().invoke(face);
+            if (!tint && types[i] == int.class) {
+                tint = true;
+                final int index = (Integer) values[i];
+                if (index < 0 || index >= addedTint) {
+                    values[i] = addedTint;
+                }
+            }
+        }
+        return face.getClass().getDeclaredConstructor(types).newInstance(values);
     }
 
     /**

@@ -37,11 +37,11 @@ final class ConfigText {
                     + "|[0-9]+(?:\\.[0-9]+)?-[0-9]+(?:\\.[0-9]+)?))*)\\s*$",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern RANGE = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)-([0-9]+(?:\\.[0-9]+)?)");
+    private static final Pattern PERCENT = Pattern.compile("[0-9]{1,3}%");
 
-    /** No fading with distance; fading out with it, far models the faintest; fading in with it. */
-    static final int FADE_OFF = 0;
-    static final int FADE_FAR = 1;
-    static final int FADE_NEAR = 2;
+    /** The distances a fade runs between, in blocks, until a profile is given its own. */
+    static final double FADE_FROM = 0.5;
+    static final double FADE_TO = 8;
 
     static final class Section {
         /** Null for the lines before the first heading. */
@@ -50,9 +50,9 @@ final class ConfigText {
         /** How visible its models are drawn, in percent: 0 hides them, as a profile does by default. */
         int opacity;
         /** Whether that opacity changes with distance, and between which distances, in blocks. */
-        int fade = FADE_OFF;
-        double fadeFrom = 0.5;
-        double fadeTo = 8;
+        DistanceFade fade = DistanceFade.OFF;
+        double fadeFrom = FADE_FROM;
+        double fadeTo = FADE_TO;
         /** The servers it switches on for, as serverKey gives them; empty for one switched by hand. */
         final List<String> servers = new ArrayList<>();
         final List<String> lines = new ArrayList<>();
@@ -93,25 +93,25 @@ final class ConfigText {
                 current = new Section();
                 current.name = m.group(1).trim();
                 for (String word : m.group(2).trim().split("\\s+")) {
-                    if (word.equalsIgnoreCase("off")) {
-                        current.on = false;
-                    } else if (word.endsWith("%")) {
-                        current.opacity = Math.min(100,
-                                Integer.parseInt(word.substring(0, word.length() - 1)));
-                    } else if (word.equalsIgnoreCase("far")) {
-                        current.fade = FADE_FAR;
-                    } else if (word.equalsIgnoreCase("near")) {
-                        current.fade = FADE_NEAR;
-                    } else if (RANGE.matcher(word).matches()) {
-                        final Matcher range = RANGE.matcher(word);
-                        range.matches();
-                        current.fadeFrom = Double.parseDouble(range.group(1));
-                        current.fadeTo = Double.parseDouble(range.group(2));
-                    } else if (word.startsWith("@")) {
+                    // A server first: an address can end in anything, % included.
+                    final Matcher range = RANGE.matcher(word);
+                    if (word.startsWith("@")) {
                         final String key = serverKey(word.substring(1));
                         if (key != null && !current.servers.contains(key)) {
                             current.servers.add(key);
                         }
+                    } else if (word.equalsIgnoreCase("off")) {
+                        current.on = false;
+                    } else if (PERCENT.matcher(word).matches()) {
+                        current.opacity = Math.min(100,
+                                Integer.parseInt(word.substring(0, word.length() - 1)));
+                    } else if (word.equalsIgnoreCase("far")) {
+                        current.fade = DistanceFade.FAR;
+                    } else if (word.equalsIgnoreCase("near")) {
+                        current.fade = DistanceFade.NEAR;
+                    } else if (range.matches()) {
+                        current.fadeFrom = Double.parseDouble(range.group(1));
+                        current.fadeTo = Double.parseDouble(range.group(2));
                     }
                 }
                 text.sections.add(current);
@@ -134,8 +134,8 @@ final class ConfigText {
     }
 
     /** A profile's heading line, as the file holds it. */
-    static String heading(String name, boolean on, int opacity, int fade, double from, double to,
-                          List<String> servers) {
+    static String heading(String name, boolean on, int opacity, DistanceFade fade, double from,
+                          double to, List<String> servers) {
         final StringBuilder out = new StringBuilder("[").append(name).append(']');
         if (!on) {
             out.append(" off");
@@ -143,9 +143,12 @@ final class ConfigText {
         if (opacity > 0) {
             out.append(' ').append(opacity).append('%');
         }
-        if (fade != FADE_OFF) {
-            out.append(fade == FADE_FAR ? " far " : " near ")
-                    .append(blocks(from)).append('-').append(blocks(to));
+        if (fade != DistanceFade.OFF) {
+            out.append(' ').append(fade.name().toLowerCase(Locale.ROOT));
+        }
+        // Kept while the fade is off too, so switching it off and on again keeps the distances.
+        if (fade != DistanceFade.OFF || from != FADE_FROM || to != FADE_TO) {
+            out.append(' ').append(number(from)).append('-').append(number(to));
         }
         for (String server : servers) {
             out.append(" @").append(server);
@@ -153,8 +156,8 @@ final class ConfigText {
         return out.toString();
     }
 
-    /** A distance as the heading writes it: 0.5, or 8 rather than 8.0. */
-    static String blocks(double v) {
+    /** A number as a config line holds it: one decimal at most, so 8 rather than 8.0. */
+    static String number(double v) {
         final double rounded = Math.round(v * 10.0) / 10.0;
         return rounded == Math.rint(rounded) ? Long.toString((long) rounded)
                                              : Double.toString(rounded);

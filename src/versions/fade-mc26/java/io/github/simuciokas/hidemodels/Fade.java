@@ -127,29 +127,34 @@ public final class Fade {
         return value.getClass().getSimpleName().equals("ItemQuads");
     }
 
-    /** Faded copies, made once per model's faces and the tint index added for them. */
+    /**
+     * Faded copies, kept by what they were copied from and the tint index added for them. A list
+     * of faces is built afresh each frame up to 26.2, so copies are kept per face, which comes from
+     * the model and stays; 26.3's ItemQuads comes from the model itself, so it is kept whole.
+     */
     private static final Map<Object, Map<Integer, Object>> FACES = new IdentityHashMap<>();
     private static final Map<Object, Map<Integer, Object>> MATERIALS = new IdentityHashMap<>();
 
+    @SuppressWarnings("unchecked")
     private static Object fadedFaces(Object faces, int addedTint) {
-        if (FACES.size() > 4096) {
+        if (FACES.size() > 16384) {
             FACES.clear();
             MATERIALS.clear();
         }
-        return FACES.computeIfAbsent(faces, k -> new HashMap<>())
-                .computeIfAbsent(addedTint, k -> copyFaces(faces, addedTint));
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Object copyFaces(Object faces, int addedTint) {
         try {
             if (faces instanceof List<?> list) {
                 return copyList((List<BakedQuad>) list, addedTint);
             }
-            final List<BakedQuad> all =
-                    (List<BakedQuad>) faces.getClass().getMethod("all").invoke(faces);
-            return faces.getClass().getMethod("split", List.class)
-                    .invoke(null, copyList(all, addedTint));
+            final Map<Integer, Object> byTint = FACES.computeIfAbsent(faces, k -> new HashMap<>());
+            Object made = byTint.get(addedTint);
+            if (made == null) {
+                final List<BakedQuad> all =
+                        (List<BakedQuad>) faces.getClass().getMethod("all").invoke(faces);
+                made = faces.getClass().getMethod("split", List.class)
+                        .invoke(null, copyList(all, addedTint));
+                byTint.put(addedTint, made);
+            }
+            return made;
         } catch (ReflectiveOperationException | RuntimeException e) {
             return faces;
         }
@@ -159,17 +164,24 @@ public final class Fade {
             throws ReflectiveOperationException {
         final List<BakedQuad> out = new ArrayList<>(faces.size());
         for (BakedQuad q : faces) {
-            out.add(new BakedQuad(q.position0(), q.position1(), q.position2(), q.position3(),
-                    q.packedUV0(), q.packedUV1(), q.packedUV2(), q.packedUV3(), q.direction(),
-                    (BakedQuad.MaterialInfo) material(q.materialInfo(), addedTint)));
+            final Map<Integer, Object> byTint = FACES.computeIfAbsent(q, k -> new HashMap<>());
+            Object made = byTint.get(addedTint);
+            if (made == null) {
+                made = new BakedQuad(q.position0(), q.position1(), q.position2(), q.position3(),
+                        q.packedUV0(), q.packedUV1(), q.packedUV2(), q.packedUV3(), q.direction(),
+                        (BakedQuad.MaterialInfo) material(q.materialInfo(), addedTint));
+                byTint.put(addedTint, made);
+            }
+            out.add((BakedQuad) made);
         }
         return out;
     }
 
     /**
      * A face's material made translucent: its render types swapped for the translucent ones, its
-     * section layer too, and a face that was not tinted pointed at the added tint. Read and built
-     * through the record's components, whose shape differs between 26.2 and 26.3.
+     * section layer too, and a face without a tint of its own - none, or one past the item's - is
+     * pointed at the added tint. Read and built through the record's components, whose shape
+     * differs between 26.2 and 26.3.
      */
     private static Object material(Object info, int addedTint) throws ReflectiveOperationException {
         final Map<Integer, Object> byTint = MATERIALS.computeIfAbsent(info, k -> new HashMap<>());
@@ -183,7 +195,8 @@ public final class Fade {
         for (int i = 0; i < parts.length; i++) {
             types[i] = parts[i].getType();
             Object value = parts[i].getAccessor().invoke(info);
-            if (parts[i].getName().equals("tintIndex") && value instanceof Integer tint && tint < 0) {
+            if (parts[i].getName().equals("tintIndex") && value instanceof Integer tint
+                    && (tint < 0 || tint >= addedTint)) {
                 value = addedTint;
             } else if (value instanceof Enum<?> layer) {
                 value = translucentConstant(layer);
