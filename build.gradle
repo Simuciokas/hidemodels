@@ -593,6 +593,9 @@ if (loader == 'neoforge') {
                 // verdict is written to a file because no exit from a client thread is trustworthy.
                 systemProperty 'hidemodels.smoketest', 'true'
                 systemProperty 'java.awt.headless', 'true'
+                // A development run of 26.2+ stops on a warning screen for logoFile, which the
+                // metadata keeps for the versions before; an installed game never shows it.
+                systemProperty 'neoforge.warnings.logofile.hide', 'true'
                 gameDirectory = layout.buildDirectory.dir("run-neoforge-${project.minecraft_version}")
                 if (smokeWorld) {
                     systemProperty 'hidemodels.smoketest.world', smokeWorld
@@ -609,6 +612,7 @@ if (loader == 'neoforge') {
                 loadedMods = []
                 systemProperty 'hidemodels.smoketest', 'true'
                 systemProperty 'java.awt.headless', 'true'
+                systemProperty 'neoforge.warnings.logofile.hide', 'true'
                 gameDirectory = layout.buildDirectory.dir("run-neoforge-jar-${project.minecraft_version}")
                 if (smokeWorld) {
                     systemProperty 'hidemodels.smoketest.world', smokeWorld

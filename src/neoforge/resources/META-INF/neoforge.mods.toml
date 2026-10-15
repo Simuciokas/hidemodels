@@ -15,7 +15,10 @@ modId = "hidemodels"
 version = "${version}"
 displayName = "Hide Models"
 displayURL = "https://github.com/Simuciokas/hidemodels"
+# logoFile is all NeoForge reads up to 26.1.2; from 26.2 iconFile is the icon, and logoFile, now
+# deprecated, is still the banner.
 logoFile = "assets/hidemodels/icon.png"
+iconFile = "assets/hidemodels/icon.png"
 authors = "Simuciokas"
 description = '''
 Hides chosen ModelEngine model pieces client-side by their item_model id - a mount's head that
