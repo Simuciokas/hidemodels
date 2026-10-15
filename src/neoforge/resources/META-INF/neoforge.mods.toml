@@ -29,6 +29,9 @@ removing the entities. Hitboxes, interactions and the server's view of the world
 [[mixins]]
 config = "hidemodels.mixins.json"
 
+[[mixins]]
+config = "hidemodels.fade.mixins.json"
+
 [[dependencies.hidemodels]]
 modId = "neoforge"
 type = "required"

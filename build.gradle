@@ -238,6 +238,37 @@ tasks.register('printGroups') {
 // method_NNNN. Everything else in src/main compiles unchanged across the whole range.
 sourceSets.main.java.srcDir(legacy ? 'src/versions/chat-mc121/java' : 'src/versions/chat-mc26/java')
 sourceSets.main.java.srcDir(legacy ? 'src/versions/screen-mc121/java' : 'src/versions/screen-mc26/java')
+// Fading a model see-through hooks the draw pipeline 1.21.9 brought. 26.x names it outright. 1.21.x
+// ships in a jar that runs back to 1.20.5, so its hooks are written as strings: Mojang's names in
+// the source, which NeoForge and a Fabric development run both have. A Fabric install has
+// intermediary names instead, and Loom remaps a Mojang name only when building against a version
+// that has it - which would make the Fabric jar differ across its group. So the Fabric jar gets
+// the hook classes compiled a second time, against intermediary names, which Loom leaves alone.
+sourceSets.main.java.srcDir(legacy ? 'src/versions/fade-mc121/java' : 'src/versions/fade-mc26/java')
+if (legacy) {
+    sourceSets.main.java.srcDir('src/versions/fade-mc121-named/java')
+}
+sourceSets.main.resources.srcDir(legacy ? 'src/versions/fade-mc121/resources' : 'src/versions/fade-mc26/resources')
+if (usesLoom) {
+    sourceSets.create('fadeIntermediary') {
+        java.srcDirs = ['src/versions/fade-mc121/java', 'src/versions/fade-mc121-intermediary/java']
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+    }
+    tasks.named('jar') {
+        from(sourceSets.fadeIntermediary.output) {
+            include 'io/github/simuciokas/hidemodels/mixin/fade/**'
+        }
+        // FadeTargets goes too: its constants were compiled into the hooks, and nothing loads it.
+        def named = sourceSets.main.output.classesDirs
+        eachFile { file ->
+            if ((file.path.startsWith('io/github/simuciokas/hidemodels/mixin/fade/')
+                    || file.path == 'io/github/simuciokas/hidemodels/FadeTargets.class')
+                    && named.files.any { file.file.toPath().startsWith(it.toPath()) }) {
+                file.exclude()
+            }
+        }
+    }
+}
 
 // A SECOND SPLIT, on a DIFFERENT BOUNDARY, which is why it is not folded into the one above.
 // ClickEvent was a class with a constructor through 1.21.4 and became a sealed interface of records

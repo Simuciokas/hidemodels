@@ -22,7 +22,8 @@
     ]
   },
   "mixins": [
-    "hidemodels.mixins.json"
+    "hidemodels.mixins.json",
+    "hidemodels.fade.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=0.19.0",

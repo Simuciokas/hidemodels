@@ -66,13 +66,33 @@ public final class HideModels {
      * sees profiles at all.
      */
     private static volatile String[] patterns = new String[0];
+    /** A line of a profile drawn see-through rather than hidden, and how. */
+    private record FadeLine(String pattern, float opacity, int mode, double from, double to) {
+    }
+
+    /** The lines of the profiles that are on and draw see-through. */
+    private static volatile FadeLine[] fades = new FadeLine[0];
     /** The lines before the first profile heading, which always apply. */
     private static volatile List<String> unsaved = List.of();
     private static volatile List<Profile> profiles = List.of();
 
     /** A saved list of lines, applied while it is on. */
     /** A saved list; {@code servers} are those it switches on for, empty for one switched by hand. */
-    public record Profile(String name, boolean on, List<String> patterns, List<String> servers) {
+    /**
+     * A saved list. {@code opacity} is how visible it draws its models, in percent, 0 for hidden;
+     * {@code fade} whether that changes with distance - ConfigText's FADE_ constants - and between
+     * {@code fadeFrom} and {@code fadeTo} blocks.
+     */
+    public record Profile(String name, boolean on, List<String> patterns, List<String> servers,
+                          int opacity, int fade, double fadeFrom, double fadeTo) {
+
+        public boolean fadesFar() {
+            return fade == ConfigText.FADE_FAR;
+        }
+
+        public boolean fadesNear() {
+            return fade == ConfigText.FADE_NEAR;
+        }
     }
     private static volatile boolean enabled = true;
 
@@ -378,17 +398,24 @@ public final class HideModels {
             return false;
         }
         final String id = modelIdOfEntity(entity);
-        return id != null && matches(id);
+        return id != null && (matches(id) || fadeHides(id)
+                || (fades.length > 0 && opacityAt(entity, id) <= 0f));
     }
 
     private static boolean couldHideAnything() {
+        // A faded profile hides only where fading cannot be drawn.
+        if (patterns.length == 0 && fades.length == 0) {
+            return false;
+        }
+        return switchesAllow();
+    }
+
+    /** Whether hiding applies now, the lines aside: on, not opted out by the server, the camera. */
+    private static boolean switchesAllow() {
         if (serverDisabled) {
             return false;                 // checked first: the server's word beats the config
         }
-        if (!enabled || patterns.length == 0) {
-            return false;
-        }
-        return !firstPersonOnly || inFirstPerson();
+        return enabled && (!firstPersonOnly || inFirstPerson());
     }
 
     /** Must be called once per client tick; each loader's entrypoint does it. */
@@ -513,8 +540,111 @@ public final class HideModels {
         return false;
     }
 
+    /**
+     * How opaque to draw an entity's model, 1 for as it is: the faintest of the profiles fading it,
+     * each at its distance from the player's eyes. Fading follows hiding's switches - off, the
+     * server's opt-out, first person only.
+     */
+    public static float opacityOf(Entity entity) {
+        if (fades.length == 0 || !switchesAllow()) {
+            return 1f;
+        }
+        return opacityAt(entity, modelIdOfEntity(entity));
+    }
+
+    private static float opacityAt(Entity entity, String itemModelId) {
+        final FadeLine[] lines = fades;
+        if (itemModelId == null || lines.length == 0) {
+            return 1f;
+        }
+        final String id = itemModelId.toLowerCase(Locale.ROOT);
+        float opacity = 1f;
+        double distance = -1;
+        for (FadeLine line : lines) {
+            if (!covers(id, line.pattern())) {
+                continue;
+            }
+            float at = line.opacity();
+            if (line.mode() != ConfigText.FADE_OFF) {
+                if (distance < 0) {
+                    distance = eyeDistance(entity);
+                }
+                final double near = Math.min(line.from(), line.to());
+                final double far = Math.max(line.from(), line.to());
+                final double past = far > near ? (distance - near) / (far - near)
+                                               : (distance >= far ? 1 : 0);
+                final float t = (float) Math.max(0, Math.min(1, past));
+                at *= line.mode() == ConfigText.FADE_FAR ? 1f - t : t;
+            }
+            opacity = Math.min(opacity, at);
+        }
+        return opacity;
+    }
+
+    /** From the player's eyes to the model, in blocks: an armor stand wears it on its head. */
+    private static double eyeDistance(Entity entity) {
+        final Entity player = Minecraft.getInstance().player;
+        if (player == null) {
+            return 0;
+        }
+        final double dx = entity.getX() - player.getX();
+        final double dy = (entity instanceof ArmorStand ? entity.getEyeY() : entity.getY())
+                - player.getEyeY();
+        final double dz = entity.getZ() - player.getZ();
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    /** The opacity the profiles set for an id, distance aside, whatever the switches say. */
+    public static float opacityOfId(String itemModelId) {
+        final FadeLine[] lines = fades;
+        if (itemModelId == null || lines.length == 0) {
+            return 1f;
+        }
+        final String id = itemModelId.toLowerCase(Locale.ROOT);
+        float opacity = 1f;
+        for (FadeLine line : lines) {
+            if (covers(id, line.pattern())) {
+                opacity = Math.min(opacity, line.opacity());
+            }
+        }
+        return opacity;
+    }
+
+    /**
+     * Whether this version can draw a model see-through: 1.21.9 and later, whose item displays are
+     * drawn through a submit pipeline the fade hooks. Found by the draw method's shape - the
+     * collector it is handed takes an item's tints as an int[], which a MultiBufferSource, used
+     * before then, never does. Where it cannot, fading hides.
+     */
+    public static boolean fadingAvailable() {
+        if (fadingAvailable == null) {
+            boolean found = false;
+            for (java.lang.reflect.Method m : net.minecraft.client.renderer.entity.DisplayRenderer
+                    .ItemDisplayRenderer.class.getDeclaredMethods()) {
+                final Class<?>[] p = m.getParameterTypes();
+                if (p.length == 5 && p[1] == com.mojang.blaze3d.vertex.PoseStack.class
+                        && p[2].isInterface() && p[3] == int.class && p[4] == float.class) {
+                    for (java.lang.reflect.Method submit : p[2].getMethods()) {
+                        found |= java.util.Arrays.asList(submit.getParameterTypes())
+                                .contains(int[].class);
+                    }
+                }
+            }
+            fadingAvailable = found;
+        }
+        return fadingAvailable;
+    }
+
+    private static Boolean fadingAvailable;
+
+    /** Profile lines faded where fading works, and so hidden where it does not. */
+    private static boolean fadeHides(String itemModelId) {
+        return fades.length > 0 && !fadingAvailable() && opacityOfId(itemModelId) < 1f;
+    }
+
     public static boolean hidden(String itemModelId) {
-        return itemModelId != null && couldHideAnything() && matches(itemModelId);
+        return itemModelId != null && couldHideAnything()
+                && (matches(itemModelId) || fadeHides(itemModelId));
     }
 
     /**
@@ -722,6 +852,39 @@ public final class HideModels {
         }
     }
 
+    /** Whether a profile's opacity changes with distance, and between which distances. */
+    public static void setProfileFade(String name, int mode, double from, double to) {
+        edit(text -> {
+            final ConfigText.Section s = text.profile(name);
+            if (s == null || (s.fade == mode && s.fadeFrom == from && s.fadeTo == to)) {
+                return false;
+            }
+            s.fade = mode;
+            s.fadeFrom = Math.max(0, from);
+            s.fadeTo = Math.max(0, to);
+            return true;
+        });
+    }
+
+    /** How visible a profile draws its models, in percent: 0 hides them. */
+    public static void setProfileOpacity(String name, int opacity) {
+        final int percent = Math.max(0, Math.min(100, opacity));
+        final boolean[] changed = {false};
+        edit(text -> {
+            final ConfigText.Section s = text.profile(name);
+            if (s == null || s.opacity == percent) {
+                return false;
+            }
+            s.opacity = percent;
+            changed[0] = true;
+            return true;
+        });
+        if (changed[0]) {
+            confirm("profile '" + name + "' "
+                    + (percent == 0 ? "hides its models" : "draws its models at " + percent + "%"), true);
+        }
+    }
+
     /**
      * Renames a profile. Refused when the new name is empty, would break the heading - it cannot
      * hold a bracket - or belongs to another profile already.
@@ -769,7 +932,8 @@ public final class HideModels {
     public static String profileText(String name) {
         for (Profile p : profiles()) {
             if (p.name().equalsIgnoreCase(name)) {
-                return ConfigText.heading(p.name(), true, p.servers()) + "\n"
+                return ConfigText.heading(p.name(), true, p.opacity(), p.fade(), p.fadeFrom(),
+                        p.fadeTo(), p.servers()) + "\n"
                         + String.join("\n", p.patterns());
             }
         }
@@ -813,6 +977,10 @@ public final class HideModels {
                 }
                 final ConfigText.Section to = config.addProfile(freeName(config, name));
                 to.servers.addAll(s.servers);
+                to.opacity = s.opacity;
+                to.fade = s.fade;
+                to.fadeFrom = s.fadeFrom;
+                to.fadeTo = s.fadeTo;
                 to.on = s.servers.isEmpty() || s.servers.contains(here);
                 for (String line : lines) {
                     ConfigText.append(to, line);
@@ -1204,6 +1372,7 @@ public final class HideModels {
             changedSinceRead();
         }
         final java.util.Set<String> effective = new java.util.LinkedHashSet<>();
+        final List<FadeLine> faded = new ArrayList<>();
         final List<String> loose = new ArrayList<>();
         final List<Profile> saved = new ArrayList<>();
         boolean on = true;
@@ -1251,13 +1420,21 @@ public final class HideModels {
                 effective.addAll(pats);
             } else {
                 saved.add(new Profile(section.name, section.on, List.copyOf(pats),
-                        List.copyOf(section.servers)));
-                if (section.on) {
+                        List.copyOf(section.servers), section.opacity, section.fade,
+                        section.fadeFrom, section.fadeTo));
+                if (section.on && section.opacity <= 0) {
                     effective.addAll(pats);
+                } else if (section.on
+                        && (section.opacity < 100 || section.fade != ConfigText.FADE_OFF)) {
+                    for (String pat : pats) {
+                        faded.add(new FadeLine(pat, section.opacity / 100f, section.fade,
+                                section.fadeFrom, section.fadeTo));
+                    }
                 }
             }
         }
         patterns = effective.toArray(new String[0]);
+        fades = faded.toArray(new FadeLine[0]);
         unsaved = List.copyOf(loose);
         profiles = List.copyOf(saved);
         enabled = on;

@@ -19,6 +19,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.DoubleConsumer;
+import java.util.function.DoubleFunction;
+import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -66,7 +69,7 @@ public final class HiddenListScreen extends ClearScreen {
 
     private static final String PREV = "◀ Prev";
     private static final String NEXT = "Next ▶";
-    private static final String CLOSE = "Close";
+    private static final String CLOSE = "×";
     private static final String MOVING = "Click to place, Esc cancels";
     private static final String RADIUS_LABEL = "List radius";
     private static final String OPEN = " ▶";
@@ -79,6 +82,17 @@ public final class HiddenListScreen extends ClearScreen {
     private static final String COPY = "Copy profile";
     private static final String COPIED = "Copied to the clipboard";
     private static final String PASTE = "Paste a profile";
+    private static final String OPACITY = "Opacity";
+    private static final String DISTANCE = "Distance fade";
+    private static final String FROM = "From";
+    private static final String TO = "To";
+    /** A fade's distances, in blocks: finer close by, where half a block shows. */
+    private static final double[] DISTANCE_STOPS =
+            {0, 0.5, 1, 1.5, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32};
+    /** The side panel's narrowest, so its sliders have room to drag along. */
+    private static final int SIDE_MIN = 100;
+    /** From the panel's rows to the side panel's: room for the arrow on the strip joining them. */
+    private static final int SIDE_GAP = 14;
     private static final String NAME = "Name  ";
 
     private final Screen parent;
@@ -132,6 +146,13 @@ public final class HiddenListScreen extends ClearScreen {
     /** Set by build: the header's corner, placed from the saved position. */
     private int left = EDGE;
     private int top = Y;
+    /** The open profile's Distance fade row while it fades with distance, for the side panel. */
+    private Row distanceRow;
+    /** Set by build: the side panel beside the Distance fade row; no width when there is none. */
+    private int sideX;
+    private int sideY;
+    private int sideW;
+    private int sideH;
     /**
      * Picked up by Move panel: drawn under the cursor until a click puts it down. The grab is the
      * point on the panel it was picked up by, so it does not jump to put its corner on the cursor.
@@ -170,6 +191,90 @@ public final class HiddenListScreen extends ClearScreen {
         boolean centered;
         /** The open profile's name, typed into: drawn from the name box rather than its label. */
         boolean field;
+        /** A value set by dragging: the slider's range, and the widget over the row, once built. */
+        SliderSpec slider;
+        RowSlider sliderWidget;
+    }
+
+    /**
+     * A slider's stops, evenly spaced along it, where it stands, how its value reads, and what a
+     * new value does. Stops rather than a range, so a scale can be finer where small values matter.
+     */
+    private record SliderSpec(double[] stops, double current, DoubleFunction<String> text,
+                              DoubleConsumer onChange) {
+
+        /** How far along the slider a value sits, 0 to 1 - between stops for one off them. */
+        double positionOf(double v) {
+            if (v <= stops[0]) {
+                return 0;
+            }
+            for (int i = 1; i < stops.length; i++) {
+                if (v <= stops[i]) {
+                    return (i - 1 + (v - stops[i - 1]) / (stops[i] - stops[i - 1]))
+                            / (stops.length - 1);
+                }
+            }
+            return 1;
+        }
+    }
+
+    /**
+     * A vanilla slider, never drawn, over a row - so vanilla hands it the clicks, drags and arrow
+     * keys, as the buttons and the name box get theirs. The row is painted from its value, and a
+     * value is passed on only when it lands on a new stop, so a drag writes the config a few times
+     * rather than every frame. Until it is moved it shows the value it was opened with, which a
+     * hand-edited config can have put between stops.
+     */
+    private static final class RowSlider extends AbstractSliderButton {
+
+        private final SliderSpec spec;
+        private double sent;
+        private boolean moved;
+
+        RowSlider(Row row, SliderSpec spec) {
+            super(row.x, row.y, row.w, ROW, Component.literal(row.label),
+                  spec.positionOf(spec.current()));
+            this.spec = spec;
+            this.sent = spec.current();
+        }
+
+        private int stop() {
+            return (int) Math.round(value * (spec.stops().length - 1));
+        }
+
+        /** How far along the row the value sits, 0 to 1. */
+        double fraction() {
+            return moved ? (double) stop() / (spec.stops().length - 1)
+                         : spec.positionOf(spec.current());
+        }
+
+        String text() {
+            return spec.text().apply(moved ? spec.stops()[stop()] : spec.current());
+        }
+
+        @Override
+        protected void updateMessage() {
+            // painted by the screen
+        }
+
+        @Override
+        protected void applyValue() {
+            moved = true;
+            final double v = spec.stops()[stop()];
+            if (v != sent) {
+                sent = v;
+                spec.onChange().accept(v);
+            }
+        }
+    }
+
+    /** Opacity's stops: hidden, then every five percent. */
+    private static double[] opacityStops() {
+        final double[] stops = new double[21];
+        for (int i = 0; i < stops.length; i++) {
+            stops[i] = i * 5;
+        }
+        return stops;
     }
 
     public HiddenListScreen(Screen parent) {
@@ -179,9 +284,9 @@ public final class HiddenListScreen extends ClearScreen {
     }
 
     private int perPage() {
-        // Room kept for the header and the chrome rows: the tabs, the pager, close, the way back
-        // when a model's bones are showing, and the Hidden tab's rows above its list.
-        final int chrome = 3 + (showingBones() ? 1 : 0) + hiddenFixedRows();
+        // Room kept for the header and the chrome rows: the tabs, the pager, the way back when a
+        // model's bones are showing, and the Hidden tab's rows above its list.
+        final int chrome = 2 + (showingBones() ? 1 : 0) + hiddenFixedRows();
         final int usable = height - Y - 14 - chrome * (ROW + GAP) - BOTTOM_MARGIN;
         return Math.max(1, usable / (ROW + GAP));
     }
@@ -196,7 +301,8 @@ public final class HiddenListScreen extends ClearScreen {
             return 0;
         }
         if (openList != null) {
-            return openList.isEmpty() ? 1 : 4 + serverRows().size();
+            // A profile's name, Opacity, Distance fade, Copy and Delete, and its servers.
+            return openList.isEmpty() ? 0 : 5 + serverRows().size();
         }
         return HideModels.unsaved().isEmpty() ? 2 : 3;
     }
@@ -299,6 +405,8 @@ public final class HiddenListScreen extends ClearScreen {
 
     private void build() {
         rows.clear();
+        distanceRow = null;
+        sideW = 0;
         final List<NearbyModels.Nearby> found = nearbyRows();
         final List<String> source = new ArrayList<>();
         if (tab == HIDDEN && openList == null) {
@@ -334,8 +442,10 @@ public final class HiddenListScreen extends ClearScreen {
         // the time. Capped at a third of the screen so one absurd id cannot swallow the view it is
         // meant to leave clear - but never narrower than the tabs.
         final int cap = Math.max(strip, width / 3);
-        int content = Math.max(measure(header(source.size(), goneCount(found), pages)),
-                moving ? measure(MOVING) : 0);
+        // The header shares its line with the close mark, at the right end.
+        final int headerW = Math.max(measure(header(source.size(), goneCount(found), pages)),
+                moving ? measure(MOVING) : 0) + GAP * 2 + ROW;
+        int content = 0;
         if (tab == SETTINGS) {
             content = Math.max(content, measure(RADIUS_LABEL) + GAP + stepperWidth());
         }
@@ -374,9 +484,11 @@ public final class HiddenListScreen extends ClearScreen {
                         + (unsavedCount > 0 ? plusW + GAP : 0));
             }
         } else if (tab == HIDDEN) {
-            content = Math.max(content, measure("◀ " + (openList.isEmpty() ? UNSAVED : openList)));
             if (!openList.isEmpty()) {
+                content = Math.max(content, measure(NAME + openList));
                 content = Math.max(content, Math.max(measure(DELETE_SURE), measure(COPIED)));
+                content = Math.max(content, measure(OPACITY) + PAD + measure("Hidden"));
+                content = Math.max(content, measure(DISTANCE) + PAD + measure("Near"));
                 for (String server : serverRows()) {
                     content = Math.max(content, measure(serverLabel(server)) + PAD + measure("Off"));
                 }
@@ -384,7 +496,7 @@ public final class HiddenListScreen extends ClearScreen {
         }
         final int prevW = measure(PREV) + PAD * 2;
         final int nextW = measure(NEXT) + PAD * 2;
-        final int rowWidth = Math.min(cap, Math.max(strip,
+        final int rowWidth = Math.min(cap, Math.max(Math.max(strip, headerW),
                 Math.max(content + PAD * 2, pages > 1 ? prevW + GAP + nextW : 0)));
         panelWidth = rowWidth;
 
@@ -472,8 +584,12 @@ public final class HiddenListScreen extends ClearScreen {
             chrome(left + rowWidth - nextW, y, nextW, NEXT, () -> turn(1, pages));
             y += ROW + GAP;
         }
-        chrome(left, y, measure(CLOSE) + PAD * 2, CLOSE, this::onClose);
-        panelHeight = y + ROW - top;
+        panelHeight = y - GAP - top;
+        // Level with the header's text, which it shares the top line with.
+        final Row close = row(left + rowWidth - ROW, top - 4, ROW, CLOSE);
+        close.muted = true;
+        close.centered = true;
+        hit(close, this::onClose);
 
         final int dx = (int) Math.round(HideModels.guiX() * roomX());
         final int dy = (int) Math.round(HideModels.guiY() * roomY());
@@ -483,6 +599,9 @@ public final class HiddenListScreen extends ClearScreen {
         }
         left += dx;
         top += dy;
+        if (distanceRow != null) {
+            fadeSidePanel();
+        }
 
         if (moving) {
             // The next click anywhere puts the panel down, so one target covers the screen.
@@ -493,6 +612,9 @@ public final class HiddenListScreen extends ClearScreen {
         for (Row row : rows) {
             if (row.field) {
                 addNameBox(row);
+            } else if (row.slider != null) {
+                row.sliderWidget = new RowSlider(row, row.slider);
+                addRenderableWidget(row.sliderWidget);
             } else if (row.action != null) {
                 final Runnable action = row.action;
                 addRenderableWidget(Button.builder(Component.empty(), b -> action.run())
@@ -579,6 +701,9 @@ public final class HiddenListScreen extends ClearScreen {
             final int cells = cellW + (unsavedCount > 0 ? plusW + GAP : 0);
             final Row row = row(left, y, w - cells - GAP, name);
             row.on = p.on();
+            if (p.opacity() > 0) {
+                row.value = p.opacity() + "%";
+            }
             final int rank = serverRank(p, HideModels.currentServer());
             row.muted = rank == 2;
             row.hint = (rank == 0 ? "Used on this server\n"
@@ -625,23 +750,47 @@ public final class HiddenListScreen extends ClearScreen {
         return y;
     }
 
-    /** Above an open list: the way back; for a profile, its name, Copy, and Delete - asked twice. */
+    /**
+     * Above an open profile's lines: its name, how it draws, its servers, Copy, and Delete - asked
+     * twice. The Hidden tab is the way back to the lists.
+     */
     private int openListHead(int y, int w) {
-        chrome(left, y, w, "◀ " + (openList.isEmpty() ? UNSAVED : openList), () -> {
-            openList = null;
-            nameBox = null;
-            confirmDelete = false;
-            copied = false;
-            page = listsPage;
-            rebuildWidgets();
-        });
-        y += ROW + GAP;
         if (!openList.isEmpty()) {
             final Row name = row(left, y, w, openList);
             name.field = true;
             name.hint = "Click to rename it, then type";
             y += ROW + GAP;
             final HideModels.Profile profile = profileNamed(openList);
+            // How its models are drawn: hidden, or see-through, and whether that changes with
+            // distance - from where to where.
+            final String list = openList;
+            final int opacity = profile == null ? 0 : profile.opacity();
+            final Row fade = row(left, y, w, OPACITY);
+            fade.slider = new SliderSpec(opacityStops(), opacity,
+                    v -> v <= 0 ? "Hidden" : Math.round(v) + "%",
+                    v -> HideModels.setProfileOpacity(list, (int) Math.round(v)));
+            fade.hint = "0 hides its models; more draws them see-through, 100 as they are"
+                    + "\nClick or drag"
+                    + (HideModels.fadingAvailable() ? "" : "\nThis Minecraft version can only hide");
+            y += ROW + GAP;
+            final int mode = profile == null ? ConfigText.FADE_OFF : profile.fade();
+            final double from = profile == null ? 0.5 : profile.fadeFrom();
+            final double to = profile == null ? 8 : profile.fadeTo();
+            final Row distance = row(left, y, w, DISTANCE);
+            distance.value = mode == ConfigText.FADE_FAR ? "Far"
+                    : mode == ConfigText.FADE_NEAR ? "Near" : "Off";
+            distance.on = mode != ConfigText.FADE_OFF;
+            distance.hint = "Off: the opacity everywhere"
+                    + "\nFar: as set close by, fading out to nothing by To"
+                    + "\nNear: nothing close by, fading in to as set by To";
+            hit(distance, () -> {
+                HideModels.setProfileFade(list, (mode + 1) % 3, from, to);
+                rebuildWidgets();
+            });
+            if (mode != ConfigText.FADE_OFF) {
+                distanceRow = distance;
+            }
+            y += ROW + GAP;
             final String here = HideModels.currentServer();
             // Switches, as in Settings: on means joining that server switches the profile on.
             for (String server : serverRows()) {
@@ -680,6 +829,60 @@ public final class HiddenListScreen extends ClearScreen {
             y += ROW + GAP;
         }
         return y;
+    }
+
+    /**
+     * A distance fade's From and To, in a panel jutting out level with its Distance fade row, on
+     * the side facing the middle of the screen. Laid out once the panel is where it was put, as it
+     * hangs beside the panel rather than in it.
+     */
+    private void fadeSidePanel() {
+        final HideModels.Profile profile = profileNamed(openList);
+        if (profile == null) {
+            return;
+        }
+        final String list = openList;
+        final int mode = profile.fade();
+        final double from = profile.fadeFrom();
+        final double to = profile.fadeTo();
+        sideW = Math.max(SIDE_MIN,
+                Math.max(measure(FROM), measure(TO)) + PAD * 3 + measure("32 blocks"));
+        sideH = ROW * 2 + GAP;
+        sideX = clamp(sideOnLeft() ? left - SIDE_GAP - sideW : left + panelWidth + SIDE_GAP, 4,
+                Math.max(4, width - sideW - 4));
+        sideY = distanceRow.y;
+        final Row near = row(sideX, sideY, sideW, FROM);
+        near.slider = new SliderSpec(DISTANCE_STOPS, from, HiddenListScreen::blocksText, v -> {
+            final HideModels.Profile now = profileNamed(list);
+            HideModels.setProfileFade(list, mode, v, now == null ? to : now.fadeTo());
+        });
+        near.hint = "Where the fade starts, in blocks from your eyes";
+        final Row far = row(sideX, sideY + ROW + GAP, sideW, TO);
+        far.slider = new SliderSpec(DISTANCE_STOPS, to, HiddenListScreen::blocksText, v -> {
+            final HideModels.Profile now = profileNamed(list);
+            HideModels.setProfileFade(list, mode, now == null ? from : now.fadeFrom(), v);
+        });
+        far.hint = "Where it ends";
+    }
+
+    /**
+     * A solid triangle four pixels deep and seven tall, centered on y, pointing out of the panel.
+     * Drawn from fills, so it is the same at any GUI scale and in any font.
+     */
+    private static void arrow(Painter p, int x, int y, boolean pointsLeft) {
+        for (int i = 0; i < 4; i++) {
+            final int half = 3 - i;
+            p.fill(pointsLeft ? x + 3 - i : x + i, y - half, 1, half * 2 + 1, ACCENT);
+        }
+    }
+
+    /** Whether what goes beside the panel goes to its left: the side facing the screen's middle. */
+    private boolean sideOnLeft() {
+        return left + panelWidth / 2 > width / 2;
+    }
+
+    private static String blocksText(double blocks) {
+        return ConfigText.blocks(blocks) + (blocks == 1 ? " block" : " blocks");
     }
 
     /** A server row's label: the server being played on as such, any other by its address. */
@@ -727,11 +930,15 @@ public final class HiddenListScreen extends ClearScreen {
         row.action = action;
     }
 
-    /** Switching goes back to page one, and to the lists rather than one of them. */
+    /**
+     * Switching goes back to page one, and to the lists rather than one of them. The Hidden tab,
+     * clicked in an open list, goes back to the page of lists it was opened from.
+     */
     private void tabButton(int x, int y, int w, int which) {
         final Row row = row(x, y, w, TABS[which]);
         row.muted = tab != which;
         hit(row, () -> {
+            final boolean backToLists = which == HIDDEN && tab == HIDDEN && openList != null;
             tab = which;
             openList = null;
             nameBox = null;
@@ -739,7 +946,7 @@ public final class HiddenListScreen extends ClearScreen {
             copied = false;
             pasted = null;
             bonesOf = null;
-            page = 0;
+            page = backToLists ? listsPage : 0;
             rebuildWidgets();
         });
     }
@@ -861,12 +1068,25 @@ public final class HiddenListScreen extends ClearScreen {
         final int oy = moving ? clamp(mouseY - grabY, Y, Y + roomY()) - top : 0;
 
         p.fill(left - 4 + ox, top - 6 + oy, panelWidth + 8, panelHeight + 12, PANEL);
+        if (sideW > 0) {
+            // Its background reaches back to the panel's, without overlapping it, and a strip of
+            // row with an arrow on it joins it to Distance fade - the row it opened from.
+            final boolean onLeft = sideX < left;
+            final int fillX = onLeft ? sideX - 4 : left + panelWidth + 4;
+            final int fillEnd = onLeft ? left - 4 : sideX + sideW + 4;
+            p.fill(fillX + ox, sideY - 4 + oy, fillEnd - fillX, sideH + 8, PANEL);
+            final int stripX = onLeft ? sideX + sideW : left + panelWidth;
+            final int stripW = Math.abs((onLeft ? left : sideX) - stripX);
+            p.fill(stripX + ox, distanceRow.y + oy, stripW, ROW, ROW_BG);
+            arrow(p, stripX + (stripW - 4) / 2 + ox, distanceRow.y + ROW / 2 + oy, onLeft);
+        }
 
         final double radius = HideModels.listRadius();
         final List<NearbyModels.Nearby> around = nearbyRows();
         final int total = tab != HIDDEN ? around.size()
                 : openList == null ? HideModels.profiles().size() : openLines.size();
-        p.text(moving ? MOVING : header(total, goneCount(around), pageCount(total)),
+        p.text(fit(p, moving ? MOVING : header(total, goneCount(around), pageCount(total)),
+                        panelWidth - ROW - GAP * 2),
                 left + ox, top + oy, moving ? TEXT : DIM);
 
         final Set<String> partly = tab == NEARBY && bonesOf == null
@@ -882,16 +1102,24 @@ public final class HiddenListScreen extends ClearScreen {
             final boolean typing = row.field && nameBox != null && nameBox.isFocused();
             p.fill(x, y, row.w, ROW, typing || (over && (row.action != null || row.field))
                     ? ROW_HOVER : ROW_BG);
+            if (row.sliderWidget != null) {
+                final int lit = (int) Math.round(row.w * row.sliderWidget.fraction());
+                p.fill(x, y, lit, ROW, ROW_HOVER);
+                p.fill(x + Math.max(0, lit - 2), y, 2, ROW, ACCENT);
+                row.value = row.sliderWidget.text();
+            }
             // Read live, so a hand edit to the config shows without reopening. In an open list
             // the bar means the line is still in it; elsewhere, that something hides the model.
             final boolean on = row.id == null ? row.on
                     : tab == HIDDEN ? inOpenList(row.id) : HideModels.listed(row.id);
-            if (on || (row.id != null && partly.contains(row.id))) {
+            if (on || (row.id != null && (partly.contains(row.id)
+                    || (tab == NEARBY && HideModels.opacityOfId(row.id) < 1f)))) {
                 // A bar down the left edge rather than a tick: it reads at a glance down a column.
                 p.fill(x, y, 2, ROW, on ? ACCENT : PARTIAL);
             }
             final int ty = y + (ROW - p.lineHeight()) / 2 + 1;
-            int room = row.w - PAD * 2;
+            // A centered label sits in a small box, the close mark's or a number's: no inset.
+            int room = row.centered ? row.w - 2 : row.w - PAD * 2;
             if (row.value != null) {
                 final int vw = p.textWidth(row.value);
                 p.text(row.value, x + row.w - PAD - vw, ty,
@@ -972,7 +1200,16 @@ public final class HiddenListScreen extends ClearScreen {
             }
         }
         final String list = HideModels.hidingList(row.id);
-        if (covering == null) {
+        final float opacity = HideModels.opacityOfId(row.id);
+        if (covering == null && opacity < 1f && list != null && !list.isEmpty()) {
+            lines.add("Drawn at " + Math.round(opacity * 100) + "% by the profile '" + list + "'");
+            final HideModels.Profile fading = profileNamed(list);
+            if (fading != null && fading.fade() != ConfigText.FADE_OFF) {
+                lines.add((fading.fadesFar() ? "Fading out" : "Fading in") + " from "
+                        + blocksText(fading.fadeFrom()) + " to " + blocksText(fading.fadeTo()));
+            }
+            lines.add("Click to open it");
+        } else if (covering == null) {
             lines.add(hidden > 0 ? "Click to hide all of it" : "Click to hide");
         } else if (list != null && !list.isEmpty()) {
             lines.add("Hidden by the profile '" + list + "'");
@@ -988,8 +1225,8 @@ public final class HiddenListScreen extends ClearScreen {
     }
 
     /**
-     * Beside the panel on the side facing the middle, level with the row, and pulled back in if it
-     * would leave the screen.
+     * Beside the panel on the side facing the middle - beyond the side panel, when there is one -
+     * level with the row, and pulled back in if it would leave the screen.
      */
     private void tip(Painter p, Row row, List<String> lines) {
         int w = 0;
@@ -999,10 +1236,14 @@ public final class HiddenListScreen extends ClearScreen {
         w += PAD * 2;
         final int lineH = p.lineHeight() + 2;
         final int h = lines.size() * lineH + 6;
-        final boolean towardLeft = left + panelWidth / 2 > width / 2;
+        final boolean towardLeft = sideOnLeft();
+        // The outer edge of what is drawn on that side: the panel's, or the side panel's.
+        final int edge = towardLeft ? (sideW > 0 ? Math.min(left, sideX) : left) - 4
+                                    : (sideW > 0 ? Math.max(left + panelWidth, sideX + sideW)
+                                                 : left + panelWidth) + 4;
         final int x = towardLeft
-                ? Math.max(0, left - 8 - w)
-                : Math.max(0, Math.min(left + panelWidth + 8, width - w - 4));
+                ? Math.max(0, edge - 4 - w)
+                : Math.max(0, Math.min(edge + 4, width - w - 4));
         final int y = Math.max(0, Math.min(row.y, height - h - 4));
         p.fill(x, y, w, h, PANEL);
         for (int i = 0; i < lines.size(); i++) {

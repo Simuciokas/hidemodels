@@ -464,14 +464,14 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.runOnClient(client -> client.getConnection().sendCommand(HideModels.MOD_ID));
             context.waitTicks(20);
             // Buttons in the order the screen adds them: the three tabs, then the rows. The Hidden
-            // tab's front page is Unsaved, its cell, Save; opening Unsaved shows back, then lines.
+            // tab's front page is Unsaved, its cell, Save; opening Unsaved shows its lines.
             context.runOnClient(client -> press(2));
             context.waitTicks(10);
             context.runOnClient(client -> press(4));
             context.waitTicks(10);
             context.runOnClient(client -> {
                 final int before = childCount();
-                press(5);
+                press(4);
                 final int after = childCount();
                 if (before != after) {
                     throw new AssertionError("the row went away when unhidden: " + before
@@ -511,7 +511,8 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 if (!HideModels.listed("hidemodels:rig/")) {
                     throw new AssertionError("clicking it again did not switch it back on");
                 }
-                // Open, a profile shows the way back, its name box, Copy and Delete, then its lines.
+                // Open, a profile shows its name box, Opacity, Distance fade, Copy and Delete, then
+                // its lines; the box and the slider are not buttons.
                 press(7);
                 final int before = childCount();
                 final String line = HideModels.profiles().get(0).patterns().get(0);
@@ -527,11 +528,11 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             });
             context.waitTicks(5);
             //     Renaming, by real clicks and keys: the name box is an invisible vanilla EditBox,
-            //     and the input reaching it is the part worth testing. Its row is the third under
-            //     the header, after the tabs and the way back.
+            //     and the input reaching it is the part worth testing. Its row is the first under
+            //     the tabs.
             final double[] guiScale = {1};
             context.runOnClient(client -> guiScale[0] = client.getWindow().getGuiScale());
-            context.getInput().setCursorPos(30 * guiScale[0], 72 * guiScale[0]);
+            context.getInput().setCursorPos(30 * guiScale[0], 54 * guiScale[0]);
             context.waitTicks(2);
             context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
             context.getInput().pressKey(InputConstants.KEY_END);
@@ -549,9 +550,10 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             });
             context.takeScreenshot("profile-open");
             //     + beside a profile adds the unsaved lines to it. With something unsaved the front
-            //     page is Unsaved, its cell, Save, then the profile, its +, its count.
+            //     page is Unsaved, its cell, Save, then the profile, its +, its count. The Hidden
+            //     tab is the way back to it from the open profile.
             context.runOnClient(client -> {
-                press(4);
+                press(2);
                 HideModels.add("meg:plus/");
                 press(2);
                 press(8);
@@ -961,6 +963,177 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 System.out.println("[hidemodels-gametest] demo scene: " + placed);
             });
             context.takeScreenshot("demo-scene");
+            //     A profile drawn see-through rather than hidden: the dragon's at 25%, set by a real
+            //     click a quarter of the way along its Opacity slider, the golem's at 50% as the
+            //     file can say it. Where this version cannot fade, both are hidden instead.
+            context.runOnClient(client -> {
+                try {
+                    ((Screen) screenOf(client)).onClose();
+                } catch (ReflectiveOperationException | RuntimeException e) {
+                    // no screen open
+                }
+            });
+            writeConfig("[Ghost dragon]\nhidemodels_demo:dragon/\n[Half golem] 50%\n"
+                    + "hidemodels_demo:golem/");
+            context.waitFor(client -> HideModels.profiles().size() == 2);
+            context.runOnClient(client -> {
+                io.github.simuciokas.hidemodels.Screens.open(client, new HiddenListScreen(null));
+            });
+            context.waitTicks(5);
+            // The lists: Unsaved, its cell, Ghost dragon and its count; open it.
+            final double[] slider = new double[3];
+            context.runOnClient(client -> {
+                press(2);
+                press(7);
+                try {
+                    for (Object child : ((Screen) screenOf(client)).children()) {
+                        if (child instanceof net.minecraft.client.gui.components.AbstractSliderButton s) {
+                            slider[0] = s.getX();
+                            slider[1] = s.getY() + s.getHeight() / 2.0;
+                            slider[2] = s.getWidth();
+                            break;
+                        }
+                    }
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not read the open screen", e);
+                }
+            });
+            // Vanilla reads a slider click as (x - left - 4) / (width - 8).
+            final double[] scale = {1};
+            context.runOnClient(client -> scale[0] = client.getWindow().getGuiScale());
+            context.getInput().setCursorPos(
+                    (slider[0] + 4 + 0.25 * (slider[2] - 8)) * scale[0], slider[1] * scale[0]);
+            context.waitTicks(2);
+            context.getInput().pressMouse(InputConstants.MOUSE_BUTTON_LEFT);
+            context.waitTicks(5);
+            context.takeScreenshot("opacity-slider");
+            context.runOnClient(client -> {
+                if (profile("Ghost dragon").opacity() != 25
+                        || HideModels.opacityOfId("hidemodels_demo:dragon/head") != 0.25f
+                        || HideModels.opacityOfId("hidemodels_demo:golem/body") != 0.5f) {
+                    throw new AssertionError("the profiles' opacities read "
+                            + HideModels.profiles());
+                }
+                try {
+                    ((Screen) screenOf(client)).onClose();
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not close the screen", e);
+                }
+            });
+            context.waitTicks(10);
+            context.takeScreenshot("faded");
+            context.runOnClient(client -> {
+                final boolean fades = HideModels.fadingAvailable();
+                if (HideModels.hidden("hidemodels_demo:dragon/head") == fades) {
+                    throw new AssertionError("a faded profile's model is "
+                            + (fades ? "hidden where it should be drawn see-through"
+                                     : "drawn where this version can only hide it"));
+                }
+                System.out.println("[hidemodels-gametest] profiles drawn see-through, "
+                        + (fades ? "faded" : "hidden, as this version cannot fade"));
+            });
+            //     Fading with distance: Far draws a model as set within From and fades it to
+            //     nothing by To. The dragon's head, about 5.3 blocks off, is part of the way.
+            context.runOnClient(client -> {
+                HideModels.setProfileFade("Ghost dragon", 1, 0.5, 8);
+                if (!profile("Ghost dragon").fadesFar()) {
+                    throw new AssertionError("the profile does not fade far: "
+                            + profile("Ghost dragon"));
+                }
+                net.minecraft.world.entity.Entity head = null;
+                for (net.minecraft.world.entity.Entity e : client.level.entitiesForRendering()) {
+                    if ("hidemodels_demo:dragon/head".equals(HideModels.modelIdOfEntity(e))) {
+                        head = e;
+                    }
+                }
+                final float drawn = head == null ? -1 : HideModels.opacityOf(head);
+                if (!(drawn > 0f && drawn < 0.25f)) {
+                    throw new AssertionError("fading far, the dragon's head is drawn at " + drawn);
+                }
+                System.out.println("[hidemodels-gametest] fading far: the dragon's head at "
+                        + Math.round(drawn * 100) + "%");
+            });
+            //     With it fading, From and To open beside Distance fade rather than in the column:
+            //     the open profile's sliders are Opacity, then the two level with the row below it,
+            //     out past the panel's edge.
+            context.runOnClient(client ->
+                    io.github.simuciokas.hidemodels.Screens.open(client, new HiddenListScreen(null)));
+            context.waitTicks(5);
+            context.runOnClient(client -> {
+                press(2);
+                press(7);
+            });
+            context.waitTicks(5);
+            context.takeScreenshot("distance-fade-panel");
+            context.runOnClient(client -> {
+                try {
+                    final Screen screen = (Screen) screenOf(client);
+                    final java.util.List<net.minecraft.client.gui.components.AbstractSliderButton>
+                            sliders = new java.util.ArrayList<>();
+                    for (Object child : screen.children()) {
+                        if (child instanceof
+                                net.minecraft.client.gui.components.AbstractSliderButton s) {
+                            sliders.add(s);
+                        }
+                    }
+                    if (sliders.size() != 3) {
+                        throw new AssertionError("a profile fading with distance has "
+                                + sliders.size() + " sliders, not Opacity, From and To");
+                    }
+                    final var opacity = sliders.get(0);
+                    final var from = sliders.get(1);
+                    if (from.getX() < opacity.getX() + opacity.getWidth()
+                            || from.getY() != opacity.getY() + 18) {
+                        throw new AssertionError("From is at " + from.getX() + "," + from.getY()
+                                + ", not beside Distance fade, below Opacity at "
+                                + opacity.getX() + "," + opacity.getY());
+                    }
+                    screen.onClose();
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not read the open screen", e);
+                }
+                System.out.println("[hidemodels-gametest] distance fade: From and To beside it");
+            });
+            //     An armor stand's model fades as an item display's does: the statue wears its
+            //     piece on its head, and its head layer, drawing into a collector that keeps the
+            //     tints it is handed, draws it at half.
+            writeConfig("[Half statue] 50%\nhidemodels_demo:statue/");
+            context.waitFor(client -> HideModels.opacityOfId("hidemodels_demo:statue/head") == 0.5f);
+            context.runOnClient(client -> {
+                net.minecraft.world.entity.decoration.ArmorStand statue = null;
+                for (Entity e : client.level.entitiesForRendering()) {
+                    if (e instanceof net.minecraft.world.entity.decoration.ArmorStand stand
+                            && "hidemodels_demo:statue/head".equals(HideModels.modelIdOfEntity(e))) {
+                        statue = stand;
+                    }
+                }
+                if (statue == null) {
+                    throw new AssertionError("the statue's armor stand went missing");
+                }
+                if (!HideModels.fadingAvailable()) {
+                    if (!HideModels.shouldHide(statue)) {
+                        throw new AssertionError("the statue is drawn where this version can only "
+                                + "hide it");
+                    }
+                    System.out.println("[hidemodels-gametest] armor stand faded: hidden, as this "
+                            + "version cannot fade");
+                    return;
+                }
+                final int alpha;
+                try {
+                    alpha = headAlpha(client, statue);
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not draw the statue's head", e);
+                }
+                if (Math.abs(alpha - 0.5f * 255) > 1) {
+                    throw new AssertionError("the statue's head is drawn at alpha " + alpha
+                            + ", not half");
+                }
+                System.out.println("[hidemodels-gametest] armor stand faded: its head drawn at "
+                        + "alpha " + alpha);
+            });
+            writeConfig("# cleared after fading");
+            context.waitFor(client -> HideModels.profiles().isEmpty());
 
             //     The model in front of you, whichever way you turn: the golem stands 4.5 right and
             //     6 ahead, the statue 2.5 left and 5 ahead, the dragon straight on. Facing the
@@ -1096,7 +1269,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                     // so above Elsewhere, which is for another server.
                     press(2);
                     press(7);
-                    // Open: the way back, the name box, Use on this server, Copy, Delete.
+                    // Open: the name box, Opacity, Distance fade, Use on this server, Copy, Delete.
                     press(5);
                     if (!profile("Manual").servers().equals(java.util.List.of(here[0]))
                             || !profile("Manual").on()) {
@@ -1106,8 +1279,9 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 context.waitTicks(5);
                 context.takeScreenshot("use-on-this-server");
                 context.runOnClient(client -> {
-                    // Back on the lists, Manual is now this server's and comes first.
-                    press(4);
+                    // Back on the lists by the Hidden tab, Manual is now this server's and comes
+                    // first.
+                    press(2);
                     press(6);
                     if (profile("Manual").on()) {
                         throw new AssertionError("switching the profile off by hand did nothing");
@@ -1151,6 +1325,79 @@ public final class HideModelsClientTest implements FabricClientGameTest {
         } catch (ReflectiveOperationException e) {
             throw new AssertionError("could not clear the recently seen list", e);
         }
+    }
+
+    /**
+     * The faintest alpha among the tints an armor stand's head layer hands on as it draws the
+     * stand's head, drawn into a collector that keeps them; above 255 when it hands on none.
+     *
+     * <p>The layer is found in its renderer's list of them, and its draw method by shape: the
+     * standalone launcher runs intermediary-named mods, where both have other names.
+     */
+    private static int headAlpha(net.minecraft.client.Minecraft client,
+                                 net.minecraft.world.entity.decoration.ArmorStand stand)
+            throws ReflectiveOperationException {
+        final net.minecraft.client.renderer.entity.EntityRenderer<
+                ? super net.minecraft.world.entity.decoration.ArmorStand, ?> renderer =
+                client.getEntityRenderDispatcher().getRenderer(stand);
+        final Object state = renderer.createRenderState(stand, 1f);
+        Object head = null;
+        for (Class<?> c = renderer.getClass(); c != null; c = c.getSuperclass()) {
+            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                if (!java.util.List.class.isAssignableFrom(f.getType())
+                        || java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                    continue;
+                }
+                f.setAccessible(true);
+                for (Object layer : (java.util.List<?>) f.get(renderer)) {
+                    if (layer instanceof
+                            net.minecraft.client.renderer.entity.layers.CustomHeadLayer<?, ?>) {
+                        head = layer;
+                    }
+                }
+            }
+        }
+        if (head == null) {
+            throw new AssertionError("the armor stand's renderer has no head layer");
+        }
+        Method submit = null;
+        for (Method m : head.getClass().getMethods()) {
+            final Class<?>[] p = m.getParameterTypes();
+            if (p.length == 6 && p[0] == com.mojang.blaze3d.vertex.PoseStack.class
+                    && p[1].isInterface() && p[2] == int.class && p[3].isInstance(state)
+                    && p[4] == float.class && p[5] == float.class) {
+                submit = m;
+            }
+        }
+        if (submit == null) {
+            throw new AssertionError("the head layer has no draw method of the expected shape");
+        }
+        final int[] faintest = {Integer.MAX_VALUE};
+        final Class<?> type = submit.getParameterTypes()[1];
+        final Object collector = java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(),
+                new Class<?>[] {type}, (self, method, args) -> {
+                    for (Object arg : args == null ? new Object[0] : args) {
+                        if (arg instanceof int[] tints) {
+                            for (int tint : tints) {
+                                faintest[0] = Math.min(faintest[0], tint >>> 24);
+                            }
+                        }
+                    }
+                    final Class<?> back = method.getReturnType();
+                    if (back.isInstance(self)) {
+                        return self;          // order(): the next items come here too
+                    }
+                    if (back == int.class) {
+                        return System.identityHashCode(self);
+                    }
+                    if (back == boolean.class) {
+                        return args != null && args[0] == self;
+                    }
+                    return null;
+                });
+        submit.invoke(head, new com.mojang.blaze3d.vertex.PoseStack(), collector, 0xF000F0, state,
+                0f, 0f);
+        return faintest[0];
     }
 
     private static HideModels.Profile profile(String name) {

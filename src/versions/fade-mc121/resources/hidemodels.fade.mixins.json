@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "io.github.simuciokas.hidemodels.mixin.fade",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ArmorStandFadeMixin",
+    "CustomHeadLayerFadeMixin",
+    "ItemDisplayFadeMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

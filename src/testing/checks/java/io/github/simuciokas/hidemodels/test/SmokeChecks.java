@@ -78,8 +78,9 @@ public final class SmokeChecks {
             checkKeyRegistered();
             checkScreenOpens();
             final String button = checkConfigButton();
+            final String fade = checkFadeProxy();
             report("PASS - component resolved, config drove the matcher, add/remove, settings and "
-                    + "profiles worked, key registered, screen opened, " + button);
+                    + "profiles worked, key registered, screen opened, " + button + ", " + fade);
         } catch (Throwable t) {
             t.printStackTrace(System.err);
             report("FAIL - " + t);
@@ -419,6 +420,35 @@ public final class SmokeChecks {
         }
         write("# cleared after the server profiles");
         waitUntil(() -> HideModels.profiles().isEmpty(), "the server profiles were not cleared");
+    }
+
+    /**
+     * Where a faded profile is drawn see-through, its models go through a dynamic proxy of the
+     * game's submit collector. Built here as the mod builds it, so a loader whose module rules
+     * refused one - NeoForge's are the strictest - fails at the title screen rather than on the
+     * first faded model. Says what it found, for the verdict.
+     */
+    private static String checkFadeProxy() {
+        if (!HideModels.fadingAvailable()) {
+            return "fading hides on this version";
+        }
+        Class<?> collector = null;
+        for (java.lang.reflect.Method m : net.minecraft.client.renderer.entity.DisplayRenderer
+                .ItemDisplayRenderer.class.getDeclaredMethods()) {
+            final Class<?>[] p = m.getParameterTypes();
+            if (p.length == 5 && p[2].isInterface() && p[3] == int.class && p[4] == float.class) {
+                collector = p[2];
+            }
+        }
+        if (collector == null) {
+            throw new AssertionError("fading is said to be available, but no collector was found");
+        }
+        final Object proxy = java.lang.reflect.Proxy.newProxyInstance(collector.getClassLoader(),
+                new Class<?>[] {collector}, (self, method, args) -> null);
+        if (!collector.isInstance(proxy)) {
+            throw new AssertionError("a proxy of " + collector + " is not one");
+        }
+        return "fading proxy built";
     }
 
     /**
