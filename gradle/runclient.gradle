@@ -272,7 +272,10 @@ if (!legacy) {
                 '--version', mc,
                 '--userType', 'legacy',
                 '--username', 'SmokeTest',
-        ]
+        ] + (project.smokeWorld ? ['--quickPlayMultiplayer', project.smokeWorld] : [])
+        if (project.smokeWorld) {
+            jvmArgs "-Dhidemodels.smoketest.world=${project.smokeWorld}"
+        }
         // The verdict comes from the file, so however the JVM dies is not this task's business.
         ignoreExitValue = true
     }
@@ -580,7 +583,10 @@ if (true) {
                 '--version', mc,
                 '--userType', 'legacy',
                 '--username', 'QuiltTest',
-        ]
+        ] + (project.smokeWorld ? ['--quickPlayMultiplayer', project.smokeWorld] : [])
+        if (project.smokeWorld) {
+            jvmArgs "-Dhidemodels.smoketest.world=${project.smokeWorld}"
+        }
         ignoreExitValue = true
     }
 

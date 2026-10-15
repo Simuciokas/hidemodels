@@ -26,6 +26,9 @@ if (!(loader in ['fabric', 'neoforge'])) {
     throw new GradleException("unknown loader '${loader}' - expected fabric or neoforge")
 }
 ext.loader = loader
+// -PsmokeWorld=host:port: a smoke run joins that server at launch - tools/smoke_server.py starts one -
+// and checks the fade hooks in its world rather than at the title screen.
+ext.smokeWorld = project.findProperty('smokeWorld')?.toString()
 
 // NeoForge's own versions, one per Minecraft version: the FIRST STABLE BUILD of each line. Their
 // numbering tracks Minecraft's: 21.8.x is for 1.21.8, 26.1.2.x for 26.1.2 - tidy, but not
@@ -591,6 +594,10 @@ if (loader == 'neoforge') {
                 systemProperty 'hidemodels.smoketest', 'true'
                 systemProperty 'java.awt.headless', 'true'
                 gameDirectory = layout.buildDirectory.dir("run-neoforge-${project.minecraft_version}")
+                if (smokeWorld) {
+                    systemProperty 'hidemodels.smoketest.world', smokeWorld
+                    programArguments.addAll('--quickPlayMultiplayer', smokeWorld)
+                }
             }
             // THE MOD AS A PLAYER INSTALLS IT: the mod's jar and the test mod's jar in mods/, nothing
             // loaded from a source set, so its packaging - metadata, version ranges, the mixin
@@ -603,6 +610,10 @@ if (loader == 'neoforge') {
                 systemProperty 'hidemodels.smoketest', 'true'
                 systemProperty 'java.awt.headless', 'true'
                 gameDirectory = layout.buildDirectory.dir("run-neoforge-jar-${project.minecraft_version}")
+                if (smokeWorld) {
+                    systemProperty 'hidemodels.smoketest.world', smokeWorld
+                    programArguments.addAll('--quickPlayMultiplayer', smokeWorld)
+                }
             }
         }
     }
@@ -785,6 +796,10 @@ if (usesLoom) {
                 source 'test'
                 vmArg '-Dhidemodels.smoketest=true'
                 vmArg '-Djava.awt.headless=true'
+                if (smokeWorld) {
+                    vmArg "-Dhidemodels.smoketest.world=${smokeWorld}"
+                    programArgs '--quickPlayMultiplayer', smokeWorld
+                }
             }
         }
     }

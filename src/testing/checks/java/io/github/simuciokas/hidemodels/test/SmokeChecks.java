@@ -15,6 +15,7 @@
  */
 package io.github.simuciokas.hidemodels.test;
 
+import io.github.simuciokas.hidemodels.DistanceFade;
 import io.github.simuciokas.hidemodels.HideModels;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -36,10 +37,17 @@ import net.minecraft.client.Minecraft;
  *
  * <p>WHAT IT CANNOT COVER. There is no world and no player, so the render hook, the screen, the
  * registered command and ChatOut are out of reach; the gametest covers those where it can run.
+ * The fade hooks are the exception: a run given a server to join at launch checks them there
+ * instead - see {@link #WORLD_PROPERTY}.
  */
 public final class SmokeChecks {
 
     public static final String ENABLE_PROPERTY = "hidemodels.smoketest";
+    /**
+     * Set, to the server's address, on a run that joins tools/smoke_server.py at launch: the
+     * checks then look at the fade hooks in that world instead of at the title screen.
+     */
+    public static final String WORLD_PROPERTY = "hidemodels.smoketest.world";
 
     private static final String TEST_MODEL = "hidemodels:smoke_model";
     private static final Path CONFIG = Path.of("config", "hidemodels.txt");
@@ -68,12 +76,17 @@ public final class SmokeChecks {
     private static void run() {
         try {
             waitForClient();
+            if (System.getProperty(WORLD_PROPERTY) != null) {
+                report("PASS - in a world, " + checkWorld());
+                return;
+            }
             checkComponentResolves();
             checkConfigDrivesMatcher();
             checkOldNumberLines();
             checkAddAndRemove();
             checkSettings();
             checkProfiles();
+            checkProfileDrawing();
             checkServerProfiles();
             checkKeyRegistered();
             checkScreenOpens();
@@ -338,6 +351,216 @@ public final class SmokeChecks {
     }
 
     /**
+     * In the world the run joined: tools/smoke_server.py puts an item display and an armor stand
+     * wearing a piece by the player, and a profile drawing both at half is written. Where this
+     * version fades, each is drawn by its own renderer - an item display's, a stand's head layer,
+     * the paths the fade hooks are on - into a collector that keeps the tints it is handed, which
+     * must come out at half; then the world is drawn with them faded for a few seconds, through
+     * the game's own path. Where it cannot fade, both must be hidden. Says what it found.
+     */
+    private static String checkWorld() throws Exception {
+        final Minecraft mc = Minecraft.getInstance();
+        final net.minecraft.world.entity.Entity[] models = new net.minecraft.world.entity.Entity[2];
+        waitUntil(() -> onClient(() -> {
+            if (mc.level == null) {
+                return false;
+            }
+            for (net.minecraft.world.entity.Entity e : mc.level.entitiesForRendering()) {
+                if (HideModels.modelIdOfEntity(e) != null) {
+                    models[e instanceof net.minecraft.world.entity.decoration.ArmorStand ? 1 : 0] = e;
+                }
+            }
+            return models[0] != null && models[1] != null;
+        }), "the server's item display and armor stand never arrived", 150_000L);
+        final String display = HideModels.modelIdOfEntity(models[0]);
+        final String stand = HideModels.modelIdOfEntity(models[1]);
+        final String nl = System.lineSeparator();
+        write("[World smoke] 50%" + nl + display + nl + stand);
+        waitUntil(() -> HideModels.opacityOfId(display) == 0.5f
+                        && HideModels.opacityOfId(stand) == 0.5f,
+                  "the profile drawing them at half was not read");
+        if (!HideModels.fadingAvailable()) {
+            if (!onClient(() -> HideModels.shouldHide(models[0])
+                    && HideModels.shouldHide(models[1]))) {
+                throw new AssertionError("a model this version can only hide is still drawn");
+            }
+            return "the display and the stand hidden, as this version cannot fade";
+        }
+        final int[] alpha = onClient(() -> new int[] {drawnAlpha(models[0]), drawnAlpha(models[1])});
+        for (int a : alpha) {
+            if (Math.abs(a - 0.5f * 255) > 1) {
+                throw new AssertionError("the display and the stand were drawn at alpha "
+                        + java.util.Arrays.toString(alpha) + ", not half");
+            }
+        }
+        Thread.sleep(3_000L);
+        return "the display and the stand drawn at alpha " + alpha[0] + " and " + alpha[1]
+                + ", and the world drawn with them faded";
+    }
+
+    /**
+     * The faintest alpha among the tints an entity's model is handed on with, drawn by its
+     * renderer - an armor stand's by its head layer - into a collector that keeps them; above 255
+     * when none is. Everything is found by shape, as a Fabric install names it otherwise.
+     */
+    static int drawnAlpha(net.minecraft.world.entity.Entity entity)
+            throws ReflectiveOperationException {
+        final Object renderer =
+                Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(entity);
+        Object state = null;
+        for (java.lang.reflect.Method m : renderer.getClass().getMethods()) {
+            final Class<?>[] p = m.getParameterTypes();
+            if (p.length == 2 && p[0] == net.minecraft.world.entity.Entity.class
+                    && p[1] == float.class && !m.getReturnType().isPrimitive()) {
+                state = m.invoke(renderer, entity, 1f);
+            }
+        }
+        if (state == null) {
+            throw new AssertionError("no render state for " + entity);
+        }
+        Object target = renderer;
+        java.lang.reflect.Method draw = null;
+        if (entity instanceof net.minecraft.world.entity.decoration.ArmorStand) {
+            target = headLayer(renderer);
+            for (java.lang.reflect.Method m : target.getClass().getMethods()) {
+                final Class<?>[] p = m.getParameterTypes();
+                if (p.length == 6 && p[0] == com.mojang.blaze3d.vertex.PoseStack.class
+                        && p[1].isInterface() && p[2] == int.class && p[3].isInstance(state)
+                        && p[4] == float.class && p[5] == float.class) {
+                    draw = m;
+                }
+            }
+        } else {
+            for (Class<?> c = renderer.getClass(); c != null && draw == null; c = c.getSuperclass()) {
+                for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                    final Class<?>[] p = m.getParameterTypes();
+                    if (p.length == 5 && p[0].isInstance(state)
+                            && p[1] == com.mojang.blaze3d.vertex.PoseStack.class
+                            && p[2].isInterface() && p[3] == int.class && p[4] == float.class) {
+                        draw = m;
+                    }
+                }
+            }
+        }
+        if (draw == null) {
+            throw new AssertionError("no draw method of the expected shape on " + target);
+        }
+        draw.setAccessible(true);
+        final int[] faintest = {Integer.MAX_VALUE};
+        final Class<?> type = draw.getParameterTypes()[entity instanceof
+                net.minecraft.world.entity.decoration.ArmorStand ? 1 : 2];
+        final Object collector = java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(),
+                new Class<?>[] {type}, (self, method, args) -> {
+                    for (Object arg : args == null ? new Object[0] : args) {
+                        if (arg instanceof int[] tints) {
+                            for (int tint : tints) {
+                                faintest[0] = Math.min(faintest[0], tint >>> 24);
+                            }
+                        }
+                    }
+                    final Class<?> back = method.getReturnType();
+                    if (back.isInstance(self)) {
+                        return self;          // order(): the next items come here too
+                    }
+                    if (back == int.class) {
+                        return System.identityHashCode(self);
+                    }
+                    if (back == boolean.class) {
+                        return args != null && args[0] == self;
+                    }
+                    return null;
+                });
+        final com.mojang.blaze3d.vertex.PoseStack pose = new com.mojang.blaze3d.vertex.PoseStack();
+        if (entity instanceof net.minecraft.world.entity.decoration.ArmorStand) {
+            draw.invoke(target, pose, collector, 0xF000F0, state, 0f, 0f);
+        } else {
+            draw.invoke(target, state, pose, collector, 0xF000F0, 1f);
+        }
+        return faintest[0];
+    }
+
+    /** The head layer among a living entity renderer's layers, which it keeps in a list field. */
+    private static Object headLayer(Object renderer) throws IllegalAccessException {
+        for (Class<?> c = renderer.getClass(); c != null; c = c.getSuperclass()) {
+            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                if (!java.util.List.class.isAssignableFrom(f.getType())
+                        || java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                    continue;
+                }
+                f.setAccessible(true);
+                for (Object layer : (java.util.List<?>) f.get(renderer)) {
+                    if (layer instanceof
+                            net.minecraft.client.renderer.entity.layers.CustomHeadLayer<?, ?>) {
+                        return layer;
+                    }
+                }
+            }
+        }
+        throw new AssertionError("the armor stand's renderer has no head layer");
+    }
+
+    /** Runs on the game's thread and hands back what it gave, the way the game must be read. */
+    private static <T> T onClient(java.util.concurrent.Callable<T> call) {
+        final java.util.concurrent.CompletableFuture<T> done =
+                new java.util.concurrent.CompletableFuture<>();
+        Minecraft.getInstance().execute(() -> {
+            try {
+                done.complete(call.call());
+            } catch (Throwable t) {
+                done.completeExceptionally(t);
+            }
+        });
+        try {
+            return done.get(30, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (java.util.concurrent.ExecutionException e) {
+            throw new AssertionError("on the game thread: " + e.getCause(), e.getCause());
+        } catch (Exception e) {
+            throw new AssertionError("the game thread did not answer: " + e, e);
+        }
+    }
+
+    /**
+     * How a profile draws, as its heading holds it: a server whose address ends in % is a server,
+     * not an opacity; a fade's distances outlive switching the fade off; and a paste that draws
+     * differently from the profile with its name and lines is added beside it, not taken as it.
+     */
+    private static void checkProfileDrawing() throws IOException, InterruptedException {
+        final String nl = System.lineSeparator();
+        write("[Typo] @play.example.uk50%" + nl + "hidemodels:typo");
+        waitUntil(() -> HideModels.profiles().size() == 1
+                        && "Typo".equals(HideModels.profiles().get(0).name()),
+                  "a heading with a server ending in % was not read");
+        if (HideModels.profiles().get(0).opacity() != 0) {
+            throw new AssertionError("a server ending in % was read as an opacity: "
+                    + HideModels.profiles());
+        }
+
+        write("[Mounts] far 2-16" + nl + "hidemodels:mount");
+        waitUntil(() -> HideModels.profiles().size() == 1
+                        && HideModels.profiles().get(0).fade() == DistanceFade.FAR,
+                  "a profile fading far was not read");
+        HideModels.setProfileFade("Mounts", DistanceFade.OFF, 2, 16);
+        waitUntil(() -> HideModels.profiles().get(0).fade() == DistanceFade.OFF,
+                  "switching the fade off did not stick");
+        if (!Files.readString(CONFIG).contains("[Mounts] 2-16")) {
+            throw new AssertionError("switching the fade off dropped its distances:" + nl
+                    + Files.readString(CONFIG));
+        }
+
+        final HideModels.Pasted got =
+                HideModels.pasteProfiles("[Mounts] 40% far 1-12" + nl + "hidemodels:mount");
+        if (got.added().size() != 1 || !got.already().isEmpty()) {
+            throw new AssertionError("a paste drawing differently from the profile with its lines "
+                    + "gave " + got);
+        }
+        waitUntil(() -> HideModels.profiles().size() == 2
+                        && HideModels.profiles().get(1).opacity() == 40,
+                  "the pasted profile did not keep its opacity");
+        write("# cleared after the drawing checks");
+        waitUntil(() -> HideModels.profiles().isEmpty(), "the drawing checks were not cleared");
+    }
+
+    /**
      * The open key made it into Controls. Keys.create() returns null rather than throwing when
      * neither constructor shape matches, so without this a version that moved it would just lose
      * the key.
@@ -548,7 +771,12 @@ public final class SmokeChecks {
      */
     private static void waitUntil(java.util.function.BooleanSupplier check, String failure)
             throws InterruptedException {
-        final long deadline = System.currentTimeMillis() + 30_000L;
+        waitUntil(check, failure, 30_000L);
+    }
+
+    private static void waitUntil(java.util.function.BooleanSupplier check, String failure,
+                                  long timeoutMs) throws InterruptedException {
+        final long deadline = System.currentTimeMillis() + timeoutMs;
         while (System.currentTimeMillis() < deadline) {
             if (check.getAsBoolean()) {
                 return;

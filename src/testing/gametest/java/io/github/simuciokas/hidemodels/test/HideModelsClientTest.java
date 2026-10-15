@@ -1095,43 +1095,49 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 }
                 System.out.println("[hidemodels-gametest] distance fade: From and To beside it");
             });
-            //     An armor stand's model fades as an item display's does: the statue wears its
-            //     piece on its head, and its head layer, drawing into a collector that keeps the
-            //     tints it is handed, draws it at half.
-            writeConfig("[Half statue] 50%\nhidemodels_demo:statue/");
-            context.waitFor(client -> HideModels.opacityOfId("hidemodels_demo:statue/head") == 0.5f);
+            //     Both shapes of model drawn at half, each by its own renderer into a collector
+            //     that keeps the tints it is handed: the lantern, an item display, and the statue,
+            //     an armor stand wearing its piece on its head.
+            writeConfig("[Half] 50%\nhidemodels_demo:statue/\nhidemodels_demo:lantern");
+            context.waitFor(client -> HideModels.opacityOfId("hidemodels_demo:statue/head") == 0.5f
+                    && HideModels.opacityOfId("hidemodels_demo:lantern") == 0.5f);
             context.runOnClient(client -> {
-                net.minecraft.world.entity.decoration.ArmorStand statue = null;
+                Entity statue = null;
+                Entity lantern = null;
                 for (Entity e : client.level.entitiesForRendering()) {
-                    if (e instanceof net.minecraft.world.entity.decoration.ArmorStand stand
-                            && "hidemodels_demo:statue/head".equals(HideModels.modelIdOfEntity(e))) {
-                        statue = stand;
+                    final String id = HideModels.modelIdOfEntity(e);
+                    if ("hidemodels_demo:statue/head".equals(id)) {
+                        statue = e;
+                    } else if ("hidemodels_demo:lantern".equals(id)) {
+                        lantern = e;
                     }
                 }
-                if (statue == null) {
-                    throw new AssertionError("the statue's armor stand went missing");
+                if (statue == null || lantern == null) {
+                    throw new AssertionError("the statue or the lantern went missing");
                 }
                 if (!HideModels.fadingAvailable()) {
-                    if (!HideModels.shouldHide(statue)) {
-                        throw new AssertionError("the statue is drawn where this version can only "
+                    if (!HideModels.shouldHide(statue) || !HideModels.shouldHide(lantern)) {
+                        throw new AssertionError("a model is drawn where this version can only "
                                 + "hide it");
                     }
-                    System.out.println("[hidemodels-gametest] armor stand faded: hidden, as this "
-                            + "version cannot fade");
+                    System.out.println("[hidemodels-gametest] display and stand faded: hidden, as "
+                            + "this version cannot fade");
                     return;
                 }
-                final int alpha;
+                final int display;
+                final int stand;
                 try {
-                    alpha = headAlpha(client, statue);
+                    display = SmokeChecks.drawnAlpha(lantern);
+                    stand = SmokeChecks.drawnAlpha(statue);
                 } catch (ReflectiveOperationException e) {
-                    throw new AssertionError("could not draw the statue's head", e);
+                    throw new AssertionError("could not draw the lantern or the statue", e);
                 }
-                if (Math.abs(alpha - 0.5f * 255) > 1) {
-                    throw new AssertionError("the statue's head is drawn at alpha " + alpha
-                            + ", not half");
+                if (Math.abs(display - 0.5f * 255) > 1 || Math.abs(stand - 0.5f * 255) > 1) {
+                    throw new AssertionError("the lantern is drawn at alpha " + display
+                            + " and the statue's head at " + stand + ", not half");
                 }
-                System.out.println("[hidemodels-gametest] armor stand faded: its head drawn at "
-                        + "alpha " + alpha);
+                System.out.println("[hidemodels-gametest] display and stand faded: drawn at alpha "
+                        + display + " and " + stand);
             });
             writeConfig("# cleared after fading");
             context.waitFor(client -> HideModels.profiles().isEmpty());
@@ -1326,79 +1332,6 @@ public final class HideModelsClientTest implements FabricClientGameTest {
         } catch (ReflectiveOperationException e) {
             throw new AssertionError("could not clear the recently seen list", e);
         }
-    }
-
-    /**
-     * The faintest alpha among the tints an armor stand's head layer hands on as it draws the
-     * stand's head, drawn into a collector that keeps them; above 255 when it hands on none.
-     *
-     * <p>The layer is found in its renderer's list of them, and its draw method by shape: the
-     * standalone launcher runs intermediary-named mods, where both have other names.
-     */
-    private static int headAlpha(net.minecraft.client.Minecraft client,
-                                 net.minecraft.world.entity.decoration.ArmorStand stand)
-            throws ReflectiveOperationException {
-        final net.minecraft.client.renderer.entity.EntityRenderer<
-                ? super net.minecraft.world.entity.decoration.ArmorStand, ?> renderer =
-                client.getEntityRenderDispatcher().getRenderer(stand);
-        final Object state = renderer.createRenderState(stand, 1f);
-        Object head = null;
-        for (Class<?> c = renderer.getClass(); c != null; c = c.getSuperclass()) {
-            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                if (!java.util.List.class.isAssignableFrom(f.getType())
-                        || java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
-                    continue;
-                }
-                f.setAccessible(true);
-                for (Object layer : (java.util.List<?>) f.get(renderer)) {
-                    if (layer instanceof
-                            net.minecraft.client.renderer.entity.layers.CustomHeadLayer<?, ?>) {
-                        head = layer;
-                    }
-                }
-            }
-        }
-        if (head == null) {
-            throw new AssertionError("the armor stand's renderer has no head layer");
-        }
-        Method submit = null;
-        for (Method m : head.getClass().getMethods()) {
-            final Class<?>[] p = m.getParameterTypes();
-            if (p.length == 6 && p[0] == com.mojang.blaze3d.vertex.PoseStack.class
-                    && p[1].isInterface() && p[2] == int.class && p[3].isInstance(state)
-                    && p[4] == float.class && p[5] == float.class) {
-                submit = m;
-            }
-        }
-        if (submit == null) {
-            throw new AssertionError("the head layer has no draw method of the expected shape");
-        }
-        final int[] faintest = {Integer.MAX_VALUE};
-        final Class<?> type = submit.getParameterTypes()[1];
-        final Object collector = java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(),
-                new Class<?>[] {type}, (self, method, args) -> {
-                    for (Object arg : args == null ? new Object[0] : args) {
-                        if (arg instanceof int[] tints) {
-                            for (int tint : tints) {
-                                faintest[0] = Math.min(faintest[0], tint >>> 24);
-                            }
-                        }
-                    }
-                    final Class<?> back = method.getReturnType();
-                    if (back.isInstance(self)) {
-                        return self;          // order(): the next items come here too
-                    }
-                    if (back == int.class) {
-                        return System.identityHashCode(self);
-                    }
-                    if (back == boolean.class) {
-                        return args != null && args[0] == self;
-                    }
-                    return null;
-                });
-        submit.invoke(head, new com.mojang.blaze3d.vertex.PoseStack(), collector, 0xF000F0, state,
-                0f, 0f);
-        return faintest[0];
     }
 
     private static HideModels.Profile profile(String name) {
