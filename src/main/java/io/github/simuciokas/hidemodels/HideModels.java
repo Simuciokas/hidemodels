@@ -1504,10 +1504,14 @@ public final class HideModels {
                 # brackets keeps it saved but not applied. Lines above the first profile always
                 # apply - the screen calls them unsaved. An @address after the brackets ties a
                 # profile to a server: joining it switches the profile on, joining any other off.
+                # A percentage draws its models see-through instead (1.21.9 and later), and far or
+                # near with two distances in blocks fades them out further away, or closer by.
                 #     [Mounts]
                 #     modelengine:some_mount/
                 #     [PvP] off @play.simuciokas.uk
                 #     modelengine:wings/
+                #     [Ghosts] 40% far 2-8
+                #     modelengine:wisp/
                 #
                 # IN GAME: /hidemodels, or a key you bind under Hide Models in Controls, opens a
                 # screen listing every model around you. Clicking one hides it, which adds its id

@@ -2,9 +2,10 @@
 
 A client-side Fabric mod for **Minecraft 1.20.5 – 26.3** that stops chosen server-side model pieces
 from rendering — a mount's head that blocks your view, a pet that follows you around, a visual
-effect you'd rather not see — chosen by their `item_model` id.
+effect you'd rather not see — chosen by their `item_model` id. **Or it draws them see-through**,
+at an opacity you choose and optionally fading with distance, on 1.21.9 and later.
 
-It **cancels rendering only**. Entities are never removed, so hitboxes, interactions and the
+It **changes rendering only**. Entities are never removed, so hitboxes, interactions and the
 server's view of the world are all untouched.
 
 **It keys on the vanilla mechanism, not on any one plugin.** A model piece is an `item_display`
@@ -29,12 +30,13 @@ range. Shipping four files instead of thirty-one is therefore not a compromise, 
 what was built — and a CI job rebuilds every version on every push and fails if any of them stops
 matching the group whose jar it would ship under.
 
-Requirements, all declared in `fabric.mod.json`:
+Requirements, all declared in the jar's metadata — `fabric.mod.json`, or `neoforge.mods.toml`:
 
 | | |
 |---|---|
 | Minecraft | the range the jar names, e.g. `>=1.20.5 <=1.21.11`. Bounded at both ends: it claims nothing it was not built against |
 | Fabric Loader | `>=0.19.0` — or Quilt Loader, which runs the same jar |
+| NeoForge | any stable build: each jar asks for at least the first stable build of the oldest version it covers — `20.6.122` for 1.20.6 – 1.21.11, `26.1.2.71` for 26.x — and is built against exactly that, so the floor is one it is known to compile on |
 | Java | `>=25` on 26.x, `>=21` on 1.21.x — each version's own requirement |
 | Fabric API | **required** on Fabric and Quilt. Not on NeoForge, where its work is done by NeoForge's own events |
 | Other mods | none; with Mod Menu installed, its Configure button opens the screen |
@@ -135,8 +137,18 @@ Fabric publishes no client gametest module there at all, checked against each ve
 Both launch a real client, which makes them slow. CI has a job for each, under xvfb, but runs them
 only when the repository variable `RUN_CLIENT_TESTS` is `true`; otherwise they are run locally
 before each release, and CI keeps the targets check, the compile of every version and the group
-check. What the smoke test cannot cover is anything needing a world: the render hook, the screen, the
-command and `ChatOut` are only exercised where the gametest runs.
+check. Without a world the smoke test cannot reach the render hook, the screen, the command or
+`ChatOut`; the gametest exercises those where it runs, and the fade hooks are checked in a world on
+every loader, as below.
+
+**The fade hooks, in a world, on Quilt and NeoForge too** — neither has a client gametest.
+`python tools/smoke_server.py 1.21.11 --java <java>` starts a vanilla server of that version which,
+when a player joins, puts an item display and an armor stand wearing a piece in front of them. A
+smoke run given `-PsmokeWorld=127.0.0.1:25599` joins it at launch, writes a profile drawing both at
+half, draws each through its renderer and checks the tints come out at half — or, before 1.21.9,
+that both are hidden — then draws the world with them faded for a few seconds. NeoForge's runs take
+`-PneoforgeRun=latest`, which tests on the newest build of each line while the jar is still built
+against the first stable one.
 
 **Even when CI runs them, the gametest skips 1.21.9 and later.** On a hosted runner their integrated server
 freezes at `Preparing spawn area: 16%` until the harness gives up with `Timeout loading world`. It
@@ -172,6 +184,7 @@ preprocessor, and all of them split where the jars already do, between 1.21.x an
 | `ChatOut` (`src/versions/chat-mc121`, `chat-mc26`) | the client-facing chat calls were renamed: `LocalPlayer.displayClientMessage` before, `sendSystemMessage` and, over the hotbar, `sendOverlayMessage` after |
 | `ClearScreen`, `Painter`, `Screens` (`src/versions/screen-mc121`, `screen-mc26`) | 26.x replaced `GuiGraphics` and the screen's render methods, and `setScreen` with `setScreenAndShow` |
 | `Cmd`, `KeyRegistration` (`src/versions/fabricapi-mc121`, `fabricapi-mc26`) | Fabric API's renames, not Minecraft's: `ClientCommandManager` became `ClientCommands`, and `KeyBindingHelper` became `KeyMappingHelper` |
+| `Fade` and its mixins (`src/versions/fade-mc121`, `fade-mc26`) | drawing a model see-through hooks the item pipeline 1.21.9 brought. 26.x names it outright; 1.21.x shares a jar with versions that lack it, so its targets are strings — Mojang's names in the source, which NeoForge and a Fabric development run have, and intermediary ones in a second compile of the hooks that goes into the Fabric jar, because Loom rewrites a Mojang name only on versions that have it, which would make the jars of one range differ |
 
 Those cost nothing, since 26.x needs Java 25 class files and gets its own jar regardless. Changes
 *inside* a jar's range are reached by reflection instead, and every candidate name is checked against
@@ -218,6 +231,7 @@ preset would be wrong everywhere but one server.
 |---|---|
 | `off` | disable without emptying the list |
 | `first-person-only` | hide only while the camera is in first person, so the model reappears in third person (F5) |
+| `no-hover-hints` | do not explain a row of the screen as you hover over it |
 | `list-radius 32` | how far the screen's Nearby tab looks, in blocks |
 | `gui-position 1 0` | where the screen sits, as fractions of the free space: `0 0` is the top left (the default), `1 0` the top right, `1 1` the bottom right |
 
@@ -255,9 +269,38 @@ no address is only ever switched by hand. Addresses are compared as the server l
 ignoring case, a trailing dot and the default `:25565` — and nothing switches in single player, on a
 LAN world or on a Realm, whose addresses change between sessions.
 
-**Profiles cost nothing per frame.** When the file loads, the unsaved lines and every profile that is
+**A percentage draws a profile's models see-through** rather than hiding them, and `far` or `near`
+with two distances in blocks makes that change with distance:
+
+```
+[Ghosts] 40%
+modelengine:wisp/
+[Mounts] 100% far 0.5-8
+modelengine:some_mount/head
+[Pets] 60% near 2-6
+modelengine:cat/
+```
+
+`40%` draws them at 40%; `0%`, or no percentage at all, hides them, as a profile always has. `far
+0.5-8` draws them as set within half a block of your eyes and fades them out to nothing by 8 blocks,
+for models that clutter the distance; `near 2-6` is the other way round, nothing within 2 blocks
+and as set from 6, for one that blocks your view up close. Distances run from your eyes to
+the model — to an armor stand's head, where it wears its piece. With no `far` or `near`, a range
+stays in the heading, so switching the fade off and on again keeps it. When several profiles cover a
+model, the faintest wins.
+
+Seeing through needs **1.21.9 or later**, whose item pipeline the mod draws through. Before it, a
+profile below 100% hides its models, and a 100% profile with a fade draws them in full and hides
+them where they would have faded to nothing — beyond its far distance, or within its near one.
+
+With **shader packs**, how see-through models look is up to the pack: BSL draws them in their
+colours, while Complementary shades them like tinted glass, so they come out grey. Sodium alone
+changes nothing.
+
+**Hiding costs nothing per frame.** When the file loads, the unsaved lines and every profile that is
 on are merged into the one list the render check already reads, so the render hook never sees a
-profile at all, and switching one is a reload rather than a lookup.
+profile at all, and switching one is a reload rather than a lookup. A profile that draws see-through
+is looked up for each of its models as it is drawn — a fraction of a microsecond each.
 
 **When the config loads.** There is no entrypoint, so nothing happens at startup. The file is read
 lazily from the render hook — the first time any `item_display` comes up for a render check. If it
@@ -275,18 +318,19 @@ Fabric, so the mod reads Shift itself: bind the key to H, and Shift+H is the swi
 opens the screen too: Mod Menu's Configure button on Fabric and Quilt, Config on NeoForge.
 
 The screen is a panel in the top left, leaving the rest of the view clear so you can watch a model
-go as you click it. It has three tabs:
+go as you click it; the `×` beside its heading closes it, as Esc does. It has three tabs:
 
 | tab | what it holds |
 |---|---|
-| Nearby | every model within the list radius: the one in front of you first, marked `»`, then nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head; a model with some bones hidden is marked orange, and clicking it hides the rest, then shows all of it again. A model a profile hides opens that profile instead. Below them, dimmed, are models seen in the last 30 seconds that have since gone — a spell or an effect is over before the screen opens, and can still be hidden from here |
-| Hidden | your lists: Unsaved, then each profile — this server's first, then those switched by hand, then other servers', dimmed but just as editable. Click a profile to switch it on or off, its count to open it, and `+` beside it to add the unsaved lines to it. In an open list a click takes a line out and keeps its row until the list is opened again, so a misclick is one click to undo; an open profile is also where it is renamed, by typing into its name, tied to the server you are on with *Use on this server*, copied, and deleted. *Paste a profile* adds the ones on your clipboard |
-| Settings | hiding on or off, first person only, the list radius, and where the panel sits: either top corner, or Move panel to put it anywhere |
+| Nearby | every model within the list radius: the one in front of you first, marked `»`, then nearest first; click one to hide it, click again to bring it back. The `▶` beside a model lists its bones, to hide a single piece such as a mount's head; a model with some bones hidden is marked orange, and clicking it hides the rest, then shows all of it again. A model a profile hides opens that profile instead, and so does one a profile draws see-through, which is marked orange too. Below them, dimmed, are models seen in the last 30 seconds that have since gone — a spell or an effect is over before the screen opens, and can still be hidden from here |
+| Hidden | your lists: Unsaved, then each profile — this server's first, then those switched by hand, then other servers', dimmed but just as editable. Click a profile to switch it on or off, its count to open it, and `+` beside it to add the unsaved lines to it. In an open list a click takes a line out and keeps its row until the list is opened again, so a misclick is one click to undo; the Hidden tab goes back to the lists. An open profile is also where it is renamed, by typing into its name; drawn see-through, with its *Opacity* slider; faded with distance, by clicking *Distance fade* through Off, Far and Near, whose *From* and *To* sliders open beside it; tied to the server you are on with *Use on this server*; copied; and deleted. *Paste a profile* adds the ones on your clipboard |
+| Settings | hiding on or off, first person only, on-hover hints, the list radius, and where the panel sits: either top corner, or Move panel to put it anywhere |
 
 Hovering over a row says more: a model's piece count and how far away it is, how many of its pieces
-single-bone lines hide, and which line or profile hides it. When that line is broader than the
-model's own id, clicking the row cannot remove it, and the box says to unhide it from the Hidden tab
-instead.
+single-bone lines hide, and which line or profile hides it — or draws it see-through, and at how
+much. When that line is broader than the model's own id, clicking the row cannot remove it, and the
+box says to unhide it from the Hidden tab instead. Once you know the screen, *On-hover hints* in
+Settings turns these boxes off.
 
 **Profiles** keep sets of hidden models you switch between, rather than one list you keep editing.
 What you hide by clicking goes into Unsaved, which always applies; *Save unsaved as a profile*
@@ -311,7 +355,9 @@ without its namespace, though, could mean different models on different servers 
 exactly as the config holds them, ready to send to someone on the same server; their *Paste a
 profile* reads the clipboard and adds every profile in it, switched on. Only ids are taken from a
 paste — comments, directives and anything else are dropped, so a pasted list never changes
-someone's settings — and pasting one already there does not add it twice.
+someone's settings. A copy carries how the profile draws, so a pasted one is see-through as it was;
+pasting one already there, drawn the same way, does not add it twice, and one with the same lines
+drawn differently is added beside yours under a numbered name.
 
 **Everything the screen changes is a line in the config.** Hiding a model appends its id to the
 unsaved lines, unhiding removes that exact line, a profile is its heading and the lines under it,
