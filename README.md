@@ -17,6 +17,48 @@ so all of them work without the mod knowing they exist — and so does anything 
 way. What is tested is the *shape*, not the plugin: the client gametest builds both entity forms and
 asserts each one resolves to its id and is hidden by the config.
 
+## What it looks like
+
+Recorded on 26.3 in the demo world, `./gradlew runDemo`, whose models are built the way
+ModelEngine builds them.
+
+**Click a model to hide it.** `/hidemodels` lists every model around you, the one in front first;
+a click hides it, and another brings it back.
+
+![Typing /hidemodels, then clicking a dragon and a golem away and the dragon back](docs/media/hide.webp)
+
+**Or just one of its bones**, such as a mount's head. A model with some bones hidden is marked
+orange.
+
+![Opening the dragon's bones and hiding its head and a wing](docs/media/bones.webp)
+
+**Profiles** keep sets of hidden models to switch between: what you hide is saved as one, switched
+off and on with a click, and opened to rename, copy, tie to a server or draw see-through.
+
+![Hiding two models, saving them as a profile, switching it off and on, and opening it](docs/media/profiles.webp)
+
+**See-through instead of hidden**, on 1.21.9 and later: a profile's *Opacity* slider.
+
+![Dragging a profile's Opacity slider down and back up as its models fade](docs/media/opacity.webp)
+
+**Fading with distance**: *Far* fades a profile's models out as you back away from them, *Near* as
+you walk up to them.
+
+![Two walks side by side: backing away under Far, walking up under Near](docs/media/distance.webp)
+
+**Distance fade** in the screen is Off, Far or Near, with its *From* and *To* beside it.
+
+![Switching a profile's Distance fade through Far and Near and dragging its To slider](docs/media/screen.webp)
+
+**First person only** hides models just while you look through your own eyes, and draws them
+again in third person.
+
+![The dragon drawn in third person and gone in first person](docs/media/firstperson.webp)
+
+**Shift with the key** switches all hiding off and on, from anywhere.
+
+![Shift + H bringing every model back and hiding them again](docs/media/toggle.webp)
+
 ## Install
 
 1. Install [Fabric Loader](https://fabricmc.net/use/installer/) 0.19.0 or newer, or NeoForge.
