@@ -410,8 +410,10 @@ public final class SmokeChecks {
         Object state = null;
         for (java.lang.reflect.Method m : renderer.getClass().getMethods()) {
             final Class<?>[] p = m.getParameterTypes();
+            // Not one another mod's mixin added - Sodium's culling box takes the same arguments.
             if (p.length == 2 && p[0] == net.minecraft.world.entity.Entity.class
-                    && p[1] == float.class && !m.getReturnType().isPrimitive()) {
+                    && p[1] == float.class && !m.getReturnType().isPrimitive()
+                    && !m.getName().contains("$")) {
                 state = m.invoke(renderer, entity, 1f);
             }
         }

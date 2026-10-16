@@ -1089,12 +1089,63 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                                 + ", not beside Distance fade, below Opacity at "
                                 + opacity.getX() + "," + opacity.getY());
                     }
+                    final String clash = overlap(screen);
+                    if (clash != null) {
+                        throw new AssertionError("with the side panel open, " + clash);
+                    }
                     screen.onClose();
                 } catch (ReflectiveOperationException e) {
                     throw new AssertionError("could not read the open screen", e);
                 }
                 System.out.println("[hidemodels-gametest] distance fade: From and To beside it");
             });
+            //     Where neither side has room - a 640x480 window, 320 wide at its GUI scale, and the
+            //     panel in the middle of it - From and To go back into the column, and nothing on
+            //     the screen overlaps anything else.
+            context.getInput().resizeWindow(640, 480);
+            context.waitTicks(5);
+            context.runOnClient(client -> {
+                HideModels.setGuiPosition(0.5, 0);
+                io.github.simuciokas.hidemodels.Screens.open(client, new HiddenListScreen(null));
+            });
+            context.waitTicks(5);
+            context.runOnClient(client -> {
+                press(2);
+                press(7);
+            });
+            context.waitTicks(5);
+            context.takeScreenshot("distance-fade-narrow");
+            context.runOnClient(client -> {
+                try {
+                    final Screen screen = (Screen) screenOf(client);
+                    final String clash = overlap(screen);
+                    if (clash != null) {
+                        throw new AssertionError("on a narrow screen " + clash);
+                    }
+                    final java.util.List<net.minecraft.client.gui.components.AbstractWidget>
+                            sliders = new java.util.ArrayList<>();
+                    for (Object child : screen.children()) {
+                        if (child instanceof
+                                net.minecraft.client.gui.components.AbstractSliderButton s) {
+                            sliders.add(s);
+                        }
+                    }
+                    if (sliders.size() != 3 || sliders.get(1).getX() != sliders.get(0).getX()) {
+                        throw new AssertionError("with no room beside the panel, From and To are "
+                                + "not in its column: " + sliders.size() + " sliders, From at "
+                                + (sliders.size() > 1 ? sliders.get(1).getX() : -1) + " in a "
+                                + screen.width + " wide screen");
+                    }
+                    screen.onClose();
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError("could not read the open screen", e);
+                }
+                System.out.println("[hidemodels-gametest] distance fade: in the column where "
+                        + "there is no room beside, nothing overlapping");
+            });
+            context.runOnClient(client -> HideModels.setGuiPosition(0, 0));
+            context.getInput().resizeWindow(854, 480);
+            context.waitTicks(5);
             //     Both shapes of model drawn at half, each by its own renderer into a collector
             //     that keeps the tints it is handed: the lantern, an item display, and the statue,
             //     an armor stand wearing its piece on its head.
@@ -1332,6 +1383,30 @@ public final class HideModelsClientTest implements FabricClientGameTest {
         } catch (ReflectiveOperationException e) {
             throw new AssertionError("could not clear the recently seen list", e);
         }
+    }
+
+    /** Two widgets on a screen whose areas cross, described; null when none do. */
+    private static String overlap(Screen screen) {
+        final java.util.List<net.minecraft.client.gui.components.AbstractWidget> widgets =
+                new java.util.ArrayList<>();
+        for (Object child : screen.children()) {
+            if (child instanceof net.minecraft.client.gui.components.AbstractWidget w) {
+                widgets.add(w);
+            }
+        }
+        for (int i = 0; i < widgets.size(); i++) {
+            for (int j = i + 1; j < widgets.size(); j++) {
+                final var a = widgets.get(i);
+                final var b = widgets.get(j);
+                if (a.getX() < b.getX() + b.getWidth() && b.getX() < a.getX() + a.getWidth()
+                        && a.getY() < b.getY() + b.getHeight()
+                        && b.getY() < a.getY() + a.getHeight()) {
+                    return "widget " + i + " at " + a.getX() + "," + a.getY() + " overlaps widget "
+                            + j + " at " + b.getX() + "," + b.getY();
+                }
+            }
+        }
+        return null;
     }
 
     private static HideModels.Profile profile(String name) {

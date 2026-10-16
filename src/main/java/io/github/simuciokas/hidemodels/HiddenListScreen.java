@@ -301,8 +301,10 @@ public final class HiddenListScreen extends ClearScreen {
             return 0;
         }
         if (openList != null) {
-            // A profile's name, Opacity, Distance fade, Copy and Delete, and its servers.
-            return openList.isEmpty() ? 0 : 5 + serverRows().size();
+            // A profile's name, Opacity, Distance fade, Copy and Delete, and its servers - and
+            // From and To, when they have no room beside the panel.
+            return openList.isEmpty() ? 0 : 5 + serverRows().size()
+                    + (distancesInColumn(profileNamed(openList)) ? 2 : 0);
         }
         return HideModels.unsaved().isEmpty() ? 2 : 3;
     }
@@ -441,7 +443,7 @@ public final class HiddenListScreen extends ClearScreen {
         // characters to fifty, and a column sized for the worst case wastes the screen the rest of
         // the time. Capped at a third of the screen so one absurd id cannot swallow the view it is
         // meant to leave clear - but never narrower than the tabs.
-        final int cap = Math.max(strip, width / 3);
+        final int cap = panelCap();
         // The header shares its line with the close mark, at the right end.
         final int headerW = Math.max(measure(header(source.size(), goneCount(found), pages)),
                 moving ? measure(MOVING) : 0) + GAP * 2 + ROW;
@@ -489,6 +491,9 @@ public final class HiddenListScreen extends ClearScreen {
                 content = Math.max(content, Math.max(measure(DELETE_SURE), measure(COPIED)));
                 content = Math.max(content, measure(OPACITY) + PAD + measure("Hidden"));
                 content = Math.max(content, measure(DISTANCE) + PAD + measure("Near"));
+                if (distancesInColumn(profileNamed(openList))) {
+                    content = Math.max(content, measure(FROM) + PAD + measure("32 blocks"));
+                }
                 for (String server : serverRows()) {
                     content = Math.max(content, measure(serverLabel(server)) + PAD + measure("Off"));
                 }
@@ -787,10 +792,13 @@ public final class HiddenListScreen extends ClearScreen {
                 HideModels.setProfileFade(list, mode.next(), from, to);
                 rebuildWidgets();
             });
-            if (mode != DistanceFade.OFF) {
+            y += ROW + GAP;
+            if (distancesInColumn(profile)) {
+                distanceRows(left, y, w, list, mode, from, to);
+                y += 2 * (ROW + GAP);
+            } else if (mode != DistanceFade.OFF) {
                 distanceRow = distance;
             }
-            y += ROW + GAP;
             final String here = HideModels.currentServer();
             // Switches, as in Settings: on means joining that server switches the profile on.
             for (String server : serverRows()) {
@@ -833,36 +841,92 @@ public final class HiddenListScreen extends ClearScreen {
 
     /**
      * A distance fade's From and To, in a panel jutting out level with its Distance fade row, on
-     * the side facing the middle of the screen. Laid out once the panel is where it was put, as it
-     * hangs beside the panel rather than in it.
+     * the side facing the middle of the screen - or the other, when that one has no room. Laid
+     * out once the panel is where it was put, as it hangs beside the panel rather than in it.
      */
     private void fadeSidePanel() {
         final HideModels.Profile profile = profileNamed(openList);
         if (profile == null) {
             return;
         }
-        final String list = openList;
-        final DistanceFade mode = profile.fade();
-        final double from = profile.fadeFrom();
-        final double to = profile.fadeTo();
-        sideW = Math.max(SIDE_MIN,
-                Math.max(measure(FROM), measure(TO)) + PAD * 3 + measure("32 blocks"));
+        sideW = sideWidth();
         sideH = ROW * 2 + GAP;
-        sideX = clamp(sideOnLeft() ? left - SIDE_GAP - sideW : left + panelWidth + SIDE_GAP, 4,
-                Math.max(4, width - sideW - 4));
+        // A side had room for the widest the panel gets, so it has room for this one.
+        final int side = sideRoom(left, panelWidth);
+        final boolean onLeft = side == 0 ? sideOnLeft() : side < 0;
+        sideX = onLeft ? left - SIDE_GAP - sideW : left + panelWidth + SIDE_GAP;
         sideY = distanceRow.y;
-        final Row near = row(sideX, sideY, sideW, FROM);
+        distanceRows(sideX, sideY, sideW, openList, profile.fade(), profile.fadeFrom(),
+                profile.fadeTo());
+    }
+
+    /** A fade's From and To sliders, as two rows from (x, y). */
+    private void distanceRows(int x, int y, int w, String list, DistanceFade mode, double from,
+                              double to) {
+        final Row near = row(x, y, w, FROM);
         near.slider = new SliderSpec(DISTANCE_STOPS, from, HiddenListScreen::blocksText, v -> {
             final HideModels.Profile now = profileNamed(list);
             HideModels.setProfileFade(list, mode, v, now == null ? to : now.fadeTo());
         });
         near.hint = "Where the fade starts, in blocks from your eyes";
-        final Row far = row(sideX, sideY + ROW + GAP, sideW, TO);
+        final Row far = row(x, y + ROW + GAP, w, TO);
         far.slider = new SliderSpec(DISTANCE_STOPS, to, HiddenListScreen::blocksText, v -> {
             final HideModels.Profile now = profileNamed(list);
             HideModels.setProfileFade(list, mode, now == null ? from : now.fadeFrom(), v);
         });
         far.hint = "Where it ends";
+    }
+
+    private static int sideWidth() {
+        return Math.max(SIDE_MIN,
+                Math.max(measure(FROM), measure(TO)) + PAD * 3 + measure("32 blocks"));
+    }
+
+    /** The tabs side by side, which no panel is narrower than. */
+    private static int tabStrip() {
+        int strip = -GAP;
+        for (String tab : TABS) {
+            strip += measure(tab) + PAD * 2 + GAP;
+        }
+        return strip;
+    }
+
+    /** The widest the panel gets: a third of the screen, or the tabs. */
+    private int panelCap() {
+        return Math.max(tabStrip(), width / 3);
+    }
+
+    /**
+     * Which side of a panel there is room for the side panel on: -1 its left, 1 its right, 0
+     * neither. The side facing the screen's middle is tried first.
+     */
+    private int sideRoom(int panelLeft, int panelW) {
+        final int need = SIDE_GAP + sideWidth() + 4;
+        final boolean leftFits = panelLeft - need >= 0;
+        final boolean rightFits = panelLeft + panelW + need <= width;
+        final boolean towardLeft = panelLeft + panelW / 2 > width / 2;
+        if (towardLeft ? leftFits : rightFits) {
+            return towardLeft ? -1 : 1;
+        }
+        if (towardLeft ? rightFits : leftFits) {
+            return towardLeft ? 1 : -1;
+        }
+        return 0;
+    }
+
+    /**
+     * Whether a profile's distances go in the column, under Distance fade: when it fades with
+     * distance and neither side of the panel has room for them, even at the widest the panel gets
+     * where it was put. A narrower panel only has more room either side, so the answer holds.
+     */
+    private boolean distancesInColumn(HideModels.Profile profile) {
+        if (profile == null || profile.fade() == DistanceFade.OFF) {
+            return false;
+        }
+        final int cap = panelCap();
+        final int at = EDGE
+                + (int) Math.round(HideModels.guiX() * Math.max(0, width - 2 * EDGE - cap));
+        return sideRoom(at, cap) == 0;
     }
 
     /**
