@@ -1154,9 +1154,9 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.runOnClient(client -> HideModels.setGuiPosition(0, 0));
             context.getInput().resizeWindow(854, 480);
             context.waitTicks(5);
-            //     Both shapes of model drawn at half, each by its own renderer into a collector
-            //     that keeps the tints it is handed: the lantern, an item display, and the statue,
-            //     an armor stand wearing its piece on its head.
+            //     Both shapes of model drawn at half, each by its own renderer into a stand-in for
+            //     what it draws into, which keeps the alpha: the lantern, an item display, and the
+            //     statue, an armor stand wearing its piece on its head.
             writeConfig("[Half] 50%\nhidemodels_demo:statue/\nhidemodels_demo:lantern");
             context.waitFor(client -> HideModels.opacityOfId("hidemodels_demo:statue/head") == 0.5f
                     && HideModels.opacityOfId("hidemodels_demo:lantern") == 0.5f);

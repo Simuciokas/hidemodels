@@ -91,7 +91,8 @@ public final class SmokeChecks {
             checkKeyRegistered();
             checkScreenOpens();
             final String button = checkConfigButton();
-            final String fade = checkFadeProxy();
+            // On the render thread, whose draws the fade's pending opacity is for.
+            final String fade = onClient(SmokeChecks::checkFadeProxy);
             report("PASS - component resolved, config drove the matcher, add/remove, settings and "
                     + "profiles worked, key registered, screen opened, " + button + ", " + fade);
         } catch (Throwable t) {
@@ -362,9 +363,9 @@ public final class SmokeChecks {
      * In the world the run joined: tools/smoke_server.py puts an item display and an armor stand
      * wearing a piece by the player, and a profile drawing both at half is written. Where this
      * version fades, each is drawn by its own renderer - an item display's, a stand's head layer,
-     * the paths the fade hooks are on - into a collector that keeps the tints it is handed, which
-     * must come out at half; then the world is drawn with them faded for a few seconds, through
-     * the game's own path. Where it cannot fade, both must be hidden. Says what it found.
+     * the paths the fade hooks are on - into a stand-in that keeps the alpha it is drawn with,
+     * which must come out at half; then the world is drawn with them faded for a few seconds,
+     * through the game's own path. Where it cannot fade, both must be hidden. Says what it found.
      */
     private static String checkWorld() throws Exception {
         final Minecraft mc = Minecraft.getInstance();
@@ -402,64 +403,168 @@ public final class SmokeChecks {
             }
         }
         Thread.sleep(3_000L);
+        final long before = System.currentTimeMillis();
+        onClient(SmokeChecks::screenshot);
+        // The grab writes the file off the render thread; the run ends the moment this returns.
+        final java.io.File shots = new java.io.File(mc.gameDirectory, "screenshots");
+        waitUntil(() -> {
+            final java.io.File[] files = shots.listFiles((dir, name) -> name.endsWith(".png"));
+            for (java.io.File f : files == null ? new java.io.File[0] : files) {
+                if (f.lastModified() >= before - 1_000L && f.length() > 0) {
+                    return true;
+                }
+            }
+            return false;
+        }, "the screenshot of the faded world was never written", 15_000L);
         return "the display and the stand drawn at alpha " + alpha[0] + " and " + alpha[1]
                 + ", and the world drawn with them faded";
     }
 
     /**
-     * The faintest alpha among the tints an entity's model is handed on with, drawn by its
-     * renderer - an armor stand's by its head layer - into a collector that keeps them; above 255
-     * when none is. Everything is found by shape, as a Fabric install names it otherwise.
+     * A screenshot of the world as drawn, into the run's screenshots folder for a person to look
+     * at, by the game's own grab: the static one taking the game folder, the frame and where to say
+     * it was saved, with the frame from the Minecraft method giving one. Found by shape.
+     */
+    private static Void screenshot() throws ReflectiveOperationException {
+        final Minecraft mc = Minecraft.getInstance();
+        for (java.lang.reflect.Method grab : net.minecraft.client.Screenshot.class.getMethods()) {
+            final Class<?>[] p = grab.getParameterTypes();
+            if (!java.lang.reflect.Modifier.isStatic(grab.getModifiers()) || p.length != 3
+                    || p[0] != java.io.File.class || p[2] != java.util.function.Consumer.class) {
+                continue;
+            }
+            for (java.lang.reflect.Method frame : Minecraft.class.getMethods()) {
+                if (frame.getParameterCount() == 0 && frame.getReturnType() == p[1]) {
+                    final java.util.function.Consumer<Object> said = message -> { };
+                    grab.invoke(null, mc.gameDirectory, frame.invoke(mc), said);
+                    return null;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The faintest alpha an entity's model is drawn with, by its renderer - an armor stand's by
+     * its head layer - into a stand-in for what the draw hands the item to; above 255 when nothing
+     * is drawn. From 1.21.9 that is a submit collector, which keeps the tints it is handed; before,
+     * buffers, which keep the alpha written to them, and which a faded model must ask only for
+     * translucent render types. Up to 1.21.1 there is no render state: the head layer is handed
+     * the stand, and the display is drawn whole. Everything is found by shape, as a Fabric install
+     * names it otherwise.
      */
     static int drawnAlpha(net.minecraft.world.entity.Entity entity)
             throws ReflectiveOperationException {
         final Object renderer =
                 Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(entity);
-        Object state = null;
+        final boolean stand = entity instanceof net.minecraft.world.entity.decoration.ArmorStand;
+        final Class<?> pose = com.mojang.blaze3d.vertex.PoseStack.class;
+        // The render state, from 1.21.2: what an (Entity, float) method makes that a draw takes.
+        // Before, the one such method gives the render offset, which nothing draws.
+        final java.util.List<Object> made = new java.util.ArrayList<>();
         for (java.lang.reflect.Method m : renderer.getClass().getMethods()) {
             final Class<?>[] p = m.getParameterTypes();
             // Not one another mod's mixin added - Sodium's culling box takes the same arguments.
             if (p.length == 2 && p[0] == net.minecraft.world.entity.Entity.class
                     && p[1] == float.class && !m.getReturnType().isPrimitive()
                     && !m.getName().contains("$")) {
-                state = m.invoke(renderer, entity, 1f);
+                made.add(m.invoke(renderer, entity, 1f));
             }
         }
-        if (state == null) {
-            throw new AssertionError("no render state for " + entity);
-        }
-        Object target = renderer;
+        final Object target = stand ? headLayer(renderer) : renderer;
+        Object state = null;
         java.lang.reflect.Method draw = null;
-        if (entity instanceof net.minecraft.world.entity.decoration.ArmorStand) {
-            target = headLayer(renderer);
-            for (java.lang.reflect.Method m : target.getClass().getMethods()) {
-                final Class<?>[] p = m.getParameterTypes();
-                if (p.length == 6 && p[0] == com.mojang.blaze3d.vertex.PoseStack.class
-                        && p[1].isInterface() && p[2] == int.class && p[3].isInstance(state)
-                        && p[4] == float.class && p[5] == float.class) {
-                    draw = m;
-                }
+        for (Object candidate : made) {
+            if (draw == null && candidate != null) {
+                draw = drawMethod(target, stand, candidate, entity);
+                state = draw == null ? null : candidate;
             }
-        } else {
-            for (Class<?> c = renderer.getClass(); c != null && draw == null; c = c.getSuperclass()) {
-                for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
-                    final Class<?>[] p = m.getParameterTypes();
-                    if (p.length == 5 && p[0].isInstance(state)
-                            && p[1] == com.mojang.blaze3d.vertex.PoseStack.class
-                            && p[2].isInterface() && p[3] == int.class && p[4] == float.class) {
-                        draw = m;
-                    }
-                }
-            }
+        }
+        if (draw == null) {
+            draw = drawMethod(target, stand, null, entity);
         }
         if (draw == null) {
             throw new AssertionError("no draw method of the expected shape on " + target);
         }
         draw.setAccessible(true);
+        final Class<?>[] p = draw.getParameterTypes();
+        Class<?> into = null;
+        for (int i = 0; i + 1 < p.length && into == null; i++) {
+            if (p[i] == pose) {
+                into = p[i + 1];
+            }
+        }
         final int[] faintest = {Integer.MAX_VALUE};
-        final Class<?> type = draw.getParameterTypes()[entity instanceof
-                net.minecraft.world.entity.decoration.ArmorStand ? 1 : 2];
-        final Object collector = java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(),
+        final java.util.List<String> asked = new java.util.ArrayList<>();
+        final Object sink = takesTints(into) ? tintCollector(into, faintest)
+                                             : alphaBuffers(into, faintest, asked);
+        final com.mojang.blaze3d.vertex.PoseStack stack = new com.mojang.blaze3d.vertex.PoseStack();
+        if (state != null && stand) {
+            draw.invoke(target, stack, sink, 0xF000F0, state, 0f, 0f);
+        } else if (state != null) {
+            draw.invoke(target, state, stack, sink, 0xF000F0, 1f);
+        } else if (stand) {
+            draw.invoke(target, stack, sink, 0xF000F0, entity, 0f, 0f, 1f, 0f, 0f, 0f);
+        } else {
+            draw.invoke(target, entity, 0f, 1f, stack, sink, 0xF000F0);
+        }
+        if (faintest[0] < 255) {
+            for (String type : asked) {
+                if (!type.contains("translucent")) {
+                    throw new AssertionError("a faded model was drawn into " + type);
+                }
+            }
+        }
+        return faintest[0];
+    }
+
+    /**
+     * The draw a model goes through, by shape: given a render state, the head layer's or the
+     * display's inner draw taking it; without one, as up to 1.21.1, the head layer's taking the
+     * wearer, or the display renderer's whole draw.
+     */
+    private static java.lang.reflect.Method drawMethod(Object target, boolean stand, Object state,
+                                                       net.minecraft.world.entity.Entity entity) {
+        final Class<?> pose = com.mojang.blaze3d.vertex.PoseStack.class;
+        for (Class<?> c = target.getClass(); c != null; c = c.getSuperclass()) {
+            for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                final Class<?>[] p = m.getParameterTypes();
+                final boolean fits;
+                if (state != null && stand) {
+                    fits = p.length == 6 && p[0] == pose && p[1].isInterface() && p[2] == int.class
+                            && p[3].isInstance(state) && p[4] == float.class && p[5] == float.class;
+                } else if (state != null) {
+                    fits = p.length == 5 && p[0].isInstance(state) && p[1] == pose
+                            && p[2].isInterface() && p[3] == int.class && p[4] == float.class;
+                } else if (stand) {
+                    fits = p.length == 10 && p[0] == pose && p[1].isInterface()
+                            && p[2] == int.class && p[3].isInstance(entity);
+                } else {
+                    fits = p.length == 6 && p[0].isInstance(entity) && p[1] == float.class
+                            && p[2] == float.class && p[3] == pose && p[4].isInterface()
+                            && p[5] == int.class;
+                }
+                if (fits) {
+                    return m;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** A submit collector: something it draws takes an item's tints as an int[]. */
+    private static boolean takesTints(Class<?> type) {
+        for (java.lang.reflect.Method m : type.getMethods()) {
+            if (java.util.Arrays.asList(m.getParameterTypes()).contains(int[].class)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A collector keeping the faintest alpha among the tints it is handed. */
+    private static Object tintCollector(Class<?> type, int[] faintest) {
+        return java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(),
                 new Class<?>[] {type}, (self, method, args) -> {
                     for (Object arg : args == null ? new Object[0] : args) {
                         if (arg instanceof int[] tints) {
@@ -468,25 +573,67 @@ public final class SmokeChecks {
                             }
                         }
                     }
-                    final Class<?> back = method.getReturnType();
-                    if (back.isInstance(self)) {
-                        return self;          // order(): the next items come here too
-                    }
-                    if (back == int.class) {
-                        return System.identityHashCode(self);
-                    }
-                    if (back == boolean.class) {
-                        return args != null && args[0] == self;
-                    }
-                    return null;
+                    return inert(self, method, args);   // order(): the next items come here too
                 });
-        final com.mojang.blaze3d.vertex.PoseStack pose = new com.mojang.blaze3d.vertex.PoseStack();
-        if (entity instanceof net.minecraft.world.entity.decoration.ArmorStand) {
-            draw.invoke(target, pose, collector, 0xF000F0, state, 0f, 0f);
-        } else {
-            draw.invoke(target, state, pose, collector, 0xF000F0, 1f);
+    }
+
+    /**
+     * Buffers keeping the faintest alpha written to them, and the render types they were asked
+     * for. The item renderer writes a face at a time through putBulkData, with the alpha fourth of
+     * its colour floats; anything else reaches the abstract colour method, its alpha last of four
+     * ints, as a default method runs on the stand-in.
+     */
+    private static Object alphaBuffers(Class<?> type, int[] faintest,
+                                       java.util.List<String> asked) {
+        return java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(),
+                new Class<?>[] {type}, (self, method, args) -> {
+                    if (args != null && args.length == 1 && method.getReturnType().isInterface()) {
+                        asked.add(String.valueOf(args[0]));
+                        return alphaVertices(method.getReturnType(), faintest);
+                    }
+                    return inert(self, method, args);
+                });
+    }
+
+    private static Object alphaVertices(Class<?> type, int[] faintest) {
+        return java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(),
+                new Class<?>[] {type}, (self, method, args) -> {
+                    final Class<?>[] p = method.getParameterTypes();
+                    if (p.length >= 8 && p[0] == com.mojang.blaze3d.vertex.PoseStack.Pose.class) {
+                        final int at = p[2] == float[].class ? 6 : 5;
+                        faintest[0] = Math.min(faintest[0], Math.round((Float) args[at] * 255));
+                        return null;
+                    }
+                    if (!method.isDefault() && java.util.Arrays.equals(p,
+                            new Class<?>[] {int.class, int.class, int.class, int.class})
+                            && method.getReturnType().isInstance(self)) {
+                        faintest[0] = Math.min(faintest[0], (Integer) args[3]);
+                        return self;
+                    }
+                    if (method.isDefault()) {
+                        return java.lang.reflect.InvocationHandler.invokeDefault(self, method,
+                                                                                 args);
+                    }
+                    return inert(self, method, args);
+                });
+    }
+
+    /** What a stand-in that draws nothing answers: itself where it can, else nothing. */
+    private static Object inert(Object self, java.lang.reflect.Method method, Object[] args) {
+        final Class<?> back = method.getReturnType();
+        if (back.isInstance(self)) {
+            return self;
         }
-        return faintest[0];
+        if (back == int.class) {
+            return System.identityHashCode(self);
+        }
+        if (back == boolean.class) {
+            return args != null && args[0] == self;
+        }
+        if (back == String.class) {
+            return "stand-in";
+        }
+        return null;
     }
 
     /** The head layer among a living entity renderer's layers, which it keeps in a list field. */
@@ -656,32 +803,83 @@ public final class SmokeChecks {
     }
 
     /**
-     * Where a faded profile is drawn see-through, its models go through a dynamic proxy of the
-     * game's submit collector. Built here as the mod builds it, so a loader whose module rules
-     * refused one - NeoForge's are the strictest - fails at the title screen rather than on the
-     * first faded model. Says what it found, for the verdict.
+     * Where a faded profile is drawn see-through, its models go through a dynamic proxy of what
+     * the draw hands the item to: the game's submit collector from 1.21.9, its buffers before.
+     * Built here as the mod builds it, so a loader whose module rules refused one - NeoForge's are
+     * the strictest - fails at the title screen rather than on the first faded model. Buffers are
+     * the mod's own stand-in, by reflection as 26.x has none, over buffers that keep the alpha
+     * written: a face and a vertex colour written at full alpha, through putBulkData and through a
+     * default method that runs on the stand-in, must arrive at half. Says what it found, for the
+     * verdict.
      */
-    private static String checkFadeProxy() {
+    private static String checkFadeProxy() throws ReflectiveOperationException {
         if (!HideModels.fadingAvailable()) {
             return "fading hides on this version";
         }
-        Class<?> collector = null;
+        Class<?> into = null;
         for (java.lang.reflect.Method m : net.minecraft.client.renderer.entity.DisplayRenderer
                 .ItemDisplayRenderer.class.getDeclaredMethods()) {
             final Class<?>[] p = m.getParameterTypes();
-            if (p.length == 5 && p[2].isInterface() && p[3] == int.class && p[4] == float.class) {
-                collector = p[2];
+            for (int i = 0; i + 1 < p.length; i++) {
+                if (p[i] == com.mojang.blaze3d.vertex.PoseStack.class && p[i + 1].isInterface()) {
+                    into = p[i + 1];
+                }
             }
         }
-        if (collector == null) {
-            throw new AssertionError("fading is said to be available, but no collector was found");
+        if (into == null) {
+            throw new AssertionError("fading is said to be available, but the draw hands its "
+                    + "item to nothing the fade stands in for");
         }
-        final Object proxy = java.lang.reflect.Proxy.newProxyInstance(collector.getClassLoader(),
-                new Class<?>[] {collector}, (self, method, args) -> null);
-        if (!collector.isInstance(proxy)) {
-            throw new AssertionError("a proxy of " + collector + " is not one");
+        if (takesTints(into)) {
+            final Object proxy = java.lang.reflect.Proxy.newProxyInstance(into.getClassLoader(),
+                    new Class<?>[] {into}, (self, method, args) -> null);
+            if (!into.isInstance(proxy)) {
+                throw new AssertionError("a proxy of " + into + " is not one");
+            }
+            return "fading proxy built";
         }
-        return "fading proxy built";
+        final int[] faintest = {Integer.MAX_VALUE};
+        final Object kept = alphaBuffers(into, faintest, new java.util.ArrayList<>());
+        io.github.simuciokas.hidemodels.Fade.class.getMethod("beginAt", float.class)
+                .invoke(null, 0.5f);
+        final Object buffers = io.github.simuciokas.hidemodels.Fade.class
+                .getMethod("wrapBuffers", into).invoke(null, kept);
+        if (buffers == kept) {
+            throw new AssertionError("the buffers were not stood in for");
+        }
+        java.lang.reflect.Method getBuffer = null;
+        for (java.lang.reflect.Method m : into.getMethods()) {
+            if (m.getParameterCount() == 1 && m.getReturnType().isInterface()) {
+                getBuffer = m;
+            }
+        }
+        final Object vertices = getBuffer.invoke(buffers, (Object) null);
+        java.lang.reflect.Method face = null;
+        java.lang.reflect.Method colour = null;
+        for (java.lang.reflect.Method m : vertices.getClass().getInterfaces()[0].getMethods()) {
+            final Class<?>[] p = m.getParameterTypes();
+            if (p.length == 8 && p[0] == com.mojang.blaze3d.vertex.PoseStack.Pose.class
+                    && p[2] == float.class) {
+                face = m;
+            } else if (m.isDefault() && java.util.Arrays.equals(p,
+                    new Class<?>[] {float.class, float.class, float.class, float.class})
+                    && m.getReturnType().isInstance(vertices)) {
+                colour = m;
+            }
+        }
+        if (face == null || colour == null) {
+            throw new AssertionError("the buffers have no putBulkData or no float colour method");
+        }
+        face.invoke(vertices, null, null, 1f, 1f, 1f, 1f, 0xF000F0, 0);
+        final int faceAlpha = faintest[0];
+        faintest[0] = Integer.MAX_VALUE;
+        colour.invoke(vertices, 1f, 1f, 1f, 1f);
+        final int vertexAlpha = faintest[0];
+        if (Math.abs(faceAlpha - 0.5f * 255) > 1 || Math.abs(vertexAlpha - 0.5f * 255) > 1) {
+            throw new AssertionError("faded buffers wrote a face at alpha " + faceAlpha
+                    + " and a vertex at " + vertexAlpha + ", not half");
+        }
+        return "fading buffers built, writing at alpha " + faceAlpha + " and " + vertexAlpha;
     }
 
     /**

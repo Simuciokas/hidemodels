@@ -605,10 +605,10 @@ public final class HideModels {
     }
 
     /**
-     * Whether this version can draw a model see-through: 1.21.9 and later, whose item displays are
-     * drawn through a submit pipeline the fade hooks. Found by the draw method's shape - the
-     * collector it is handed takes an item's tints as an int[], which a MultiBufferSource, used
-     * before then, never does. Where it cannot, fading hides.
+     * Whether this version can draw a model see-through: where an item display's draw hands its
+     * item, after the pose, to something the fade hooks stand in for - a MultiBufferSource up to
+     * 1.21.8, a submit collector from 1.21.9. Found by the draw method's shape, as 26.2 has no
+     * MultiBufferSource to name. Where it is not found, fading hides.
      */
     public static boolean fadingAvailable() {
         if (fadingAvailable == null) {
@@ -616,12 +616,9 @@ public final class HideModels {
             for (java.lang.reflect.Method m : net.minecraft.client.renderer.entity.DisplayRenderer
                     .ItemDisplayRenderer.class.getDeclaredMethods()) {
                 final Class<?>[] p = m.getParameterTypes();
-                if (p.length == 5 && p[1] == com.mojang.blaze3d.vertex.PoseStack.class
-                        && p[2].isInterface() && p[3] == int.class && p[4] == float.class) {
-                    for (java.lang.reflect.Method submit : p[2].getMethods()) {
-                        found |= java.util.Arrays.asList(submit.getParameterTypes())
-                                .contains(int[].class);
-                    }
+                for (int i = 0; i + 1 < p.length; i++) {
+                    found |= p[i] == com.mojang.blaze3d.vertex.PoseStack.class
+                            && p[i + 1].isInterface();
                 }
             }
             fadingAvailable = found;
@@ -1504,8 +1501,8 @@ public final class HideModels {
                 # brackets keeps it saved but not applied. Lines above the first profile always
                 # apply - the screen calls them unsaved. An @address after the brackets ties a
                 # profile to a server: joining it switches the profile on, joining any other off.
-                # A percentage draws its models see-through instead (1.21.9 and later), and far or
-                # near with two distances in blocks fades them out further away, or closer by.
+                # A percentage draws its models see-through instead, and far or near with two
+                # distances in blocks fades them out further away, or closer by.
                 #     [Mounts]
                 #     modelengine:some_mount/
                 #     [PvP] off @play.simuciokas.uk

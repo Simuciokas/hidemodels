@@ -3,7 +3,7 @@
 A client-side Fabric mod for **Minecraft 1.20.5 – 26.3** that stops chosen server-side model pieces
 from rendering — a mount's head that blocks your view, a pet that follows you around, a visual
 effect you'd rather not see — chosen by their `item_model` id. **Or it draws them see-through**,
-at an opacity you choose and optionally fading with distance, on 1.21.9 and later.
+at an opacity you choose and optionally fading with distance.
 
 It **changes rendering only**. Entities are never removed, so hitboxes, interactions and the
 server's view of the world are all untouched.
@@ -37,7 +37,7 @@ off and on with a click, and opened to rename, copy, tie to a server or draw see
 
 ![Hiding two models, saving them as a profile, switching it off and on, and opening it](docs/media/profiles.webp)
 
-**See-through instead of hidden**, on 1.21.9 and later: a profile's *Opacity* slider.
+**See-through instead of hidden**: a profile's *Opacity* slider.
 
 ![Dragging a profile's Opacity slider down and back up as its models fade](docs/media/opacity.webp)
 
@@ -187,8 +187,9 @@ every loader, as below.
 `python tools/smoke_server.py 1.21.11 --java <java>` starts a vanilla server of that version which,
 when a player joins, puts an item display and an armor stand wearing a piece in front of them. A
 smoke run given `-PsmokeWorld=127.0.0.1:25599` joins it at launch, writes a profile drawing both at
-half, draws each through its renderer and checks the tints come out at half — or, before 1.21.9,
-that both are hidden — then draws the world with them faded for a few seconds. NeoForge's runs take
+half, draws each through its renderer and checks they come out at half, then draws the world with
+them faded for a few seconds and saves a screenshot of it to the run's `screenshots` folder.
+NeoForge's runs take
 `-PneoforgeRun=latest`, which tests on the newest build of each line while the jar is still built
 against the first stable one.
 
@@ -226,7 +227,7 @@ preprocessor, and all of them split where the jars already do, between 1.21.x an
 | `ChatOut` (`src/versions/chat-mc121`, `chat-mc26`) | the client-facing chat calls were renamed: `LocalPlayer.displayClientMessage` before, `sendSystemMessage` and, over the hotbar, `sendOverlayMessage` after |
 | `ClearScreen`, `Painter`, `Screens` (`src/versions/screen-mc121`, `screen-mc26`) | 26.x replaced `GuiGraphics` and the screen's render methods, and `setScreen` with `setScreenAndShow` |
 | `Cmd`, `KeyRegistration` (`src/versions/fabricapi-mc121`, `fabricapi-mc26`) | Fabric API's renames, not Minecraft's: `ClientCommandManager` became `ClientCommands`, and `KeyBindingHelper` became `KeyMappingHelper` |
-| `Fade` and its mixins (`src/versions/fade-mc121`, `fade-mc26`) | drawing a model see-through hooks the item pipeline 1.21.9 brought. 26.x names it outright; 1.21.x shares a jar with versions that lack it, so its targets are strings — Mojang's names in the source, which NeoForge and a Fabric development run have, and intermediary ones in a second compile of the hooks that goes into the Fabric jar, because Loom rewrites a Mojang name only on versions that have it, which would make the jars of one range differ |
+| `Fade` and its mixins (`src/versions/fade-mc121`, `fade-mc26`) | drawing a model see-through hooks what its item is drawn into — a submit collector from 1.21.9, the buffers before. 26.x names its types outright; the 1.21.x jar draws through both pipelines, so its targets are strings — Mojang's names in the source, which NeoForge and a Fabric development run have, and intermediary ones in a second compile of the hooks that goes into the Fabric jar, because Loom rewrites a Mojang name only on versions that have it, which would make the jars of one range differ |
 
 Those cost nothing, since 26.x needs Java 25 class files and gets its own jar regardless. Changes
 *inside* a jar's range are reached by reflection instead, and every candidate name is checked against
@@ -330,10 +331,6 @@ and as set from 6, for one that blocks your view up close. Distances run from yo
 the model — to an armor stand's head, where it wears its piece. With no `far` or `near`, a range
 stays in the heading, so switching the fade off and on again keeps it. When several profiles cover a
 model, the faintest wins.
-
-Seeing through needs **1.21.9 or later**, whose item pipeline the mod draws through. Before it, a
-profile below 100% hides its models, and a 100% profile with a fade draws them in full and hides
-them where they would have faded to nothing — beyond its far distance, or within its near one.
 
 With **shader packs**, how see-through models look is up to the pack: BSL draws them in their
 colours, while Complementary shades them like tinted glass, so they come out grey. Sodium alone

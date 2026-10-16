@@ -15,6 +15,8 @@
  */
 package io.github.simuciokas.hidemodels;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -28,17 +30,25 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.Sheets;
+import net.minecraft.client.renderer.block.model.BakedQuad;
 
 /**
- * Draws a model see-through, on 1.21.9 to 1.21.11 - an item display, or the piece an armor stand
- * wears on its head - inside a jar that also runs back to 1.20.5, where none of the types this
- * works with exist. So nothing here names them: the collector, its faces and their render types
- * are all found by shape or by candidate names, from the objects the draw hands over.
+ * Draws a model see-through on 1.20.5 to 1.21.11 - an item display, or the piece an armor stand
+ * wears on its head - in one jar across two draw pipelines.
  *
- * <p>The way it fades is 26.x's: the item goes through a collector standing in for the game's,
- * whose submitItem gets the faces with a tint carrying the opacity - a face with no tint pointed at
- * one added for it - and a translucent render type in place of an opaque block sheet.
+ * <p>From 1.21.9 the item goes through a collector, whose type the versions before lack, so
+ * nothing here names it: the collector, its faces and their render types are found by shape or by
+ * candidate names, from the objects the draw hands over. The way it fades is 26.x's: the
+ * collector standing in for the game's hands submitItem the faces with a tint carrying the
+ * opacity - a face with no tint pointed at one added for it - and a translucent render type in
+ * place of an opaque block sheet.
+ *
+ * <p>Before 1.21.9 the item is drawn into a MultiBufferSource, so the stand-in is one of those: it
+ * gives out the translucent sheet for an opaque one, and buffers that scale the alpha the item's
+ * faces are written with.
  */
 public final class Fade {
 
@@ -66,6 +76,97 @@ public final class Fade {
     public static void begin(Object state) {
         final Float noted = state == null ? null : NOTED.get(state);
         pending = noted == null ? 1f : noted;
+    }
+
+    /** As begin, for a draw handed the entity itself rather than a render state. */
+    public static void beginAt(float opacity) {
+        pending = opacity;
+    }
+
+    /**
+     * The buffers to draw the current model's item into, before 1.21.9: the game's, or a stand-in
+     * fading it. Should the stand-in fail to build, the item is drawn as it is.
+     */
+    public static MultiBufferSource wrapBuffers(MultiBufferSource buffers) {
+        final float opacity = pending;
+        pending = 1f;
+        if (opacity >= 1f || buffers == null) {
+            return buffers;
+        }
+        try {
+            return (MultiBufferSource) Proxy.newProxyInstance(
+                    MultiBufferSource.class.getClassLoader(),
+                    new Class<?>[] {MultiBufferSource.class}, (self, method, args) -> {
+                        // getBuffer: the one method taking a render type and giving buffers.
+                        if (args != null && args.length == 1
+                                && method.getReturnType() == VertexConsumer.class) {
+                            final Object type = translucent().getOrDefault(args[0], args[0]);
+                            final Object out = call(method, buffers, new Object[] {type});
+                            return out == null ? null : fading((VertexConsumer) out, opacity);
+                        }
+                        return call(method, buffers, args);
+                    });
+        } catch (RuntimeException e) {
+            return buffers;
+        }
+    }
+
+    /**
+     * Buffers writing at a fraction of the alpha they are handed. The item renderer writes a face
+     * at a time through putBulkData, whose alpha is scaled and the face passed on, so the game's
+     * own buffers do the work. Anything else drawn vertex by vertex reaches the one abstract colour
+     * method, whose alpha is scaled too: a default method runs here, on the stand-in, rather than
+     * on the buffers behind it, so its own calls come back through it.
+     */
+    private static VertexConsumer fading(VertexConsumer buffers, float opacity) {
+        return (VertexConsumer) Proxy.newProxyInstance(VertexConsumer.class.getClassLoader(),
+                new Class<?>[] {VertexConsumer.class}, (self, method, args) -> {
+                    final int alpha = ALPHA_AT.computeIfAbsent(method, Fade::alphaAt);
+                    if (alpha != NO_ALPHA) {
+                        final Object[] scaled = args.clone();
+                        if (alpha >= 0) {
+                            scaled[alpha] = (Float) args[alpha] * opacity;
+                        } else {
+                            scaled[-alpha - 2] = Math.round((Integer) args[-alpha - 2] * opacity);
+                        }
+                        final Object out = call(method, buffers, scaled);
+                        return out == buffers ? self : out;
+                    }
+                    if (method.isDefault()) {
+                        return InvocationHandler.invokeDefault(self, method, args);
+                    }
+                    final Object out = call(method, buffers, args);
+                    return out == buffers ? self : out;
+                });
+    }
+
+    private static final int NO_ALPHA = Integer.MIN_VALUE;
+    private static final Map<Method, Integer> ALPHA_AT = new ConcurrentHashMap<>();
+
+    /**
+     * Where a VertexConsumer method takes the alpha: the index of a float alpha, -2 - the index of
+     * an int one, or NO_ALPHA. putBulkData has it fourth of its colour floats in every form - the
+     * game's, NeoForge's with a trailing flag, and the one taking brightness per corner - and the
+     * colour method last of its four ints.
+     */
+    private static int alphaAt(Method method) {
+        final Class<?>[] p = method.getParameterTypes();
+        if (p.length >= 8 && p[0] == PoseStack.Pose.class && p[1] == BakedQuad.class) {
+            return p[2] == float.class ? 5 : p[2] == float[].class ? 6 : NO_ALPHA;
+        }
+        if (!method.isDefault() && method.getReturnType() == VertexConsumer.class
+                && Arrays.equals(p, new Class<?>[] {int.class, int.class, int.class, int.class})) {
+            return -2 - 3;
+        }
+        return NO_ALPHA;
+    }
+
+    private static Object call(Method method, Object target, Object[] args) throws Throwable {
+        try {
+            return method.invoke(target, args);
+        } catch (InvocationTargetException e) {
+            throw e.getCause();
+        }
     }
 
     /**
