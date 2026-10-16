@@ -1026,6 +1026,10 @@ public final class HiddenListScreen extends ClearScreen {
         toggle(y, w, "First person only", "Hide only while the camera is in first person",
                 firstPerson, () -> HideModels.setFirstPersonOnly(!firstPerson));
         y += ROW + GAP;
+        final boolean hints = HideModels.hoverHints();
+        toggle(y, w, "On-hover hints", "What a row does, shown as you hover over it", hints,
+                () -> HideModels.setHoverHints(!hints));
+        y += ROW + GAP;
 
         // - and + either side of the number, so both buttons sit by what they change.
         final int sideW = measure("+") + PAD * 2;
@@ -1206,7 +1210,7 @@ public final class HiddenListScreen extends ClearScreen {
             p.text(label, tx, ty, row.muted ? DIM : TEXT);
         }
 
-        if (hovered != null) {
+        if (hovered != null && HideModels.hoverHints()) {
             final List<String> lines = detail(hovered, around, radius);
             if (!lines.isEmpty()) {
                 tip(p, hovered, lines);

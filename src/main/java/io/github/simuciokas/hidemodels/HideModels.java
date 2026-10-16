@@ -90,6 +90,8 @@ public final class HideModels {
 
     /** When set, hiding applies only while the camera is in first person. */
     private static volatile boolean firstPersonOnly;
+    /** Whether the screen's hover boxes are shown; the no-hover-hints directive turns them off. */
+    private static volatile boolean hoverHints = true;
 
     /** How far the Nearby tab looks, in blocks. */
     private static volatile double listRadius = DEFAULT_LIST_RADIUS;
@@ -670,6 +672,12 @@ public final class HideModels {
         return firstPersonOnly;
     }
 
+    /** Whether the screen says what a row does as you hover over it. */
+    public static boolean hoverHints() {
+        maybeReload();
+        return hoverHints;
+    }
+
     public static double guiX() {
         maybeReload();
         return guiX;
@@ -1114,6 +1122,11 @@ public final class HideModels {
         confirm("first person only: " + (only ? "on" : "off"), true);
     }
 
+    public static void setHoverHints(boolean on) {
+        directive(on ? null : "no-hover-hints", "no-hover-hints");
+        confirm("hover hints: " + (on ? "on" : "off"), true);
+    }
+
     public static void setListRadius(double blocks) {
         final double clamped = Math.min(Math.max(blocks, 1.0), MAX_LIST_RADIUS);
         directive("list-radius " + ConfigText.number(clamped), "list-radius");
@@ -1327,6 +1340,7 @@ public final class HideModels {
         return !line.isEmpty() && !isComment(line) && !line.equals("off")
                 && !line.equals("disabled") && !line.equals("first-person-only")
                 && !line.equals("firstperson") && !line.equals("first-person")
+                && !line.equals("no-hover-hints")
                 && !line.startsWith("list-radius") && !line.startsWith("gui-position");
     }
 
@@ -1369,6 +1383,7 @@ public final class HideModels {
         final List<Profile> saved = new ArrayList<>();
         boolean on = true;
         boolean fp = false;
+        boolean hints = true;
         double radius = DEFAULT_LIST_RADIUS;
         double gx = 0;
         double gy = 0;
@@ -1388,6 +1403,10 @@ public final class HideModels {
                 if (line.equalsIgnoreCase("first-person-only") || line.equalsIgnoreCase("firstperson")
                         || line.equalsIgnoreCase("first-person")) {
                     fp = true;
+                    continue;
+                }
+                if (line.equalsIgnoreCase("no-hover-hints")) {
+                    hints = false;
                     continue;
                 }
                 if (line.toLowerCase(Locale.ROOT).startsWith("list-radius")) {
@@ -1431,6 +1450,7 @@ public final class HideModels {
         profiles = List.copyOf(saved);
         enabled = on;
         firstPersonOnly = fp;
+        hoverHints = hints;
         listRadius = radius;
         guiX = gx;
         guiY = gy;
@@ -1474,6 +1494,7 @@ public final class HideModels {
                 #     first-person-only   hide only while the camera is in first person, so the
                 #                         model reappears in third person (F5) - useful when you
                 #                         want a mount out of your view but still want to see it
+                #     no-hover-hints      do not explain a row of the screen as you hover over it
                 #     list-radius 32      how far the screen's Nearby tab looks, in blocks
                 #     gui-position 1 0    where the screen sits, as fractions of the free space:
                 #                         0 0 top left, 1 0 top right, 1 1 bottom right

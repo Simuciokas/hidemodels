@@ -260,6 +260,14 @@ public final class SmokeChecks {
         HideModels.setFirstPersonOnly(true);
         HideModels.setFirstPersonOnly(false);
 
+        HideModels.setHoverHints(false);
+        waitUntil(() -> !HideModels.hoverHints(), "switching hover hints off did not stick");
+        if (HideModels.listed("no-hover-hints")) {
+            throw new AssertionError("the no-hover-hints directive was read as a model line");
+        }
+        HideModels.setHoverHints(true);
+        waitUntil(HideModels::hoverHints, "switching hover hints back on did not stick");
+
         HideModels.setGuiPosition(1, 0.5);
         waitUntil(() -> HideModels.guiX() == 1.0 && HideModels.guiY() == 0.5,
                   "a screen position of 1 0.5 did not stick");

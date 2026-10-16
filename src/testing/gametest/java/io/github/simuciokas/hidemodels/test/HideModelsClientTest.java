@@ -604,8 +604,8 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.takeScreenshot("profile-pasted");
 
             // 9. THE SETTINGS TAB, which must leave the config exactly as the matching directive
-            //     typed into the file would. Buttons there: the tabs, hiding, first person only, radius -, radius +,
-            //     position, move panel.
+            //     typed into the file would. Buttons there: the tabs, hiding, first person only,
+            //     on-hover hints, radius -, radius +, position, move panel.
             context.runOnClient(client -> HideModels.setListRadius(30));
             context.waitTicks(10);
             context.runOnClient(client -> press(3));
@@ -627,19 +627,27 @@ public final class HideModelsClientTest implements FabricClientGameTest {
                 if (HideModels.isFirstPersonOnly()) {
                     throw new AssertionError("the first-person toggle did not turn it back off");
                 }
+                press(6);
+                if (HideModels.hoverHints()) {
+                    throw new AssertionError("the hover hints toggle did not turn them off");
+                }
+                press(6);
+                if (!HideModels.hoverHints()) {
+                    throw new AssertionError("the hover hints toggle did not turn them back on");
+                }
                 // Off a multiple on purpose: + goes to the next one, not 30 + 8.
-                press(7);
+                press(8);
                 if (HideModels.listRadius() != 32.0) {
                     throw new AssertionError("radius + took 30 to " + HideModels.listRadius()
                             + ", not 32");
                 }
-                press(6);
-                press(6);
+                press(7);
+                press(7);
                 if (HideModels.listRadius() != 16.0) {
                     throw new AssertionError("radius - twice took 32 to " + HideModels.listRadius()
                             + ", not 16");
                 }
-                press(8);
+                press(9);
                 if (HideModels.guiX() != 1.0 || HideModels.guiY() != 0.0) {
                     throw new AssertionError("Position did not go to the top right corner");
                 }
@@ -647,7 +655,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.waitTicks(5);
             context.takeScreenshot("settings-right");
             context.runOnClient(client -> {
-                press(8);
+                press(9);
                 if (HideModels.guiX() != 0.0 || HideModels.guiY() != 0.0) {
                     throw new AssertionError("Position did not go back to the top left corner");
                 }
@@ -659,7 +667,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             //     overshoots and the drop is clamped to 1 1 whatever the panel's size.
             context.getInput().setCursorPos(0, 0);
             context.waitTicks(2);
-            context.runOnClient(client -> press(9));
+            context.runOnClient(client -> press(10));
             context.waitTicks(2);
             final double[] corner = new double[2];
             context.runOnClient(client -> {
@@ -685,7 +693,7 @@ public final class HideModelsClientTest implements FabricClientGameTest {
             context.takeScreenshot("placed-bottom-right");
             //     Esc while carrying it cancels the move; onClose is what Esc calls.
             context.runOnClient(client -> {
-                press(9);
+                press(10);
                 try {
                     ((Screen) screenOf(client)).onClose();
                     if (!(screenOf(client) instanceof HiddenListScreen) || childCount() == 1) {
