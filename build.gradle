@@ -48,7 +48,10 @@ def NEOFORGE = [
         '26.2'   : '26.2.0.57',
         '26.1.2' : '26.1.2.71',
         '1.21.11': '21.11.42',
-        '1.21.10': '21.10.63',
+        // 21.10.63's binary patches do not match the renamed game - "Patch expected
+        // com/mojang/math/OctahedralGroup.class to have the checksum fca5a11b" - and binary patches
+        // are what ModDevGradle applies on CI, where it skips decompiling.
+        '1.21.10': '21.10.64',
         '1.21.8' : '21.8.9',
         '1.21.5' : '21.5.74',
         '1.21.4' : '21.4.121',
