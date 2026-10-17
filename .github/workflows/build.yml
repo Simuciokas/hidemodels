@@ -634,8 +634,13 @@ jobs:
               --title "$GITHUB_REF_NAME" --generate-notes
           fi
 
-  # THE SAME JARS ON MODRINTH. Nothing on Modrinth's side watches this repo - a release there is
-  # something we push - so this mirrors what the job above publishes to GitHub.
+  # THE SAME JARS ON MODRINTH AND CURSEFORGE. Nothing on either side watches this repo - a release
+  # there is something we push - so this mirrors what the job above publishes to GitHub. One
+  # mc-publish step does both, from the same jars, versions, loaders and changelog.
+  #
+  # A RE-RUN UPLOADS TO CURSEFORGE AGAIN: unlike Modrinth, which refuses a version it already has,
+  # CurseForge takes the same file twice. So a CurseForge error fails the job, and only a job that
+  # failed - one whose CurseForge upload did not happen - is re-run.
   #
   # ONE MODRINTH VERSION PER MINECRAFT VERSION, which is why this is a matrix rather than one upload
   # of twelve files. Each jar is built and remapped against exactly one game version and declares it,
@@ -707,11 +712,14 @@ jobs:
         with:
           modrinth-id: ${{ vars.MODRINTH_PROJECT_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          curseforge-id: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
           files: dist/*.jar
           name: Hide Models ${{ steps.version.outputs.number }} for Fabric/Quilt ${{ matrix.id }}
           version: mc${{ matrix.id }}-${{ steps.version.outputs.number }}-fabric
           version-type: release
           modrinth-environment: client
+          curseforge-environment: client
           game-versions: ${{ matrix.versions }}
           # Verbatim, no filtering - the default narrows a resolved set and has silently emptied it.
           game-version-filter: none
@@ -774,11 +782,14 @@ jobs:
         with:
           modrinth-id: ${{ vars.MODRINTH_PROJECT_ID }}
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          curseforge-id: ${{ vars.CURSEFORGE_PROJECT_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
           files: dist/*.jar
           name: Hide Models ${{ steps.version.outputs.number }} for NeoForge ${{ matrix.id }}
           version: mc${{ matrix.id }}-${{ steps.version.outputs.number }}-neoforge
           version-type: release
           modrinth-environment: client
+          curseforge-environment: client
           game-versions: ${{ matrix.versions }}
           game-version-filter: none
           loaders: neoforge
